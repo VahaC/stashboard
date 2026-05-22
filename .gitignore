@@ -1,23 +1,76 @@
-﻿################################################################################
-# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
-################################################################################
+## .NET
+bin/
+obj/
+out/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+artifacts/
+*.user
+*.suo
+*.userprefs
+*.cache
+*.pidb
+*.binlog
+.vs/
 
-/.vs
-/src/Stashboard.Migrations/bin
-/src/Stashboard.Migrations/obj
-/src/Stashboard.Api/bin
-/src/Stashboard.Api/Data/app.db
-/src/Stashboard.Api/Data/app.db-shm
-/src/Stashboard.Api/Data/app.db-wal
-/src/Stashboard.Api/Data/app_dev.db
-/src/Stashboard.Api/Data/app_dev.db-shm
-/src/Stashboard.Api/Data/app_dev.db-wal
-/src/Stashboard.Api/Data/stashboard.db
-/src/Stashboard.Api/obj
-/src/Stashboard.Api/wwwroot/.gitkeep
-/src/Stashboard.Core/bin
-/src/Stashboard.Core/obj
-/src/Stashboard.Infrastructure/bin
-/src/Stashboard.Infrastructure/obj
-/tests/Stashboard.Tests/bin
-/tests/Stashboard.Tests/obj
+## Node / Vite
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+## Rider / VS Code
+.idea/
+.vscode/
+
+## OS
+.DS_Store
+Thumbs.db
+
+## App data / runtime
+src/Stashboard.Api/Data/*.db
+src/Stashboard.Api/Data/*.db-*
+src/Stashboard.Api/wwwroot/uploads/logos/*
+!src/Stashboard.Api/wwwroot/uploads/logos/.gitkeep
+
+## Built SPA artifacts copied during dev/test (image build copies dist into wwwroot)
+src/Stashboard.Api/wwwroot/index.html
+src/Stashboard.Api/wwwroot/assets/
+
+## Secrets
+.env
+*.pfx
+appsettings.Production.json
+
+## Test results
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+/.claude/worktrees/determined-neumann-2d21ac
+/.claude/worktrees/condescending-cartwright-512f55
+/.claude/worktrees/magical-roentgen-1103f8
+/.claude/worktrees/modest-kilby-c7735d
+/.claude/worktrees/naughty-meninsky-fd625f
+/.claude/worktrees/objective-gould-299402
+/.claude/worktrees/priceless-ptolemy-196c38
+/.claude/worktrees/quirky-chatelet-949b78
+/.claude/worktrees/quizzical-germain-ad4efc
+/.claude/worktrees/reverent-chandrasekhar-cafea4
+/.claude/worktrees/romantic-brattain-79d27c
+/.claude/worktrees/sad-meninsky-5e032c
+/.claude/worktrees/serene-kowalevski-56170c
+/.claude/worktrees/strange-ardinghelli-100e59
+/.claude/worktrees/suspicious-hamilton-682d42
+/.claude/worktrees/condescending-cartwright-512f55
+/.claude/worktrees/magical-roentgen-1103f8
+/.claude/worktrees/modest-kilby-c7735d
+/.claude/worktrees/naughty-meninsky-fd625f
+/.claude/worktrees/objective-gould-299402
+/.claude/worktrees/condescending-cartwright-512f55
+/.claude/worktrees/magical-roentgen-1103f8
+/.claude/worktrees/modest-kilby-c7735d
+/.claude/worktrees/naughty-meninsky-fd625f
+/.claude/worktrees/objective-gould-299402
+/.claude/worktrees/condescending-cartwright-512f55

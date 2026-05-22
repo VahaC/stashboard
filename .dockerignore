@@ -1,0 +1,28 @@
+**/bin
+**/obj
+**/.vs
+**/.vscode
+**/.idea
+**/*.user
+
+# Frontend build output and deps (rebuilt inside container)
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# App-data / uploads (created at runtime via volume)
+src/Stashboard.Api/Data/app.db*
+src/Stashboard.Api/wwwroot/uploads/logos/*
+src/Stashboard.Api/wwwroot/index.html
+src/Stashboard.Api/wwwroot/assets
+
+.git
+.github
+.gitignore
+.dockerignore
+docker-compose*.yml
+.env
+.env.*
+README.md
+LICENSE
+docs
