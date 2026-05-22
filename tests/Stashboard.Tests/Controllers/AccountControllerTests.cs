@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Moq;
 using Stashboard.Api.Auth;
@@ -40,7 +41,7 @@ public class AccountControllerTests : DatabaseTestBase
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _users = new UserService(_dbContext, _hasher, Options.Create(_jwt), _time);
+        _users = new UserService(_dbContext, _hasher, new PrefixEncryption(), Options.Create(_jwt), _time);
         _emailSettings = new EmailSettingsService(
             _dbContext, new PrefixEncryption(), Options.Create(_emailOpt), TestMapperFactory.Create(), _time);
         _email.Setup(e => e.SendAsync(It.IsAny<EmailMessage>(), It.IsAny<CancellationToken>()))
@@ -349,6 +350,9 @@ public class AccountControllerTests : DatabaseTestBase
         var result = await _ctrl.UpdateTelegramSettings(new UpdateTelegramSettingsRequest("bot-token", "123456", true), default);
 
         Assert.IsType<NoContentResult>(result);
+        var persisted = await _dbContext.Users.AsNoTracking().SingleAsync(user => user.Id == u.Id);
+        Assert.Equal("enc:bot-token", persisted.TelegramBotTokenEncrypted);
+
         var stored = await _users.FindByIdAsync(u.Id);
         Assert.Equal("bot-token", stored!.TelegramBotToken);
         Assert.Equal("123456", stored.TelegramChatId);

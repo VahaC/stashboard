@@ -15,6 +15,7 @@ public class UserServiceAccountTests : DatabaseTestBase
 {
     private readonly TestTimeProvider _time = new();
     private readonly Pbkdf2PasswordHasher _hasher = new();
+    private readonly PrefixEncryption _encryption = new();
     private UserService _sut = default!;
 
     private readonly JwtOptions _opt = new()
@@ -27,7 +28,13 @@ public class UserServiceAccountTests : DatabaseTestBase
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _sut = new UserService(_dbContext, _hasher, Options.Create(_opt), _time);
+        _sut = new UserService(_dbContext, _hasher, _encryption, Options.Create(_opt), _time);
+    }
+
+    private sealed class PrefixEncryption : Stashboard.Core.Abstractions.IEncryptionService
+    {
+        public string Encrypt(string plaintext) => "enc:" + plaintext;
+        public string Decrypt(string ciphertext) => ciphertext.StartsWith("enc:") ? ciphertext[4..] : ciphertext;
     }
 
     private async Task<UserEntity> Register(string email = "u@x", string password = "P@ssword1")
@@ -392,6 +399,9 @@ public class UserServiceAccountTests : DatabaseTestBase
         var result = await _sut.UpdateTelegramSettingsAsync(u.Id, "bot-token", "123456", true);
 
         Assert.True(result.Succeeded);
+        var persisted = await _dbContext.Users.AsNoTracking().SingleAsync(user => user.Id == u.Id);
+        Assert.Equal("enc:bot-token", persisted.TelegramBotTokenEncrypted);
+
         var stored = await _sut.FindByIdAsync(u.Id);
         Assert.Equal("bot-token", stored!.TelegramBotToken);
         Assert.Equal("123456", stored.TelegramChatId);

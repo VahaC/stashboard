@@ -49,7 +49,7 @@ public class BackupServiceTests
                 {
                     Email = "alice@x.com", NormalizedEmail = "ALICE@X.COM", PasswordHash = "h",
                     DisplayName = "Alice", Theme = "dark", DashboardSortMode = "category",
-                    DashboardGroupByCategory = true, TelegramBotToken = "bot123",
+                    DashboardGroupByCategory = true, TelegramBotTokenEncrypted = enc.Encrypt("bot123"),
                     TelegramChatId = "chat456", TelegramNotificationsEnabled = true,
                 };
                 ctx.Users.Add(alice);
@@ -119,7 +119,7 @@ public class BackupServiceTests
                 Assert.Equal("dark", bob.Theme);
                 Assert.Equal("Alice", bob.DisplayName);
                 Assert.True(bob.DashboardGroupByCategory);
-                Assert.Equal("bot123", bob.TelegramBotToken);
+                Assert.Equal("bot123", enc.Decrypt(bob.TelegramBotTokenEncrypted!));
 
                 var conn = await ctx.DockerConnections.AsNoTracking().SingleAsync(c => c.UserId == userB);
                 Assert.Equal("home", conn.Name);

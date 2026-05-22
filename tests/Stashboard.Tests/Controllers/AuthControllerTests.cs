@@ -15,6 +15,7 @@ public class AuthControllerTests : DatabaseTestBase
 {
     private readonly TestTimeProvider _time = new();
     private readonly Pbkdf2PasswordHasher _hasher = new();
+    private readonly PrefixEncryption _encryption = new();
     private readonly JwtOptions _opt = new()
     {
         Secret = "test-secret-test-secret-test-secret-test-secret",
@@ -29,9 +30,15 @@ public class AuthControllerTests : DatabaseTestBase
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _users = new UserService(_dbContext, _hasher, Options.Create(_opt), _time);
+        _users = new UserService(_dbContext, _hasher, _encryption, Options.Create(_opt), _time);
         _tokens = new TokenService(Options.Create(_opt), _dbContext, _time, NullLogger<TokenService>.Instance);
         _ctrl = new AuthController(_users, _tokens, TestMapperFactory.Create(), Options.Create(_opt));
+    }
+
+    private sealed class PrefixEncryption : Stashboard.Core.Abstractions.IEncryptionService
+    {
+        public string Encrypt(string plaintext) => "enc:" + plaintext;
+        public string Decrypt(string ciphertext) => ciphertext.StartsWith("enc:") ? ciphertext[4..] : ciphertext;
     }
 
     private void SignIn(Guid userId)

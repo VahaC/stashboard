@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
+using Stashboard.Api.Auth;
 using Stashboard.Api.Data;
 using Stashboard.Api.Mapping;
 using Stashboard.Api.Notifications;
@@ -457,6 +458,16 @@ public class DockerUpdateBackgroundServiceTests : IAsyncLifetime
         services.AddSingleton(encryption.Object);
         services.AddSingleton<IImageReferenceParser, ImageReferenceParser>();
         services.AddScoped<IDockerWatchMapper, DockerWatchMapper>();
+
+        services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
+        services.Configure<JwtOptions>(options =>
+        {
+            options.Secret = "test-secret-test-secret-test-secret-test-secret";
+            options.EmailConfirmationTokenLifetimeHours = 24;
+            options.PasswordResetTokenLifetimeHours = 2;
+        });
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddScoped<IUserService, UserService>();
 
         // Real notification service (depends on the mocked IEmailSender).
         services.AddScoped<IDockerUpdateNotificationService, DockerUpdateNotificationService>();

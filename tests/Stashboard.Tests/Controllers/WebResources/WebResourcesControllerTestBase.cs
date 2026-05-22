@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using Moq;
 using Stashboard.Api.Auth;
 using Stashboard.Api.Contracts;
@@ -157,8 +158,21 @@ public abstract class WebResourcesControllerTestBase : IAsyncLifetime
             _encryptionMock.Object,
             _faviconMock.Object);
 
+        var userService = new UserService(
+            _dbContext,
+            _passwordHasher,
+            _encryptionMock.Object,
+            Options.Create(new JwtOptions
+            {
+                Secret = "test-secret-test-secret-test-secret-test-secret",
+                EmailConfirmationTokenLifetimeHours = 24,
+                PasswordResetTokenLifetimeHours = 2,
+            }),
+            new TestTimeProvider());
+
         var controller = new WebResourcesController(
             _dbContext,
+            userService,
             _encryptionMock.Object,
             _healthCheckerMock.Object,
             mapper,

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Stashboard.Api.Data;
 using Stashboard.Api.Notifications;
+using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
 using Stashboard.Core.Enums;
 
@@ -10,11 +11,14 @@ namespace Stashboard.Tests.Notifications;
 public class ServiceStatusNotificationServiceTests
 {
     private readonly Mock<ITelegramSender> _telegramSender = new();
+    private readonly Mock<IEncryptionService> _encryption = new();
     private readonly ServiceStatusNotificationService _sut;
 
     public ServiceStatusNotificationServiceTests()
     {
-        _sut = new ServiceStatusNotificationService(_telegramSender.Object, NullLogger<ServiceStatusNotificationService>.Instance);
+        _encryption.Setup(encryptionService => encryptionService.Decrypt(It.IsAny<string>()))
+            .Returns<string>(value => value.StartsWith("enc:") ? value[4..] : value);
+        _sut = new ServiceStatusNotificationService(_telegramSender.Object, _encryption.Object, NullLogger<ServiceStatusNotificationService>.Instance);
     }
 
     [Fact]
@@ -22,7 +26,7 @@ public class ServiceStatusNotificationServiceTests
     {
         var user = new UserEntity
         {
-            TelegramBotToken = "bot-token",
+            TelegramBotTokenEncrypted = "enc:bot-token",
             TelegramChatId = "123456",
             TelegramNotificationsEnabled = true,
         };
@@ -65,7 +69,7 @@ public class ServiceStatusNotificationServiceTests
     {
         var user = new UserEntity
         {
-            TelegramBotToken = "bot-token",
+            TelegramBotTokenEncrypted = "enc:bot-token",
             TelegramChatId = "123456",
             TelegramNotificationsEnabled = true,
         };
@@ -94,7 +98,7 @@ public class ServiceStatusNotificationServiceTests
     {
         var user = new UserEntity
         {
-            TelegramBotToken = "bot-token",
+            TelegramBotTokenEncrypted = "enc:bot-token",
             TelegramChatId = "123456",
             TelegramNotificationsEnabled = true,
         };

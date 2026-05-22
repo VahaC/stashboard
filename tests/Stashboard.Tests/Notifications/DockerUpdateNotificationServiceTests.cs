@@ -22,13 +22,17 @@ public class DockerUpdateNotificationServiceTests
 
     private readonly Mock<IEmailSender> _emailMock = new();
     private readonly Mock<ITelegramSender> _telegramMock = new();
+    private readonly Mock<Stashboard.Core.Abstractions.IEncryptionService> _encryptionMock = new();
     private readonly DockerUpdateNotificationService _service;
 
     public DockerUpdateNotificationServiceTests()
     {
+        _encryptionMock.Setup(encryptionService => encryptionService.Decrypt(It.IsAny<string>()))
+            .Returns<string>(value => value.StartsWith("enc:") ? value[4..] : value);
         _service = new DockerUpdateNotificationService(
             _emailMock.Object,
             _telegramMock.Object,
+            _encryptionMock.Object,
             NullLogger<DockerUpdateNotificationService>.Instance);
     }
 
@@ -435,7 +439,7 @@ public class DockerUpdateNotificationServiceTests
         bool notificationsEnabled = true)
     {
         var user = User();
-        user.TelegramBotToken = botToken;
+        user.TelegramBotTokenEncrypted = botToken is null ? null : $"enc:{botToken}";
         user.TelegramChatId = chatId;
         user.TelegramNotificationsEnabled = notificationsEnabled;
         return user;

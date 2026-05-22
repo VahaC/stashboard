@@ -9,6 +9,7 @@ public class UserServiceTests : DatabaseTestBase
 {
     private readonly TestTimeProvider _time = new();
     private readonly Pbkdf2PasswordHasher _hasher = new();
+    private readonly PrefixEncryption _encryption = new();
     private UserService _sut = default!;
 
     private readonly JwtOptions _opt = new()
@@ -21,7 +22,13 @@ public class UserServiceTests : DatabaseTestBase
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        _sut = new UserService(_dbContext, _hasher, Options.Create(_opt), _time);
+        _sut = new UserService(_dbContext, _hasher, _encryption, Options.Create(_opt), _time);
+    }
+
+    private sealed class PrefixEncryption : Stashboard.Core.Abstractions.IEncryptionService
+    {
+        public string Encrypt(string plaintext) => "enc:" + plaintext;
+        public string Decrypt(string ciphertext) => ciphertext.StartsWith("enc:") ? ciphertext[4..] : ciphertext;
     }
 
     [Fact]
