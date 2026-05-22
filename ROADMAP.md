@@ -5,7 +5,7 @@
 > feature (V1 → V3, all delivered); §13 is the active **V4 — migration to SQLite**
 > release; §14 is the post-V4 feature backlog (V5+).
 >
-> **Status:** ✅ **V1, V2 and the delivered V3 phases are shipped.** V1 (planning + 7 phases) shipped 2026-05-16; V2.1 → V2.7 shipped between 2026-05-17 and 2026-05-18; V3.1 → V3.5 + the container/connection decoupling shipped between 2026-05-19 and 2026-05-21 (container inspect, async health verification, live logs/stats, instances page, first-class containers). The remaining Docker ideas (Compose-aware recreate, grouping, prune, Proxmox, exec/SSH shells) are **deferred to the post-V4 backlog (V5+) — see §14.** ✅ **V4 (migration to SQLite, single-container self-hosted) shipped 2026-05-21 — see §13.** ✅ **V5.0 (disabled card style + one-click removal) shipped 2026-05-21 — see §14.** ✅ **V5.0.1 (unlink container from service) shipped 2026-05-22 — see §14.** ✅ **V5.0.2 (editable SMTP / email settings) shipped 2026-05-22 — see §14.** End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md). For the feature's source-level surface see §6 — every phase links to the PR that landed it.
+> **Status:** ✅ **V1, V2 and the delivered V3 phases are shipped.** V1 (planning + 7 phases) shipped 2026-05-16; V2.1 → V2.7 shipped between 2026-05-17 and 2026-05-18; V3.1 → V3.5 + the container/connection decoupling shipped between 2026-05-19 and 2026-05-21 (container inspect, async health verification, live logs/stats, instances page, first-class containers). The remaining Docker ideas (Compose-aware recreate, grouping, prune, Proxmox, exec/SSH shells) are **deferred to the post-V4 backlog (V5+) — see §14.** ✅ **V4 (migration to SQLite, single-container self-hosted) shipped 2026-05-21 — see §13.** ✅ **V5.0 (disabled card style + one-click removal) shipped 2026-05-21 — see §14.** ✅ **V5.0.1 (unlink container from service) shipped 2026-05-22 — see §14.** ✅ **V5.0.2 (editable SMTP / email settings) shipped 2026-05-22 — see §14.** ✅ **V5.0.3 (dedicated notifications settings page) shipped 2026-05-22 — see §14.** ✅ **V5.1 (secure key auto-provisioning) shipped 2026-05-22 in image 5.1.0 — see §14.** End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md). For the feature's source-level surface see §6 — every phase links to the PR that landed it.
 
 ## 1. Goal
 
@@ -1284,7 +1284,7 @@ be overkill.
 - **Embedded live sparkline per card.** One stats stream per card
   means N daemon connections per page load — for a host with 50
   containers that's untenable. The V3.4 stats panel inside the watch
-  modal stays the way to see live numbers; we'll revisit when V5.2+
+  modal stays the way to see live numbers; we'll revisit when V5.3+
   introduces a per-container reference-counted multiplexer.
 - **Recreate from the page.** Recreate needs the watch's registry
   credentials / tag tracking, which the instances page doesn't have
@@ -1487,9 +1487,12 @@ Work:
 
 ## 14. Post-V4 backlog (V5+) — deferred Docker features
 
-> These items were previously catalogued as **V3.6 – V3.11**. They are
-> sequenced **after the V4 SQLite migration** and renumbered
-> **V5.0 – V5.6**. They remain ordered simplest → most complex: earlier phases
+> The Docker items here were previously catalogued as **V3.6 – V3.11**. They are
+> sequenced **after the V4 SQLite migration** and renumbered **V5.2 – V5.7**
+> (the Docker-recreate/grouping/prune/Proxmox/shell sequence). **V5.0–V5.1** are
+> shipped cross-cutting work that landed in the same window: V5.0/V5.0.x are the
+> instances-page + notifications refinements, and **V5.1** is secure key
+> auto-provisioning. The Docker phases remain ordered simplest → most complex: earlier phases
 > reuse infrastructure already in place (Docker client, audit log, permission
 > gate); later phases require new transports (WebSocket / SignalR), new external
 > integrations (Proxmox API, SSH), or new security surfaces (interactive shells)
@@ -1679,7 +1682,48 @@ without changing backend notification semantics or restart behavior. ✅
 
 ---
 
-### Phase V5.1 — True Compose-aware recreate
+### ✅ Phase V5.1 — Secure key auto-provisioning
+
+**Complexity:** Low
+**Value:** Self-hosters pulling the image from Docker Hub previously had to
+hand-generate `STASHBOARD_ENCRYPTION_KEY` / `STASHBOARD_JWT_SECRET` and set them
+in `.env` before the container would even start (the compose file hard-failed
+without them). This phase makes a fresh `docker compose up -d` work with **zero
+key management** while guaranteeing the encryption key stays stable across image
+updates — so credentials encrypted at rest never become undecryptable after an
+upgrade.
+
+**Shipped (5.1.0):**
+
+- ✓ `PersistedSecretProvider` (Infrastructure) — file-backed get-or-create: reads
+  a secret from a file, or generates and persists one on first run. Atomic
+  temp-file-then-move write; owner-only (`0600`) permissions on Unix; regenerates
+  if the stored file is empty/corrupt.
+- ✓ `SecretProvisioning` (Api) — on startup, if `Encryption:Key` / `Jwt:Secret`
+  are unset, generates a 32-byte AES key and a 48-byte JWT secret and persists
+  them under `.secrets/` next to the SQLite database (on the `stashboard-data`
+  volume). An explicitly supplied value always wins and disables auto-generation
+  for that secret, so existing deployments, external secret managers, and key
+  rotation are unaffected. Secrets dir overridable via
+  `STASHBOARD_Stashboard__SecretsPath`.
+- ✓ `docker-compose.yml` / `.env.example`: keys are now optional (dropped the
+  `:?` hard-fail guards), and `env_file` is marked `required: false` so `.env`
+  itself is optional — `docker compose up -d` works from just the compose file.
+  `deploy.sh` warns instead of failing on a missing `.env`. `.gitignore` ignores
+  `.secrets/`.
+- ✓ Docs: README "Secrets" section + config table, new `CHANGELOG.md`, new
+  step-by-step `INSTALL.md`, and `PUBLISHING.md` end-user flow updated.
+- ✓ Tests: 4 new `PersistedSecretProviderTests`; full suite green (797). Manual
+  end-to-end verified: first run generates + persists; second run loads the
+  identical keys unchanged.
+
+**DoD met:** a fresh deployment with no keys configured starts successfully,
+auto-generating and persisting them; a subsequent restart/update reuses the same
+keys without overwriting them. ✅
+
+---
+
+### Phase V5.2 — True Compose-aware recreate
 
 **Complexity:** Medium
 **Value:** Preserves the full Compose lifecycle (env-file resolution, profile
@@ -1735,12 +1779,12 @@ Compose entirely:
 
 ---
 
-### Phase V5.2 — Compose project grouping & bulk update
+### Phase V5.3 — Compose project grouping & bulk update
 
 **Complexity:** Medium
 **Value:** Real-world Docker hosts run *stacks*, not isolated containers.
 Updating Postgres without also restarting the API that depends on it is the
-class of mistake V5.1 is designed to prevent — but even with V5.1, the user
+class of mistake V5.2 is designed to prevent — but even with V5.2, the user
 still has to click "Update now" once per service. Grouping makes this one
 operation.
 
@@ -1750,16 +1794,16 @@ operation.
   label. A project header card aggregates a counter such as "3 of 7 services
   have updates available".
 - **Update project** button:
-  - With V5.1 available + `ComposeProjectPath` set → shells out
+  - With V5.2 available + `ComposeProjectPath` set → shells out
     `docker compose pull && docker compose up -d` on the project root.
-  - Without V5.1 → falls back to recreating each stale container in
+  - Without V5.2 → falls back to recreating each stale container in
     `depends_on` order, inferred from the labels Compose writes.
 - One aggregate `DockerUpdateAttemptEntity` row with child rows per service,
   so the audit log treats the bulk operation as a single auditable unit.
 
 ---
 
-### Phase V5.3 — Image cleanup / prune
+### Phase V5.4 — Image cleanup / prune
 
 **Complexity:** Medium
 **Value:** Auto-update without cleanup is the fastest way to fill a disk.
@@ -1782,7 +1826,7 @@ new one is in use; over months these dangling images can grow to many GB.
 
 ---
 
-### Phase V5.4 — Proxmox LXC update monitoring
+### Phase V5.5 — Proxmox LXC update monitoring
 
 **Complexity:** Medium–High
 **Value:** Stashboard already tracks Docker image updates; the natural next
@@ -1816,13 +1860,13 @@ exposes a stable REST API.
 **Out of scope for the first cut:**
 
 - Triggering the actual `apt upgrade` inside the LXC from Stashboard — this
-  is V5.6-adjacent and should land separately, after the shell story exists.
+  is V5.7-adjacent and should land separately, after the shell story exists.
 - Non-Debian LXC templates (Alpine `apk`, Rocky `dnf`) — add as follow-ups
   once the Debian path is stable.
 
 ---
 
-### Phase V5.5 — Container exec (browser terminal into a Docker container)
+### Phase V5.6 — Container exec (browser terminal into a Docker container)
 
 **Complexity:** High
 **Value:** The "I just need to run one command in this container" use case
@@ -1852,10 +1896,10 @@ with V3.3 (logs) and V3.5 (instances page).
 
 ---
 
-### Phase V5.6 — Browser-based SSH client for Proxmox LXC
+### Phase V5.7 — Browser-based SSH client for Proxmox LXC
 
 **Complexity:** High
-**Value:** Closes the loop on V5.4: once the user sees "LXC `pihole` has 7
+**Value:** Closes the loop on V5.5: once the user sees "LXC `pihole` has 7
 package updates pending", they can `apt upgrade` it without leaving the
 browser. Also useful for any non-Docker host Stashboard is asked to monitor.
 
@@ -1865,7 +1909,7 @@ browser. Also useful for any non-Docker host Stashboard is asked to monitor.
   host. To reach a specific LXC, the channel runs `pct enter <vmid>` (or
   `pct exec <vmid> -- /bin/bash`) on the host. No direct SSH into the LXC
   required, no per-container key management.
-- Transport: identical SignalR/WebSocket bridge to V5.5; the browser side
+- Transport: identical SignalR/WebSocket bridge to V5.6; the browser side
   reuses the same `xterm.js` component, just pointed at a different hub.
 - Credential storage: SSH keys live encrypted in the database (ASP.NET Core
   Data Protection — the same approach the existing `DockerConnection` SSH
@@ -1875,7 +1919,7 @@ browser. Also useful for any non-Docker host Stashboard is asked to monitor.
 
 **Security model:**
 
-- All the V5.5 guardrails apply (off by default, admin only, audited,
+- All the V5.6 guardrails apply (off by default, admin only, audited,
   per-user / per-host caps, idle timeout).
 - An extra setting `AllowRootShell = false` blocks `pct enter` when the
   default user inside the LXC is root, forcing the user to specify an

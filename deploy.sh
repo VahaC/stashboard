@@ -13,7 +13,9 @@ COMPOSE="docker compose"
 
 # ── pre-flight ────────────────────────────────────────────────────────────────
 [[ -f docker-compose.yml ]] || error "Run this script from the directory holding docker-compose.yml."
-[[ -f .env ]]               || error ".env file not found. Copy .env.example and fill in the values."
+# .env is optional — the app auto-generates secrets and the compose file has
+# defaults for everything else. Warn (don't fail) so first-time deploys just work.
+[[ -f .env ]] || warn "No .env file found — using built-in defaults (auto-generated keys, port 8080, latest tag)."
 
 # ── 1. pull the published image ───────────────────────────────────────────────
 # Pulls vahac/stashboard at the tag set by STASHBOARD_TAG in .env (default

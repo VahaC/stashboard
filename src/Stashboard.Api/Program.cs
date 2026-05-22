@@ -25,6 +25,11 @@ public class Program
         // STASHBOARD_* env vars override appsettings (use __ to descend into a section).
         builder.Configuration.AddEnvironmentVariables(prefix: "STASHBOARD_");
 
+        // First-run secret provisioning: if no encryption key / JWT secret were
+        // supplied, generate strong ones and persist them on the data volume so
+        // they survive image updates. Must run before the options below are read.
+        var secretProvisioningNotes = SecretProvisioning.AddPersistedSecrets(builder);
+
         // Keep JWT claims compact ("sub", "uid", "email", "stmp") — disable the legacy
         // XML-namespace remapping that would otherwise inflate every claim name.
         JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
@@ -147,8 +152,11 @@ public class Program
         // has no separate migrator step.
         using (var scope = app.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            foreach (var note in secretProvisioningNotes)
+                logger.LogInformation("{SecretProvisioningNote}", note);
+
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             RecoverStaleSqliteMigrationLock(db, logger);
             db.Database.Migrate();
         }

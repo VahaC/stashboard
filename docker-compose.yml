@@ -1,21 +1,33 @@
 services:
   app:
     # Pull the published image from Docker Hub. Pin a version with STASHBOARD_TAG
-    # in .env (e.g. STASHBOARD_TAG=1.2.0); defaults to the latest release.
+    # in .env (e.g. STASHBOARD_TAG=5.1.0); defaults to the latest release.
     # If your Docker Hub namespace differs, change "vahac" here.
     # To build from source instead, see docker-compose.build.yml.
     image: vahac/stashboard:${STASHBOARD_TAG:-latest}
     container_name: stashboard-app
     restart: unless-stopped
+    # .env is OPTIONAL. Compose loads it when present (to override the port, pin a
+    # STASHBOARD_TAG, or pass your own SMTP creds / keys) and silently skips it when
+    # absent. With no .env, the defaults below apply and the encryption key + JWT
+    # secret are auto-generated on first run — so `docker compose up -d` works with
+    # zero configuration. (required:false needs Docker Compose v2.24+.)
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       # SQLite database file lives on the named volume mounted at /app/Data.
       # The app applies pending migrations on startup — no separate migrator.
       STASHBOARD_ConnectionStrings__DefaultConnection: "Data Source=/app/Data/app.db"
-      STASHBOARD_Encryption__Key: ${STASHBOARD_ENCRYPTION_KEY:?Set STASHBOARD_ENCRYPTION_KEY in .env (Base64-encoded 32-byte key)}
-      STASHBOARD_Jwt__Secret: ${STASHBOARD_JWT_SECRET:?Set STASHBOARD_JWT_SECRET in .env (32+ chars)}
+      # Encryption key + JWT secret are OPTIONAL. Leave them blank in .env and the
+      # app generates strong random values on first start and persists them under
+      # /app/Data/.secrets on the stashboard-data volume — so they're preserved
+      # across image updates and never overwritten. Set them explicitly only if you
+      # manage secrets yourself or are migrating an existing deployment (an explicit
+      # value always wins and disables auto-generation for that secret).
+      STASHBOARD_Encryption__Key: ${STASHBOARD_ENCRYPTION_KEY:-}
+      STASHBOARD_Jwt__Secret: ${STASHBOARD_JWT_SECRET:-}
     ports:
       - "${STASHBOARD_PORT:-8080}:8080"
     volumes:

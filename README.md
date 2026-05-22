@@ -66,25 +66,28 @@ See [DOCKER_UPDATE_MONITORING_GUIDE.md](./DOCKER_UPDATE_MONITORING_GUIDE.md) for
 
 ## Quick start (Docker Compose)
 
-You don't need the source code or a build toolchain — Stashboard ships as a
-prebuilt image on Docker Hub (`vahac/stashboard`). All you need is the
-`docker-compose.yml` and a `.env` file:
+You don't need the source code, a build toolchain, or even a config file —
+Stashboard ships as a prebuilt image on Docker Hub (`vahac/stashboard`). All you
+need is the `docker-compose.yml`. For a detailed, beginner-friendly walkthrough
+(prerequisites, updating, backups, troubleshooting) see **[INSTALL.md](./INSTALL.md)**.
 
 ```bash
-# Grab the two files (or clone the repo)
+# Grab the compose file (or clone the repo)
 curl -O https://raw.githubusercontent.com/VahaC/stashboard/main/docker-compose.yml
-curl -O https://raw.githubusercontent.com/VahaC/stashboard/main/.env.example
-mv .env.example .env
-
-# Fill in .env:
-#   STASHBOARD_ENCRYPTION_KEY   openssl rand -base64 32
-#   STASHBOARD_JWT_SECRET       openssl rand -base64 48
-#   STASHBOARD_TAG              latest  (or pin a release, e.g. 1.2.0)
 
 docker compose up -d        # pulls vahac/stashboard and starts
 ```
 
 App is on `http://localhost:8080`. Register the first account, log in, click **+ Add service**.
+
+> **No keys to set.** On first start the app generates a strong encryption key and JWT secret automatically and persists them under `/app/Data/.secrets` on the `stashboard-data` volume — so they're reused on every restart and never overwritten by an image update. Just **back up the `stashboard-data` volume**: losing the encryption key makes every stored credential undecryptable.
+
+> **A `.env` file is optional.** Add one only to override a default — change the host port, pin a version, set your own keys, or configure SMTP. Grab the template when you need it:
+> ```bash
+> curl -O https://raw.githubusercontent.com/VahaC/stashboard/main/.env.example
+> mv .env.example .env   # then edit
+> ```
+> You only need to set keys yourself if you manage secrets externally or are migrating an existing deployment (see [Secrets](#secrets-auto-generated-and-persisted)).
 
 Everything runs in **one container**: the app stores its data in a SQLite file on the `stashboard-data` volume and applies any pending schema migrations on startup. There is no separate database or migrator container.
 
@@ -111,11 +114,11 @@ The script:
 2. (Re)starts the single `app` container
 3. Waits for the app to become healthy; on failure, prints the last 50 log lines
 
-To move to a specific version, set `STASHBOARD_TAG=1.2.0` in `.env` first.
+To move to a specific version, set `STASHBOARD_TAG=5.1.0` in `.env` first.
 
 **Migrations** are applied automatically by the app on startup — there is no separate migrator step.
 
-**Data is safe** — the SQLite database and uploads live in Docker volumes (`stashboard-data`, `stashboard-uploads`) that persist across container restarts and image updates.
+**Data is safe** — the SQLite database, uploads, and auto-generated secrets live in Docker volumes (`stashboard-data`, `stashboard-uploads`) that persist across container restarts and image updates. The encryption key and JWT secret are read back from the `stashboard-data` volume on each start, so an update never re-keys your data.
 
 > **Maintainer:** see [PUBLISHING.md](./PUBLISHING.md) for how images are built and published, and how to cut a release.
 
@@ -168,8 +171,9 @@ All settings can be overridden via env vars prefixed with `STASHBOARD_` (use `__
 | Setting | Env var | Default | Notes |
 |---|---|---|---|
 | Connection string | `STASHBOARD_ConnectionStrings__DefaultConnection` | `Data Source=Data/app.db` | SQLite. In Docker the file lives on the `stashboard-data` volume |
-| Encryption key | `STASHBOARD_Encryption__Key` | — | **Required.** Base64-encoded 32 bytes |
-| JWT secret | `STASHBOARD_Jwt__Secret` | — | **Required.** 32+ chars |
+| Encryption key | `STASHBOARD_Encryption__Key` | _auto-generated_ | Base64-encoded 32 bytes. Optional — auto-generated and persisted on first run if unset. An explicit value wins and disables auto-generation. |
+| JWT secret | `STASHBOARD_Jwt__Secret` | _auto-generated_ | 32+ chars. Optional — auto-generated and persisted on first run if unset. An explicit value wins. |
+| Secrets directory | `STASHBOARD_Stashboard__SecretsPath` | next to the DB (`.secrets/`) | Where auto-generated secrets are stored. Defaults to a `.secrets` folder beside the SQLite file so they live on the persisted volume. |
 | Access-token TTL | `STASHBOARD_Jwt__AccessTokenMinutes` | `15` | Minutes |
 | Refresh-token TTL | `STASHBOARD_Jwt__RefreshTokenDays` | `30` | Days |
 | Require confirmed email | `STASHBOARD_Jwt__RequireConfirmedEmail` | `false` | When `true`, login is rejected for unconfirmed users |
@@ -189,14 +193,27 @@ All settings can be overridden via env vars prefixed with `STASHBOARD_` (use `__
 
 > **Email settings are stored in the database and editable from the UI** (Notifications → **Email server (SMTP)**). The `STASHBOARD_Email__*` values above only **seed** the settings row on first startup; after that, manage the provider, host, credentials and from-address from the Notifications page and changes apply without a restart. The SMTP password is encrypted at rest (AES-256-GCM) and never returned by the API.
 
-### Generating secrets
+### Secrets: auto-generated and persisted
+
+By default you don't manage the encryption key or JWT secret at all. On first
+start, if either is unset, the app generates a cryptographically strong value
+(AES-256 key / 48-byte signing secret) and writes it to the secrets directory —
+by default `.secrets/` next to the SQLite database, which in Docker is on the
+`stashboard-data` volume. On every later start the same file is read back, so:
+
+- **First deploy** → fresh keys generated and saved.
+- **Updates / restarts** → existing keys loaded, never overwritten — encrypted data stays decryptable.
+
+> **Back up the `stashboard-data` volume.** Losing the encryption key means losing every stored credential. The secret files live under `/app/Data/.secrets` (owner-only permissions).
+
+**Supplying your own keys** (external secret manager, or migrating an existing
+deployment) — set the env vars and they take precedence; the app then won't
+generate or touch the persisted files for that secret:
 
 ```bash
-openssl rand -base64 32   # encryption key
-openssl rand -base64 48   # JWT secret
+openssl rand -base64 32   # encryption key  -> STASHBOARD_ENCRYPTION_KEY
+openssl rand -base64 48   # JWT secret       -> STASHBOARD_JWT_SECRET
 ```
-
-> Losing the encryption key means losing every stored credential. Back it up.
 
 ### Local secrets (User Secrets)
 
@@ -381,16 +398,18 @@ dotnet ef database update <PreviousMigrationName>    --project src/Stashboard.Ap
 
 ## Planned features (V5+)
 
+✅ **V5.1 — Secure key auto-provisioning** _(shipped in 5.1.0)_ — the encryption key and JWT secret are generated and persisted automatically on first run, and preserved across updates. See the [CHANGELOG](./CHANGELOG.md).
+
 These are the next items on the roadmap, ordered from simplest to most complex.
 
 | Phase | Feature | Description |
 |---|---|---|
-| V5.1 | **Compose-aware recreate** | True `docker compose up -d <service>` recreate that honours lifecycle hooks, `depends_on` ordering, and `env_file` resolution — instead of the current Watchtower-style raw `ContainerInspect` + recreate. Requires the `docker compose` binary and a bind-mounted Compose project path. |
-| V5.2 | **Compose project grouping & bulk update** | Group containers on the instances page by `com.docker.compose.project` label; a project-level "Update all" button drives `docker compose pull && up -d` (with V5.1) or falls back to per-container recreate in `depends_on` order. |
-| V5.3 | **Image cleanup / prune** | Scheduled background task that calls `ImagesPruneAsync` per host to remove dangling images left behind by "Update now"; "Storage" widget on the instances page + manual **Prune now** button. |
-| V5.4 | **Proxmox LXC update monitoring** | Track pending package updates on Proxmox LXC containers via the Proxmox REST API (`GET /nodes/{node}/apt/update` for the host; `exec`-based `apt list --upgradable` inside each LXC). Same Hourly/Daily/Weekly schedule model as Docker watches; same email notification channel. |
-| V5.5 | **Container exec (browser terminal)** | `xterm.js` terminal in the modal backed by a SignalR/WebSocket bridge to `docker exec`. Off by default; admin only; every session audited. |
-| V5.6 | **Browser-based SSH client for Proxmox LXC** | Closes the loop on V5.4 — `pct enter <vmid>` over the same `xterm.js` component. SSH keys stored encrypted; host-key TOFU on first connect; all V5.5 guardrails apply. |
+| V5.2 | **Compose-aware recreate** | True `docker compose up -d <service>` recreate that honours lifecycle hooks, `depends_on` ordering, and `env_file` resolution — instead of the current Watchtower-style raw `ContainerInspect` + recreate. Requires the `docker compose` binary and a bind-mounted Compose project path. |
+| V5.3 | **Compose project grouping & bulk update** | Group containers on the instances page by `com.docker.compose.project` label; a project-level "Update all" button drives `docker compose pull && up -d` (with V5.2) or falls back to per-container recreate in `depends_on` order. |
+| V5.4 | **Image cleanup / prune** | Scheduled background task that calls `ImagesPruneAsync` per host to remove dangling images left behind by "Update now"; "Storage" widget on the instances page + manual **Prune now** button. |
+| V5.5 | **Proxmox LXC update monitoring** | Track pending package updates on Proxmox LXC containers via the Proxmox REST API (`GET /nodes/{node}/apt/update` for the host; `exec`-based `apt list --upgradable` inside each LXC). Same Hourly/Daily/Weekly schedule model as Docker watches; same email notification channel. |
+| V5.6 | **Container exec (browser terminal)** | `xterm.js` terminal in the modal backed by a SignalR/WebSocket bridge to `docker exec`. Off by default; admin only; every session audited. |
+| V5.7 | **Browser-based SSH client for Proxmox LXC** | Closes the loop on V5.5 — `pct enter <vmid>` over the same `xterm.js` component. SSH keys stored encrypted; host-key TOFU on first connect; all V5.6 guardrails apply. |
 
 ## License
 
