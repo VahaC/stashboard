@@ -374,6 +374,25 @@ public class AccountControllerTests : DatabaseTestBase
     }
 
     [Fact]
+    public async Task GetEmailSettings_WhenSeedHasNullUsername_PersistsEmptyUsername()
+    {
+        var settingsWithNullUsername = new EmailSettingsService(
+            _dbContext,
+            new PrefixEncryption(),
+            Options.Create(new EmailOptions { Username = null! }),
+            TestMapperFactory.Create(),
+            _time);
+        var controller = new AccountController(_users, new AccountNotificationService(_email.Object, settingsWithNullUsername, new HttpContextAccessor()), settingsWithNullUsername, TestMapperFactory.Create());
+
+        var result = await controller.GetEmailSettings(default);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        _ = Assert.IsType<EmailSettingsResponse>(ok.Value);
+        var stored = await _dbContext.EmailSettings.AsNoTracking().SingleAsync(item => item.Id == EmailSettingsEntity.SingletonId);
+        Assert.Equal(string.Empty, stored.Username);
+    }
+
+    [Fact]
     public async Task UpdateEmailSettings_PersistsValuesAndEncryptsPassword()
     {
         var req = new UpdateEmailSettingsRequest(

@@ -170,7 +170,30 @@ public class Program
             app.UseCors();
         }
 
-        app.UseStaticFiles();
+        // Cache policy for the SPA. Vite fingerprints every JS/CSS bundle
+        // (e.g. index-a1b2c3.js), so those are immutable and cached for a year.
+        // index.html references those hashed names and changes every build, so it
+        // must never be cached — otherwise a browser keeps loading a stale entry
+        // point (and stale bundles) after a release. Always revalidate it.
+        var staticFileOptions = new StaticFileOptions
+        {
+            OnPrepareResponse = ctx =>
+            {
+                var headers = ctx.Context.Response.Headers;
+                if (ctx.File.Name.Equals("index.html", StringComparison.OrdinalIgnoreCase))
+                {
+                    headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+                    headers["Pragma"] = "no-cache";
+                    headers["Expires"] = "0";
+                }
+                else if (ctx.Context.Request.Path.StartsWithSegments("/assets"))
+                {
+                    headers["Cache-Control"] = "public, max-age=31536000, immutable";
+                }
+            },
+        };
+
+        app.UseStaticFiles(staticFileOptions);
 
         app.UseAuthentication();
         app.UseAuthorization();
@@ -178,8 +201,10 @@ public class Program
 
         app.MapControllers();
 
-        // SPA fallback — serve index.html for any non-API GET route so React Router works on refresh.
-        app.MapFallbackToFile("index.html");
+        // SPA fallback — serve index.html for any non-API GET route so React Router
+        // works on refresh. Reuses the cache policy above so the fallback-served
+        // index.html is also marked no-cache.
+        app.MapFallbackToFile("index.html", staticFileOptions);
 
         app.Run();
     }

@@ -91,15 +91,19 @@ public sealed class EmailSettingsService(
         entity = new EmailSettingsEntity
         {
             Id = EmailSettingsEntity.SingletonId,
-            Provider = _seed.Provider,
-            Host = _seed.Host,
+            Provider = string.IsNullOrWhiteSpace(_seed.Provider) ? "LogOnly" : _seed.Provider.Trim(),
+            Host = _seed.Host?.Trim() ?? "",
             Port = _seed.Port,
             UseStartTls = _seed.UseStartTls,
-            Username = _seed.Username,
+            Username = _seed.Username?.Trim() ?? "",
             PasswordEncrypted = string.IsNullOrEmpty(_seed.Password) ? null : encryption.Encrypt(_seed.Password),
-            FromAddress = _seed.FromAddress,
-            FromName = _seed.FromName,
-            AppBaseUrl = _seed.AppBaseUrl,
+            FromAddress = string.IsNullOrWhiteSpace(_seed.FromAddress)
+                ? "no-reply@stashboard.local"
+                : _seed.FromAddress.Trim(),
+            FromName = string.IsNullOrWhiteSpace(_seed.FromName) ? "Stashboard" : _seed.FromName.Trim(),
+            AppBaseUrl = string.IsNullOrWhiteSpace(_seed.AppBaseUrl)
+                ? "http://localhost:5173"
+                : _seed.AppBaseUrl.Trim(),
             CreatedUtc = now,
             UpdatedUtc = now,
         };

@@ -431,6 +431,28 @@
   flex-shrink: 0;
 }
 
+.docker-section-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  padding: 0.0625rem 0.375rem;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.docker-section-badge[data-status="UpdateAvailable"] { background: var(--status-update-available); }
+.docker-section-badge[data-status="UpToDate"]        { background: var(--status-up); }
+.docker-section-badge[data-status="Error"]           { background: var(--status-down); }
+.docker-section-badge[data-status="Disabled"]        { background: var(--status-unknown); }
+.docker-section-badge[data-status="Unknown"]         { background: var(--status-unknown); }
+
+.cc-update-badge {
+  flex-shrink: 0;
+}
+
 .cc-watch-chip {
   display: inline-flex;
   align-items: center;
