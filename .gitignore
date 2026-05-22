@@ -1,0 +1,23 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+/src/Stashboard.Migrations/bin
+/src/Stashboard.Migrations/obj
+/src/Stashboard.Api/bin
+/src/Stashboard.Api/Data/app.db
+/src/Stashboard.Api/Data/app.db-shm
+/src/Stashboard.Api/Data/app.db-wal
+/src/Stashboard.Api/Data/app_dev.db
+/src/Stashboard.Api/Data/app_dev.db-shm
+/src/Stashboard.Api/Data/app_dev.db-wal
+/src/Stashboard.Api/Data/stashboard.db
+/src/Stashboard.Api/obj
+/src/Stashboard.Api/wwwroot/.gitkeep
+/src/Stashboard.Core/bin
+/src/Stashboard.Core/obj
+/src/Stashboard.Infrastructure/bin
+/src/Stashboard.Infrastructure/obj
+/tests/Stashboard.Tests/bin
+/tests/Stashboard.Tests/obj
