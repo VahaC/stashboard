@@ -1,0 +1,817 @@
+/* V3.5 — Docker instances page (/docker).
+ * Cards list every container across the user's Docker connections with
+ * inline Start / Stop / Restart / Remove actions plus a deep link into
+ * the watch modal when one tracks the container.
+ */
+
+.docker-instances-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.docker-instances-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.docker-instances-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.docker-instances-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.docker-instances-header-sub {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.docker-instances-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--muted);
+}
+
+.docker-instances-toolbar-search {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.docker-instances-toolbar-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+}
+
+.docker-instances-connection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.docker-instances-connection-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.docker-instances-connection-edit {
+  margin-left: auto;
+}
+
+.docker-instances-connection-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.docker-instances-connection-meta {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.docker-instances-page .dashboard-group-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.docker-instances-page .dashboard-group-title {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.docker-instances-page .docker-instances-connection-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 .5rem 0 0;
+}
+
+.docker-instances-page .docker-instances-connection-edit {
+  justify-self: end;
+}
+
+.docker-instances-toolbar-compose-filter {
+  border: 1px solid var(--border-strong);
+}
+
+.docker-instances-error {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid hsl(var(--destructive) / 0.4);
+  border-radius: 0.375rem;
+  background: hsl(var(--destructive) / 0.08);
+  color: hsl(var(--destructive));
+  font-size: 12px;
+}
+
+.docker-instances-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.5rem;
+}
+
+.docker-instances-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--card);
+}
+
+/* V5.0 — Disabled card style for terminal containers */
+.docker-instances-card[data-container-state='exited'],
+.docker-instances-card[data-container-state='dead'],
+.docker-instances-card[data-container-state='removing'] {
+  border-style: dashed;
+  opacity: 0.6;
+}
+
+.docker-instances-card[data-container-state='exited']:hover,
+.docker-instances-card[data-container-state='dead']:hover,
+.docker-instances-card[data-container-state='removing']:hover {
+  opacity: 0.85;
+}
+
+.docker-instances-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.docker-instances-card-name {
+  font-weight: 600;
+  font-size: 14px;
+  word-break: break-all;
+}
+
+.docker-instances-card-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.docker-instances-card-state[data-state='running'] {
+  background: hsl(142 71% 45% / 0.15);
+  color: hsl(142 65% 30%);
+}
+
+:root[data-theme='dark'] .docker-instances-card-state[data-state='running'] {
+  color: hsl(142 71% 65%);
+}
+
+.docker-instances-card-state[data-state='exited'] {
+  background: hsl(var(--destructive) / 0.12);
+  color: hsl(var(--destructive));
+}
+
+.docker-instances-card-state[data-state='dead'],
+.docker-instances-card-state[data-state='removing'] {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.docker-instances-card-state[data-state='not found'] {
+  background: hsl(270deg 100% 47.32% / 26%);
+  color: hsl(270deg 58.01% 68.47%);
+}
+
+:root[data-theme='dark'] .docker-instances-card-state[data-state='not found'] {
+  color: hsl(270 60% 70%);
+}
+
+.docker-instances-card-state[data-state='restarting'],
+.docker-instances-card-state[data-state='created'] {
+  background: hsl(38 92% 50% / 0.15);
+  color: hsl(38 90% 35%);
+}
+
+:root[data-theme='dark'] .docker-instances-card-state[data-state='restarting'],
+:root[data-theme='dark'] .docker-instances-card-state[data-state='created'] {
+  color: hsl(38 92% 65%);
+}
+
+.docker-instances-card-image {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.docker-instances-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.docker-instances-card-meta.docker-instances-card-ports {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compose-service-row {  
+    align-self: end;
+}
+
+.docker-instances-card-ports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.docker-instances-card-port {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 0 0.35rem;
+  border-radius: 0.25rem;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.docker-instances-card-watch-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 11px;
+  color: hsl(var(--primary));
+  text-decoration: none;
+}
+
+.docker-instances-card-watch-link:hover {
+  text-decoration: underline;
+}
+
+.docker-instances-card-actions {
+  display: block;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+}
+
+.docker-instances-card-action-error {
+  color: hsl(var(--destructive));
+  font-size: 11px;
+  font-family: var(--font-mono);
+  word-break: break-word;
+}
+
+.docker-instances-empty {
+  padding: 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.375rem;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* Card-body click target — the lifecycle buttons and tab buttons live in
+ * their own action rows and stop propagation. */
+.docker-instances-card-body {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.docker-instances-card-tab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+@media (max-width: 639px) {
+  .docker-instances-header-top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .docker-instances-header-top > button {
+    width: 100%;
+  }
+
+  .docker-instances-page .dashboard-group-button {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .docker-instances-page .docker-instances-connection-meta {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    overflow-wrap: anywhere;
+  }
+
+  .docker-instances-connection-edit {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* V5.0 — One-click removal button for exited/dead containers */
+.cc-remove-inline {
+  color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive) / 0.4);
+}
+
+.cc-remove-inline:hover:not(:disabled) {
+  background: hsl(var(--destructive) / 0.08);
+  border-color: hsl(var(--destructive) / 0.6);
+}
+
+/* ── Atom layout helpers (Step 1) ───────────────────────────────────── */
+
+.cc-lifecycle {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.cc-overflow {
+  position: relative;
+  display: inline-block;
+}
+
+.cc-overflow > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.75rem;
+  width: 1.75rem;
+  border-radius: var(--radius);
+  color: var(--muted-foreground);
+}
+
+.cc-overflow > summary::-webkit-details-marker { display: none; }
+.cc-overflow > summary:hover { background: var(--muted); color: var(--foreground); }
+
+.cc-overflow-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 9rem;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 0.25rem;
+  z-index: 30;
+}
+
+.cc-overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.cc-overflow-item:hover:not(:disabled) { background: var(--muted); }
+.cc-overflow-item:disabled { opacity: 0.55; cursor: not-allowed; }
+.cc-overflow-item-danger { color: hsl(var(--destructive)); }
+
+/* ── ContainerCard layout (Step 3) ──────────────────────────────────── */
+
+.cc-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.cc-watch-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5rem;
+  padding: 0 0.4rem;
+  border-radius: var(--radius-pill);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.cc-chip-link {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.cc-chip-link:hover { text-decoration: underline; }
+
+.cc-actions-split {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cc-actions-left,
+.cc-actions-right {
+  display: block;
+  align-items: center;
+}
+
+.cc-actions-secondary {
+  display: block;
+  align-items: center;
+}
+
+.cc-actions-secondary .ui-button-ghost {
+  padding: 0 0.375rem 0.375rem;
+}
+
+/* Tighten the lifecycle wrapper inside the right cluster */
+.cc-actions-right > .cc-lifecycle {
+  gap: 0.25rem;
+}
+
+@media (max-width: 420px) {
+  /* Diagnostics buttons collapse to icons; lifecycle Restart icon-only
+   * stays via `density="compact"`. Stop keeps its label per spec. */
+  .cc-actions-left .label-text { display: none; }
+  .cc-lifecycle .label-text { display: inline; }
+}
+
+/* ── V3.5 container modal — tabs / overview / panels ─────────────────── */
+
+.container-modal-content {
+  max-width: 56rem;
+  width: 92vw;
+  max-height: 88vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.container-modal-content > .ui-dialog-header {
+  padding: 1rem 1.25rem 0.5rem;
+}
+
+.container-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  word-break: break-all;
+}
+
+.container-modal-image {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-foreground);
+  word-break: break-all;
+}
+
+.container-modal-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0 1rem;
+  flex-wrap: wrap;
+}
+
+.container-modal-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.5rem 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.container-modal-tab:hover {
+  color: var(--foreground);
+}
+
+.container-modal-tab-active {
+  color: var(--foreground);
+  border-bottom-color: hsl(var(--primary));
+}
+
+.container-modal-tab-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.container-modal-body {
+  overflow: auto;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.container-modal-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.container-modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--card);
+}
+
+.container-modal-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+  font-weight: 600;
+  margin: 0;
+}
+
+.container-modal-summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem;
+  font-size: 12px;
+  margin: 0;
+}
+
+.container-modal-summary dt {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.container-modal-summary dd {
+  margin: 0;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.container-modal-code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 0 0.25rem;
+  background: var(--muted);
+  border-radius: 0.2rem;
+}
+
+.container-modal-code-block {
+  display: block;
+  padding: 0.25rem 0.4rem;
+  margin: 0.15rem 0;
+  word-break: break-all;
+}
+
+.container-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.container-modal-card-ports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.container-modal-empty {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.container-modal-error {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid hsl(var(--destructive) / 0.4);
+  border-radius: 0.375rem;
+  background: hsl(var(--destructive) / 0.08);
+  color: hsl(var(--destructive));
+  font-size: 12px;
+}
+
+.container-modal-inspect {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.container-modal-collapsible {
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 12px;
+}
+
+.container-modal-collapsible > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  list-style: none;
+}
+
+.container-modal-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.container-modal-collapsible[open] > summary {
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+}
+
+.container-modal-collapsible-with-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.container-modal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.container-modal-table th {
+  text-align: left;
+  padding: 0.2rem 0.5rem 0.2rem 0;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  vertical-align: top;
+  width: 30%;
+  word-break: break-all;
+}
+
+.container-modal-table td {
+  padding: 0.2rem 0;
+  word-break: break-all;
+}
+
+.container-modal-raw {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: #0b1020;
+  color: #e2e8f0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.25rem;
+  max-height: 22rem;
+  overflow: auto;
+  white-space: pre;
+}
+
+.container-modal-logs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.container-modal-logs .docker-logs-viewport {
+  max-height: 50vh;
+}
+
+.container-modal-stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+/* ── Service modal → Docker tab — untracked accordion (Step 5) ────── */
+
+.docker-host-untracked {
+  margin-top: 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+}
+
+.docker-host-untracked > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  list-style: none;
+}
+
+.docker-host-untracked > summary::-webkit-details-marker { display: none; }
+
+.docker-host-untracked[open] > summary {
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+}
+
+/* ── Overview "Update available" banner (Step 4) ───────────────────── */
+
+.cm-update-banner {
+  background: color-mix(in oklab, var(--status-update-available) 14%, var(--card));
+  border-color: color-mix(in oklab, var(--status-update-available) 40%, var(--border));
+}
+
+.cm-update-banner-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+/* ── V5.0 — Remove confirmation dialog ──────────────────────────────── */
+
+.remove-confirm-dialog {
+  max-width: 28rem;
+}
+
+.remove-confirm-summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem;
+  font-size: 13px;
+  margin: 0;
+  padding: 0.5rem 0;
+}
+
+.remove-confirm-summary dt {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.remove-confirm-summary dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.remove-confirm-warning {
+  font-size: 13px;
+  color: var(--muted-foreground);
+  margin: 0;
+  padding: 0.25rem 0 0.5rem;
+}
+
+.remove-confirm-error {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid hsl(var(--destructive) / 0.4);
+  border-radius: 0.375rem;
+  background: hsl(var(--destructive) / 0.08);
+  color: hsl(var(--destructive));
+  font-size: 12px;
+}

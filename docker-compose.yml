@@ -1,0 +1,50 @@
+services:
+  app:
+    # Pull the published image from Docker Hub. Pin a version with STASHBOARD_TAG
+    # in .env (e.g. STASHBOARD_TAG=1.2.0); defaults to the latest release.
+    # If your Docker Hub namespace differs, change "vahac" here.
+    # To build from source instead, see docker-compose.build.yml.
+    image: vahac/stashboard:${STASHBOARD_TAG:-latest}
+    container_name: stashboard-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # SQLite database file lives on the named volume mounted at /app/Data.
+      # The app applies pending migrations on startup — no separate migrator.
+      STASHBOARD_ConnectionStrings__DefaultConnection: "Data Source=/app/Data/app.db"
+      STASHBOARD_Encryption__Key: ${STASHBOARD_ENCRYPTION_KEY:?Set STASHBOARD_ENCRYPTION_KEY in .env (Base64-encoded 32-byte key)}
+      STASHBOARD_Jwt__Secret: ${STASHBOARD_JWT_SECRET:?Set STASHBOARD_JWT_SECRET in .env (32+ chars)}
+    ports:
+      - "${STASHBOARD_PORT:-8080}:8080"
+    volumes:
+      - stashboard-data:/app/Data
+      - stashboard-uploads:/app/wwwroot/uploads
+
+
+      # ─── Docker container update tracking (optional) ─────────────────────
+      # Uncomment to let Stashboard inspect containers on THIS host for the
+      # "Docker container" tab on each service. Read-only mount (:ro) is
+      # sufficient for digest tracking + email/Telegram notifications —
+      # the app only inspects under :ro.
+      #
+      # To also enable the V2.7 "Update now" button (pull + recreate the
+      # container in place from the UI), drop the `:ro` so Stashboard can
+      # call StopContainer / RemoveContainer / CreateContainer /
+      # StartContainer. Every click of the button is wrapped in a
+      # per-click confirmation and writes an audit row regardless of
+      # outcome — see DOCKER_UPDATE_MONITORING_GUIDE.md §5.1.
+      #
+      # Security: anyone with the socket effectively has root on the
+      # host. Don't expose the Stashboard UI publicly without a strong
+      # reverse-proxy auth layer.
+      # See DOCKER_UPDATE_MONITORING_GUIDE.md for full setup + remote
+      # TCP+TLS / SSH alternatives if your containers run on a different
+      # host.
+      # - /var/run/docker.sock:/var/run/docker.sock:ro    # tracking only (V1..V2.6)
+      # - /var/run/docker.sock:/var/run/docker.sock       # tracking + Update now (V2.7)
+
+volumes:
+  stashboard-data:
+  stashboard-uploads:

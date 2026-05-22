@@ -1,0 +1,11 @@
+﻿<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Stashboard.Api/Stashboard.Api.csproj" />
+    <Project Path="src/Stashboard.Core/Stashboard.Core.csproj" />
+    <Project Path="src/Stashboard.Infrastructure/Stashboard.Infrastructure.csproj" />
+    <Project Path="src/Stashboard.Migrations/Stashboard.Migrations.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Stashboard.Tests/Stashboard.Tests.csproj" />
+  </Folder>
+</Solution>

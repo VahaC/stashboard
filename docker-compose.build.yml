@@ -1,0 +1,13 @@
+# Override that builds the image from local source instead of pulling the
+# published one from Docker Hub. Layer it on top of docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# The result is tagged vahac/stashboard:local so it never collides with, or
+# gets overwritten by, a `docker compose pull` of the published image.
+services:
+  app:
+    build:
+      context: .
+    image: vahac/stashboard:local
+    pull_policy: build

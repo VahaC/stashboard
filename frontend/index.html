@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stashboard</title>
+    <!--
+      Apply theme BEFORE first paint to prevent a flash of light-mode content.
+      Reads the same localStorage key Zustand persist writes to in lib/theme-store.ts
+      so the very first render already has <html class="dark"> when needed.
+    -->
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('stashboard-theme');
+          var pref = raw ? (JSON.parse(raw).state && JSON.parse(raw).state.theme) : 'system';
+          var dark = pref === 'dark' ||
+            (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (_) { /* ignore — falls back to system once React mounts */ }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,115 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Stashboard.Api.Data;
+using Stashboard.Api.Notifications;
+using Stashboard.Core.Abstractions;
+using Stashboard.Core.Options;
+
+namespace Stashboard.Api.Services;
+
+public sealed class HealthCheckBackgroundService(
+    IServiceScopeFactory scopeFactory,
+    IOptionsMonitor<HealthCheckOptions> options,
+    ILogger<HealthCheckBackgroundService> logger)
+    : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        try { await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken); }
+        catch (TaskCanceledException) { return; }
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try { await ScanOnceAsync(stoppingToken); }
+            catch (Exception ex) { logger.LogError(ex, "Healthcheck scan failed"); }
+
+            var delay = TimeSpan.FromSeconds(Math.Max(10, options.CurrentValue.IntervalSeconds));
+            try { await Task.Delay(delay, stoppingToken); }
+            catch (TaskCanceledException) { return; }
+        }
+    }
+
+    private async Task ScanOnceAsync(CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var checker = scope.ServiceProvider.GetRequiredService<IServiceHealthChecker>();
+        var statusNotifications = scope.ServiceProvider.GetRequiredService<IServiceStatusNotificationService>();
+
+        var services = await db.WebResources.AsTracking().ToListAsync(cancellationToken);
+        var users = await db.Users.AsNoTracking()
+            .Where(u => services.Select(s => s.UserId).Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, cancellationToken);
+
+        foreach (var service in services)
+        {
+            if (cancellationToken.IsCancellationRequested) break;
+
+            if (ShouldForceDisableOfflineNotifications(service))
+                service.OfflineNotificationsEnabled = false;
+
+            if (!ShouldRunAnyHealthCheck(service))
+            {
+                ClearHealthState(service);
+                continue;
+            }
+
+            var previousMainStatus = service.CurrentStatus;
+            var previousAdditionalStatus = service.AdditionalUrlStatus;
+            var result = await checker.CheckAsync(service, cancellationToken);
+            service.CurrentStatus = result.Main.Status;
+            service.LastResponseTimeMs = result.Main.ResponseTimeMs;
+            service.LastError = result.Main.Error;
+            service.LastCheckedUtc = result.Main.Status == Stashboard.Core.Enums.ServiceStatus.Unknown
+                && !service.MainUrlHealthCheckEnabled
+                ? null
+                : DateTime.UtcNow;
+
+            if (result.Additional is { } additional)
+            {
+                service.AdditionalUrlStatus = additional.Status;
+                service.AdditionalUrlLastResponseTimeMs = additional.ResponseTimeMs;
+                service.AdditionalUrlLastError = additional.Error;
+            }
+            else
+            {
+                service.AdditionalUrlStatus = Stashboard.Core.Enums.ServiceStatus.Unknown;
+                service.AdditionalUrlLastResponseTimeMs = null;
+                service.AdditionalUrlLastError = null;
+            }
+
+            if (users.TryGetValue(service.UserId, out var user))
+                await statusNotifications.NotifyIfNeededAsync(user, service, previousMainStatus, previousAdditionalStatus, cancellationToken);
+        }
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static bool ShouldRunAnyHealthCheck(Stashboard.Core.Entities.WebResourceEntity service)
+    {
+        if (service.MainUrlHealthCheckEnabled)
+            return true;
+
+        return !string.IsNullOrWhiteSpace(service.AdditionalUrl)
+            && service.AdditionalUrlHealthCheckEnabled;
+    }
+
+    private static bool ShouldForceDisableOfflineNotifications(Stashboard.Core.Entities.WebResourceEntity service)
+    {
+        var isMainDisabled = !service.MainUrlHealthCheckEnabled;
+        var isAdditionalDisabled = !service.AdditionalUrlHealthCheckEnabled || string.IsNullOrWhiteSpace(service.AdditionalUrl);
+        var hasNoHealthCheckUrl = string.IsNullOrWhiteSpace(service.HealthCheckUrl);
+
+        return isMainDisabled && isAdditionalDisabled && hasNoHealthCheckUrl;
+    }
+
+    private static void ClearHealthState(Stashboard.Core.Entities.WebResourceEntity service)
+    {
+        service.CurrentStatus = Stashboard.Core.Enums.ServiceStatus.Unknown;
+        service.LastResponseTimeMs = null;
+        service.LastError = null;
+        service.LastCheckedUtc = null;
+        service.AdditionalUrlStatus = Stashboard.Core.Enums.ServiceStatus.Unknown;
+        service.AdditionalUrlLastResponseTimeMs = null;
+        service.AdditionalUrlLastError = null;
+    }
+}

@@ -1,0 +1,323 @@
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+
+.ui-badge-default {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.ui-badge-secondary {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.ui-badge-destructive {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+
+.ui-badge-outline {
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+.ui-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ui-button:disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.ui-button-default {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.ui-button-default:hover {
+  background: color-mix(in srgb, var(--primary) 90%, transparent);
+}
+
+.ui-button-destructive {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+
+.ui-button-destructive:hover {
+  background: color-mix(in srgb, var(--destructive) 90%, transparent);
+}
+
+.ui-button-outline {
+  border: 1px solid var(--input);
+  background: var(--background);
+}
+
+.ui-button-outline:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.ui-button-secondary {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.ui-button-secondary:hover {
+  background: color-mix(in srgb, var(--secondary) 80%, transparent);
+}
+
+.ui-button-ghost:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.ui-button-link {
+  color: var(--primary);
+  text-underline-offset: 4px;
+}
+
+.ui-button-link:hover {
+  text-decoration: underline;
+}
+
+.ui-button-size-default {
+  height: 2.25rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+
+.ui-button-size-sm {
+  height: 2rem;
+  padding: 0 0.75rem;
+  font-size: 0.75rem;
+}
+
+.ui-button-size-lg {
+  height: 2.5rem;
+  padding: 0 1.5rem;
+  font-size: 0.875rem;
+}
+
+.ui-button-size-icon {
+  height: 2rem;
+  width: 2rem;
+}
+
+.ui-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  color: var(--card-foreground);
+}
+
+.ui-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 1rem;
+}
+
+.ui-card-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.ui-card-description {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.ui-card-content {
+  padding: 0 1rem 1rem;
+}
+
+.ui-card-footer {
+  display: flex;
+  align-items: center;
+  padding: 0 1rem 1rem;
+}
+
+.ui-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgb(0 0 0 / 0.5);
+}
+
+.ui-dialog-content {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 50;
+  display: grid;
+  width: 100%;
+  max-width: 42rem;
+  transform: translate(-50%, -50%);
+  gap: 1rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  padding: 1rem;
+  box-shadow: var(--shadow-lg);
+  max-height: 95dvh;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.ui-dialog-close {
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+  border-radius: var(--radius-sm);
+  opacity: 0.7;
+  transition: opacity 160ms ease;
+}
+
+.ui-dialog-close:hover {
+  opacity: 1;
+}
+
+.ui-dialog-close:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ui-dialog-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  text-align: center;
+}
+
+.ui-dialog-footer {
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.ui-dialog-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: var(--tracking-tight);
+}
+
+.ui-dialog-description {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.ui-input {
+  display: flex;
+  height: 2.25rem;
+  width: 100%;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+
+.ui-input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.ui-input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ui-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ui-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.ui-label:has(+ .peer:disabled),
+.peer:disabled ~ .ui-label,
+.peer:disabled + .ui-label {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.ui-textarea {
+  display: flex;
+  min-height: 60px;
+  width: 100%;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.ui-textarea::placeholder {
+  color: var(--muted-foreground);
+}
+
+.ui-textarea:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ui-textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (min-width: 640px) {
+  .ui-card-header {
+    padding: 1.5rem;
+  }
+
+  .ui-card-content {
+    padding: 0 1.5rem 1.5rem;
+  }
+
+  .ui-card-footer {
+    padding: 0 1.5rem 1.5rem;
+  }
+
+  .ui-dialog-content {
+    max-height: 90vh;
+    padding: 1.5rem;
+  }
+
+  .ui-dialog-header {
+    text-align: left;
+  }
+
+  .ui-dialog-footer {
+    flex-direction: row;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+}
