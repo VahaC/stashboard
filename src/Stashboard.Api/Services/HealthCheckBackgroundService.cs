@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Stashboard.Api.Auth;
 using Stashboard.Api.Data;
 using Stashboard.Api.Notifications;
 using Stashboard.Core.Abstractions;
@@ -34,12 +35,11 @@ public sealed class HealthCheckBackgroundService(
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var checker = scope.ServiceProvider.GetRequiredService<IServiceHealthChecker>();
+        var userService = scope.ServiceProvider.GetRequiredService<IUserService>();
         var statusNotifications = scope.ServiceProvider.GetRequiredService<IServiceStatusNotificationService>();
 
         var services = await db.WebResources.AsTracking().ToListAsync(cancellationToken);
-        var users = await db.Users.AsNoTracking()
-            .Where(u => services.Select(s => s.UserId).Contains(u.Id))
-            .ToDictionaryAsync(u => u.Id, cancellationToken);
+        var userIds = services.Select(service => service.UserId).Distinct().ToList();
 
         foreach (var service in services)
         {
@@ -78,8 +78,12 @@ public sealed class HealthCheckBackgroundService(
                 service.AdditionalUrlLastError = null;
             }
 
-            if (users.TryGetValue(service.UserId, out var user))
-                await statusNotifications.NotifyIfNeededAsync(user, service, previousMainStatus, previousAdditionalStatus, cancellationToken);
+            if (userIds.Contains(service.UserId))
+            {
+                var user = await userService.FindByIdAsync(service.UserId, cancellationToken);
+                if (user is not null)
+                    await statusNotifications.NotifyIfNeededAsync(user, service, previousMainStatus, previousAdditionalStatus, cancellationToken);
+            }
         }
         await db.SaveChangesAsync(cancellationToken);
     }

@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
@@ -147,6 +148,8 @@ public class Program
         using (var scope = app.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            RecoverStaleSqliteMigrationLock(db, logger);
             db.Database.Migrate();
         }
 
@@ -171,6 +174,28 @@ public class Program
         app.MapFallbackToFile("index.html");
 
         app.Run();
+    }
+
+    private static void RecoverStaleSqliteMigrationLock(ApplicationDbContext db, ILogger logger)
+    {
+        if (!db.Database.IsSqlite())
+            return;
+
+        try
+        {
+            // EF Core keeps a single-row lock table for migrations on SQLite.
+            // If a process is terminated mid-migration, the lock row can remain
+            // and block every next startup indefinitely. In Stashboard's
+            // single-instance deployment model it is safe to clear stale rows
+            // before retrying migrations.
+            var cleared = db.Database.ExecuteSqlRaw("DELETE FROM \"__EFMigrationsLock\";");
+            if (cleared > 0)
+                logger.LogWarning("Recovered startup by clearing {Count} stale EF migration lock row(s).", cleared);
+        }
+        catch (SqliteException ex) when (ex.SqliteErrorCode == 1 && ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+        {
+            // First startup before EF has created the lock table.
+        }
     }
 }
 

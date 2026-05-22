@@ -17,6 +17,7 @@ namespace Stashboard.Api.Controllers;
 [Route("api/services")]
 public class WebResourcesController(
     ApplicationDbContext db,
+    IUserService users,
     IEncryptionService encryption,
     IServiceHealthChecker healthChecker,
     IWebResourceMapper mapper,
@@ -144,7 +145,7 @@ public class WebResourcesController(
 
         await db.SaveChangesAsync(cancellationToken);
 
-        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == entity.UserId, cancellationToken);
+        var user = await users.FindByIdAsync(entity.UserId, cancellationToken);
         if (user is not null)
             await statusNotifications.NotifyIfNeededAsync(user, entity, previousMainStatus, previousAdditionalStatus, cancellationToken);
 

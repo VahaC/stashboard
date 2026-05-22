@@ -52,7 +52,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             ExportedUtc: DateTime.UtcNow,
             User: user is null ? null : new UserSettingsDto(
                 user.DisplayName, user.Theme, user.DashboardSortMode, user.DashboardGroupByCategory,
-                user.TelegramBotToken, user.TelegramChatId, user.TelegramNotificationsEnabled),
+                Dec(user.TelegramBotTokenEncrypted), user.TelegramChatId, user.TelegramNotificationsEnabled),
             Categories: categories.Select(c => new CategoryDto(c.Id, c.Name, c.Color)).ToList(),
             Tags: tags.Select(t => new TagDto(t.Id, t.Name)).ToList(),
             DockerConnections: connections.Select(c => new DockerConnectionDto(
@@ -94,7 +94,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 user.Theme = settings.Theme;
                 user.DashboardSortMode = settings.DashboardSortMode;
                 user.DashboardGroupByCategory = settings.DashboardGroupByCategory;
-                user.TelegramBotToken = settings.TelegramBotToken;
+                user.TelegramBotTokenEncrypted = Enc(settings.TelegramBotToken);
                 user.TelegramChatId = settings.TelegramChatId;
                 user.TelegramNotificationsEnabled = settings.TelegramNotificationsEnabled;
             }

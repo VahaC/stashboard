@@ -2,12 +2,14 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Stashboard.Api.Data;
+using Stashboard.Core.Abstractions;
 
 namespace Stashboard.Api.Auth;
 
 public sealed class UserService(
     ApplicationDbContext db,
     IPasswordHasher hasher,
+    IEncryptionService encryption,
     IOptions<JwtOptions> options,
     TimeProvider time) : IUserService
 {
@@ -73,13 +75,19 @@ public sealed class UserService(
         return new AuthResult(user, null);
     }
 
-    public Task<UserEntity?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default)
-        => db.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+    public async Task<UserEntity?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+        MaterializeTelegramToken(user);
+        return user;
+    }
 
-    public Task<UserEntity?> FindByEmailAsync(string email, CancellationToken cancellationToken = default)
+    public async Task<UserEntity?> FindByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
         var normalized = IUserService.Normalize(email);
-        return db.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == normalized, cancellationToken);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == normalized, cancellationToken);
+        MaterializeTelegramToken(user);
+        return user;
     }
 
     public async Task RotateSecurityStampAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -114,6 +122,19 @@ public sealed class UserService(
             .Where(t => t.UserId == userId && t.RevokedUtc == null)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedUtc, (DateTime?)now), cancellationToken);
     }
+
+    private void MaterializeTelegramToken(UserEntity? user)
+    {
+        if (user is null)
+            return;
+
+        user.TelegramBotToken = string.IsNullOrWhiteSpace(user.TelegramBotTokenEncrypted)
+            ? null
+            : encryption.Decrypt(user.TelegramBotTokenEncrypted);
+    }
+
+    private static string? NormalizeOptionalValue(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     // ── Email confirmation ───────────────────────────────────────────────────
 
@@ -358,10 +379,13 @@ public sealed class UserService(
         if (user is null)
             return OperationResult.Fail(AuthFailureReason.UserNotFound, "User not found.");
 
-        user.TelegramBotToken = string.IsNullOrWhiteSpace(botToken) ? null : botToken.Trim();
-        user.TelegramChatId = string.IsNullOrWhiteSpace(chatId) ? null : chatId.Trim();
+        user.TelegramBotToken = NormalizeOptionalValue(botToken);
+        user.TelegramBotTokenEncrypted = string.IsNullOrWhiteSpace(user.TelegramBotToken)
+            ? null
+            : encryption.Encrypt(user.TelegramBotToken);
+        user.TelegramChatId = NormalizeOptionalValue(chatId);
         user.TelegramNotificationsEnabled = notificationsEnabled
-            && !string.IsNullOrWhiteSpace(user.TelegramBotToken)
+            && !string.IsNullOrWhiteSpace(user.TelegramBotTokenEncrypted)
             && !string.IsNullOrWhiteSpace(user.TelegramChatId);
 
         await db.SaveChangesAsync(cancellationToken);

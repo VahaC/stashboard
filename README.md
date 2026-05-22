@@ -30,7 +30,7 @@ Built as **ASP.NET Core 10 Web API + React SPA**, deployed as a **single Docker 
 
 - Multi-user JWT auth (register / login / refresh / logout / logout-all)
 - Email verification and password reset flows
-- Editable SMTP / email-server settings stored in the DB and managed from the **Account** page (password encrypted at rest) — no redeploy to change the mail server
+- Editable SMTP / email-server settings stored in the DB and managed from the dedicated **Notifications** page (password encrypted at rest) — no redeploy to change the mail server
 - Service cards with favicon (auto-resolved) or custom uploaded logo, status dot, category badge, tags
 - Add / edit modal organised into tabs: **General · Healthcheck · Credentials · Docker**
 - Per-user **categories** (with color) and **tags**
@@ -187,7 +187,7 @@ All settings can be overridden via env vars prefixed with `STASHBOARD_` (use `__
 | Health verification interval | `STASHBOARD_DockerUpdate__HealthVerificationIntervalSeconds` | `3` | Seconds between health polls |
 | Allow container removal | `STASHBOARD_Stashboard__AllowContainerRemoval` | `false` | When `true`, the Docker instances page renders the **Remove** action. Off by default — removing a container is irreversible from the UI. |
 
-> **Email settings are stored in the database and editable from the UI** (Account → **Email server (SMTP)**). The `STASHBOARD_Email__*` values above only **seed** the settings row on first startup; after that, manage the provider, host, credentials and from-address from the Account page and changes apply without a restart. The SMTP password is encrypted at rest (AES-256-GCM) and never returned by the API.
+> **Email settings are stored in the database and editable from the UI** (Notifications → **Email server (SMTP)**). The `STASHBOARD_Email__*` values above only **seed** the settings row on first startup; after that, manage the provider, host, credentials and from-address from the Notifications page and changes apply without a restart. The SMTP password is encrypted at rest (AES-256-GCM) and never returned by the API.
 
 ### Generating secrets
 

@@ -35,7 +35,16 @@ public interface IUserService
     Task<AuthResult> RegisterAsync(string email, string password, CancellationToken cancellationToken = default);
     Task<AuthResult> ValidatePasswordAsync(string email, string password, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Returns a user with Telegram settings materialized for application use
+    /// (bot token is decrypted in-memory when present).
+    /// </summary>
     Task<UserEntity?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns a user with Telegram settings materialized for application use
+    /// (bot token is decrypted in-memory when present).
+    /// </summary>
     Task<UserEntity?> FindByEmailAsync(string email, CancellationToken cancellationToken = default);
 
     /// <summary>Rotates SecurityStamp — all existing access tokens become invalid on the next request.</summary>

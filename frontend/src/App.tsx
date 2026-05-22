@@ -17,6 +17,7 @@ const ResetPassword = lazy(() => import('./pages/ResetPassword').then((m) => ({ 
 const ConfirmEmail = lazy(() => import('./pages/ConfirmEmail').then((m) => ({ default: m.ConfirmEmail })))
 const ConfirmEmailChange = lazy(() => import('./pages/ConfirmEmailChange').then((m) => ({ default: m.ConfirmEmailChange })))
 const Account = lazy(() => import('./pages/Account').then((m) => ({ default: m.Account })))
+const NotificationSettings = lazy(() => import('./pages/NotificationSettings').then((m) => ({ default: m.NotificationSettings })))
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -48,6 +49,7 @@ export default function App() {
                 <Route path="/categories" element={<Categories />} />
                 <Route path="/tags" element={<Tags />} />
                 <Route path="/backup" element={<Backup />} />
+                <Route path="/notifications" element={<NotificationSettings />} />
                 <Route path="/account" element={<Account />} />
               </Route>
             </Route>

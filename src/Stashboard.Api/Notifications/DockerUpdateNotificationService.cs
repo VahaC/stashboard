@@ -1,4 +1,6 @@
+using System.Security.Cryptography;
 using Stashboard.Api.Data;
+using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
 using Stashboard.Core.Enums;
 
@@ -8,6 +10,7 @@ namespace Stashboard.Api.Notifications;
 public sealed class DockerUpdateNotificationService(
     IEmailSender emailSender,
     ITelegramSender telegramSender,
+    IEncryptionService encryption,
     ILogger<DockerUpdateNotificationService> logger) : IDockerUpdateNotificationService
 {
     public async Task NotifyIfNeededAsync(
@@ -65,10 +68,11 @@ public sealed class DockerUpdateNotificationService(
         UserEntity user, WebResourceEntity? service, DockerWatchEntity watch, CancellationToken cancellationToken)
     {
         if (!watch.TelegramNotificationsEnabled) return;
+        var botToken = ResolveBotToken(user);
         // User-level kill switch + presence check. Mirrors how
         // ServiceStatusNotificationService gates Telegram alerts.
         if (!user.TelegramNotificationsEnabled
-            || string.IsNullOrWhiteSpace(user.TelegramBotToken)
+            || string.IsNullOrWhiteSpace(botToken)
             || string.IsNullOrWhiteSpace(user.TelegramChatId))
             return;
 
@@ -78,7 +82,7 @@ public sealed class DockerUpdateNotificationService(
         var text = BuildTelegramText(service, watch);
         try
         {
-            await telegramSender.SendMessageAsync(user.TelegramBotToken!, user.TelegramChatId!, text, cancellationToken);
+            await telegramSender.SendMessageAsync(botToken!, user.TelegramChatId!, text, cancellationToken);
             watch.LastTelegramNotifiedDigest = watch.LatestDigest;
             watch.LastNotificationSentUtc = DateTime.UtcNow;
         }
@@ -114,6 +118,30 @@ public sealed class DockerUpdateNotificationService(
 
             Pull and recreate the container at your convenience.
             """;
+    }
+
+    private string? ResolveBotToken(UserEntity user)
+    {
+        if (!string.IsNullOrWhiteSpace(user.TelegramBotToken))
+            return user.TelegramBotToken;
+
+        if (string.IsNullOrWhiteSpace(user.TelegramBotTokenEncrypted))
+            return null;
+
+        try
+        {
+            return encryption.Decrypt(user.TelegramBotTokenEncrypted);
+        }
+        catch (CryptographicException ex)
+        {
+            logger.LogWarning(ex, "Failed to decrypt Telegram bot token for user {UserId}", user.Id);
+            return user.TelegramBotTokenEncrypted;
+        }
+        catch (FormatException ex)
+        {
+            logger.LogWarning(ex, "Failed to decode encrypted Telegram bot token for user {UserId}", user.Id);
+            return user.TelegramBotTokenEncrypted;
+        }
     }
 
     private static string? ShortenDigest(string? digest)

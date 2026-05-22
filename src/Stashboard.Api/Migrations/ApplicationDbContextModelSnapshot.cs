@@ -197,8 +197,8 @@ namespace Stashboard.Api.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("TelegramBotToken")
-                        .HasMaxLength(256)
+                    b.Property<string>("TelegramBotTokenEncrypted")
+                        .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("TelegramChatId")

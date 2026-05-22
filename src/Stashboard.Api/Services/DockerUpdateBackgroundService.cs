@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Stashboard.Api.Auth;
 using Stashboard.Api.Data;
 using Stashboard.Api.Mapping;
 using Stashboard.Api.Notifications;
@@ -92,6 +93,7 @@ public sealed class DockerUpdateBackgroundService(
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var checker = scope.ServiceProvider.GetRequiredService<IDockerUpdateChecker>();
         var mapper = scope.ServiceProvider.GetRequiredService<IDockerWatchMapper>();
+        var userService = scope.ServiceProvider.GetRequiredService<IUserService>();
         var notifier = scope.ServiceProvider.GetRequiredService<IDockerUpdateNotificationService>();
 
         var watches = await db.DockerWatches.AsTracking()
@@ -99,7 +101,7 @@ public sealed class DockerUpdateBackgroundService(
             .ToListAsync(cancellationToken);
         if (watches.Count == 0) return;
 
-        await ProcessWatchesAsync(db, checker, mapper, notifier, watches, cancellationToken);
+        await ProcessWatchesAsync(db, checker, mapper, userService, notifier, watches, cancellationToken);
     }
 
     /// <summary>
@@ -114,6 +116,7 @@ public sealed class DockerUpdateBackgroundService(
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var checker = scope.ServiceProvider.GetRequiredService<IDockerUpdateChecker>();
         var mapper = scope.ServiceProvider.GetRequiredService<IDockerWatchMapper>();
+        var userService = scope.ServiceProvider.GetRequiredService<IUserService>();
         var notifier = scope.ServiceProvider.GetRequiredService<IDockerUpdateNotificationService>();
 
         // Load all enabled watches, then filter in memory for due-ness — the
@@ -133,7 +136,7 @@ public sealed class DockerUpdateBackgroundService(
 
         if (due.Count == 0) return;
 
-        await ProcessWatchesAsync(db, checker, mapper, notifier, due, cancellationToken);
+        await ProcessWatchesAsync(db, checker, mapper, userService, notifier, due, cancellationToken);
     }
 
     /// <summary>
@@ -147,14 +150,12 @@ public sealed class DockerUpdateBackgroundService(
         ApplicationDbContext db,
         IDockerUpdateChecker checker,
         IDockerWatchMapper mapper,
+        IUserService userService,
         IDockerUpdateNotificationService notifier,
         IReadOnlyList<DockerWatchEntity> watches,
         CancellationToken cancellationToken)
     {
-        var userIds = watches.Select(w => w.UserId).Distinct().ToList();
-        var users = await db.Users.AsNoTracking()
-            .Where(u => userIds.Contains(u.Id))
-            .ToDictionaryAsync(u => u.Id, cancellationToken);
+        var userIds = watches.Select(watch => watch.UserId).Distinct().ToList();
 
         // V3.6 — the watch owns its connection id directly, so the host
         // transport is resolved by a straight lookup rather than a join
@@ -200,12 +201,16 @@ public sealed class DockerUpdateBackgroundService(
                 DockerWatchStatusWriter.ApplyCheckResult(watch, result);
 
                 if (result.Status == DockerUpdateStatus.UpdateAvailable
-                    && users.TryGetValue(watch.UserId, out var user))
+                    && userIds.Contains(watch.UserId))
                 {
-                    WebResourceEntity? service = null;
-                    if (watch.WebResourceId is { } sid)
-                        services.TryGetValue(sid, out service);
-                    await notifier.NotifyIfNeededAsync(user, service, watch, cancellationToken);
+                    var user = await userService.FindByIdAsync(watch.UserId, cancellationToken);
+                    if (user is not null)
+                    {
+                        WebResourceEntity? service = null;
+                        if (watch.WebResourceId is { } sid)
+                            services.TryGetValue(sid, out service);
+                        await notifier.NotifyIfNeededAsync(user, service, watch, cancellationToken);
+                    }
                 }
             }
             catch (Exception ex)

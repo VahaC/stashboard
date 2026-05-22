@@ -1654,6 +1654,31 @@ the password is stored encrypted and never returned over the wire — verified b
 
 ---
 
+### ✅ Phase V5.0.3 — Dedicated notifications settings page
+
+**Complexity:** Low
+**Value:** After V5.0.2 introduced DB-backed SMTP settings, both Telegram and
+SMTP configuration lived on the Account page together with profile and security
+actions. This phase separates notification-channel management into a dedicated
+page so operational notification setup is easier to find and maintain.
+
+**Shipped:**
+
+- ✓ Added a dedicated **Notifications** page in the frontend and moved both
+  Telegram and Email server (SMTP) forms there.
+- ✓ Simplified the **Account** page to profile, appearance, and security
+  actions only (password/email/account lifecycle).
+- ✓ Added sidebar navigation entry (`/notifications`) and protected route
+  wiring in the SPA.
+- ✓ Updated documentation to reflect the new settings location.
+- ✓ Validation: frontend build passes and backend account-related tests remain
+  green (no API contract changes).
+
+**DoD met:** Telegram and SMTP settings are managed from a dedicated page,
+without changing backend notification semantics or restart behavior. ✅
+
+---
+
 ### Phase V5.1 — True Compose-aware recreate
 
 **Complexity:** Medium

@@ -1,4 +1,6 @@
+using System.Security.Cryptography;
 using Stashboard.Api.Data;
+using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
 using Stashboard.Core.Enums;
 
@@ -6,6 +8,7 @@ namespace Stashboard.Api.Notifications;
 
 public sealed class ServiceStatusNotificationService(
     ITelegramSender telegramSender,
+    IEncryptionService encryption,
     ILogger<ServiceStatusNotificationService> logger) : IServiceStatusNotificationService
 {
     public async Task NotifyIfNeededAsync(
@@ -15,9 +18,10 @@ public sealed class ServiceStatusNotificationService(
         ServiceStatus previousAdditionalStatus,
         CancellationToken cancellationToken = default)
     {
+        var botToken = ResolveBotToken(user);
         if (!service.OfflineNotificationsEnabled
             || !user.TelegramNotificationsEnabled
-            || string.IsNullOrWhiteSpace(user.TelegramBotToken)
+            || string.IsNullOrWhiteSpace(botToken)
             || string.IsNullOrWhiteSpace(user.TelegramChatId))
             return;
 
@@ -41,12 +45,36 @@ public sealed class ServiceStatusNotificationService(
         {
             try
             {
-                await telegramSender.SendMessageAsync(user.TelegramBotToken!, user.TelegramChatId!, message, cancellationToken);
+                await telegramSender.SendMessageAsync(botToken!, user.TelegramChatId!, message, cancellationToken);
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Failed to send Telegram notification for service {ServiceId}", service.Id);
             }
+        }
+    }
+
+    private string? ResolveBotToken(UserEntity user)
+    {
+        if (!string.IsNullOrWhiteSpace(user.TelegramBotToken))
+            return user.TelegramBotToken;
+
+        if (string.IsNullOrWhiteSpace(user.TelegramBotTokenEncrypted))
+            return null;
+
+        try
+        {
+            return encryption.Decrypt(user.TelegramBotTokenEncrypted);
+        }
+        catch (CryptographicException ex)
+        {
+            logger.LogWarning(ex, "Failed to decrypt Telegram bot token for user {UserId}", user.Id);
+            return user.TelegramBotTokenEncrypted;
+        }
+        catch (FormatException ex)
+        {
+            logger.LogWarning(ex, "Failed to decode encrypted Telegram bot token for user {UserId}", user.Id);
+            return user.TelegramBotTokenEncrypted;
         }
     }
 }

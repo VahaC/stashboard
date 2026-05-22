@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using Stashboard.Core.Entities;
 
 namespace Stashboard.Api.Data;
@@ -51,7 +52,10 @@ public class UserEntity : AuditableEntity
     /// <summary>Dashboard grouping preference.</summary>
     public bool DashboardGroupByCategory { get; set; }
 
-    [MaxLength(256)]
+    [MaxLength(2048)]
+    public string? TelegramBotTokenEncrypted { get; set; }
+
+    [NotMapped]
     public string? TelegramBotToken { get; set; }
 
     [MaxLength(128)]
