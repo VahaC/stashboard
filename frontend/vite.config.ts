@@ -15,5 +15,13 @@ export default defineConfig({
       '/uploads': { target: 'http://localhost:5254', changeOrigin: true, secure: false },
     },
   },
-  build: { outDir: 'dist' },
+  build: {
+    outDir: 'dist',
+    // Single self-consistent bundle: no separately-hashed lazy chunks that can
+    // 404 or go stale after a release. One index-<hash>.js + one index-<hash>.css.
+    cssCodeSplit: false,
+    rollupOptions: {
+      output: { inlineDynamicImports: true },
+    },
+  },
 })
