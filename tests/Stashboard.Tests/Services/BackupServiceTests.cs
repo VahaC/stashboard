@@ -73,6 +73,8 @@ public class BackupServiceTests
                     UserId = alice.Id, Name = "Sonarr", MainUrl = "https://sonarr",
                     MainUrlHealthCheckEnabled = false, OfflineNotificationsEnabled = false,
                     CategoryId = category.Id, DockerConnectionId = connection.Id,
+                    LogoBase64 = "data:image/png;base64,STOREDICON==",
+                    LogoSource = LogoSource.AutoFavicon,
                 };
                 svc.Credentials.Add(new CredentialEntity { Key = "api", EncryptedValue = enc.Encrypt("SECRET"), IsSecret = true });
                 svc.WebResourceTags.Add(new WebResourceTagEntity { TagId = tag.Id });
@@ -135,6 +137,7 @@ public class BackupServiceTests
                 Assert.Equal(conn.Id, svc.DockerConnectionId);
                 Assert.Equal("SECRET", enc.Decrypt(svc.Credentials.Single().EncryptedValue));
                 Assert.Single(svc.WebResourceTags);
+                Assert.Equal("data:image/png;base64,STOREDICON==", svc.LogoBase64);
 
                 var watch = await ctx.DockerWatches.AsNoTracking().SingleAsync(w => w.UserId == userB);
                 Assert.Equal("sonarr", watch.ContainerName);

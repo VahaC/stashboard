@@ -128,9 +128,24 @@ public sealed class UserService(
         if (user is null)
             return;
 
-        user.TelegramBotToken = string.IsNullOrWhiteSpace(user.TelegramBotTokenEncrypted)
-            ? null
-            : encryption.Decrypt(user.TelegramBotTokenEncrypted);
+        if (string.IsNullOrWhiteSpace(user.TelegramBotTokenEncrypted))
+        {
+            user.TelegramBotToken = null;
+            return;
+        }
+
+        try
+        {
+            user.TelegramBotToken = encryption.Decrypt(user.TelegramBotTokenEncrypted);
+        }
+        catch (CryptographicException)
+        {
+            user.TelegramBotToken = user.TelegramBotTokenEncrypted;
+        }
+        catch (FormatException)
+        {
+            user.TelegramBotToken = user.TelegramBotTokenEncrypted;
+        }
     }
 
     private static string? NormalizeOptionalValue(string? value) =>

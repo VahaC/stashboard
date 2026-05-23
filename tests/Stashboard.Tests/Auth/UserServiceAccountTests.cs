@@ -76,6 +76,19 @@ public class UserServiceAccountTests : DatabaseTestBase
     }
 
     [Fact]
+    public async Task FindById_WithLegacyPlaintextTelegramToken_ReturnsTokenWithoutThrowing()
+    {
+        var user = await Register();
+        user.TelegramBotTokenEncrypted = "legacy-plain-token";
+        await _dbContext.SaveChangesAsync();
+
+        var loaded = await _sut.FindByIdAsync(user.Id);
+
+        Assert.NotNull(loaded);
+        Assert.Equal("legacy-plain-token", loaded!.TelegramBotToken);
+    }
+
+    [Fact]
     public async Task ConfirmEmail_WithWrongToken_Fails()
     {
         var u = await Register();

@@ -45,30 +45,62 @@ public sealed class FaviconService(
         cache.Remove(BuildCacheKey(siteUri));
     }
 
+    public async Task<string?> DownloadAsBase64Async(string imageUrl, CancellationToken cancellationToken = default)
+        => await DownloadAsBase64CoreAsync(imageUrl, allowInvalidCertificates: false, cancellationToken);
+
+    private async Task<string?> DownloadAsBase64CoreAsync(string imageUrl, bool allowInvalidCertificates, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl)) return null;
+        if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out _)) return null;
+
+        var client = httpFactory.CreateClient(allowInvalidCertificates ? "favicon-insecure" : "favicon");
+        try
+        {
+            using var response = await client.GetAsync(imageUrl, cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var mime = response.Content.Headers.ContentType?.MediaType ?? "image/x-icon";
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            if (bytes.Length == 0) return null;
+
+            return $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+        }
+        catch (Exception ex) when (!allowInvalidCertificates && IsCertificateProblem(ex))
+        {
+            logger.LogDebug(ex, "Favicon base64 download certificate validation failed for {Url}; retrying insecurely", imageUrl);
+            return await DownloadAsBase64CoreAsync(imageUrl, allowInvalidCertificates: true, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to download favicon as base64 from {Url}", imageUrl);
+            return null;
+        }
+    }
+
     private static string BuildCacheKey(Uri uri)
         => $"favicon:{uri.Scheme}://{uri.Host}{(uri.IsDefaultPort ? "" : ":" + uri.Port)}";
 
     private async Task<string?> TryResolveAsync(Uri pageUri, Uri directFaviconUri, CancellationToken cancellationToken)
     {
-        if (await ExistsAsync(directFaviconUri, allowInvalidCertificates: true, cancellationToken))
+        if (await ExistsAsync(directFaviconUri, allowInvalidCertificates: false, cancellationToken))
             return directFaviconUri.ToString();
 
-        var discovered = await TryReadHtmlIconAsync(pageUri, allowInvalidCertificates: true, cancellationToken);
+        var discovered = await TryReadHtmlIconAsync(pageUri, allowInvalidCertificates: false, cancellationToken);
         return discovered?.ToString();
     }
 
     private async Task<bool> ExistsAsync(Uri uri, bool allowInvalidCertificates, CancellationToken cancellationToken)
     {
-        var client = httpFactory.CreateClient(allowInvalidCertificates ? "favicon" : "favicon-insecure");
+        var client = httpFactory.CreateClient(allowInvalidCertificates ? "favicon-insecure" : "favicon");
         try
         {
             using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             return response.IsSuccessStatusCode && IsImageContent(response.Content.Headers.ContentType?.MediaType);
         }
-        catch (Exception ex) when (allowInvalidCertificates && IsCertificateProblem(ex))
+        catch (Exception ex) when (!allowInvalidCertificates && IsCertificateProblem(ex))
         {
             logger.LogDebug(ex, "Favicon certificate validation failed for {Url}; retrying insecurely", uri);
-            return await ExistsAsync(uri, allowInvalidCertificates: false, cancellationToken);
+            return await ExistsAsync(uri, allowInvalidCertificates: true, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -79,7 +111,7 @@ public sealed class FaviconService(
 
     private async Task<Uri?> TryReadHtmlIconAsync(Uri pageUri, bool allowInvalidCertificates, CancellationToken cancellationToken)
     {
-        var client = httpFactory.CreateClient(allowInvalidCertificates ? "favicon" : "favicon-insecure");
+        var client = httpFactory.CreateClient(allowInvalidCertificates ? "favicon-insecure" : "favicon");
         try
         {
             using var response = await client.GetAsync(pageUri, cancellationToken);
@@ -102,10 +134,10 @@ public sealed class FaviconService(
                 ? resolvedUri
                 : null;
         }
-        catch (Exception ex) when (allowInvalidCertificates && IsCertificateProblem(ex))
+        catch (Exception ex) when (!allowInvalidCertificates && IsCertificateProblem(ex))
         {
             logger.LogDebug(ex, "Page icon discovery certificate validation failed for {Url}; retrying insecurely", pageUri);
-            return await TryReadHtmlIconAsync(pageUri, allowInvalidCertificates: false, cancellationToken);
+            return await TryReadHtmlIconAsync(pageUri, allowInvalidCertificates: true, cancellationToken);
         }
         catch (Exception ex)
         {

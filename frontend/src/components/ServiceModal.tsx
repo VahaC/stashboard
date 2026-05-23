@@ -104,11 +104,12 @@ export function ServiceModal({ open, onOpenChange, service }: Props) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [checkError, setCheckError] = useState<string | null>(null)
   const [faviconError, setFaviconError] = useState<string | null>(null)
+  const [localLogoPreview, setLocalLogoPreview] = useState<string | null>(null)
 
   const iconPreview = useMemo(() => {
-    if (form.logoSource === 'Custom' && form.customLogoPath) return form.customLogoPath
+    if (form.logoSource === 'Custom') return localLogoPreview ?? form.customLogoPath ?? null
     return service?.faviconUrl ?? buildAutoIconPreview(form.mainUrl)
-  }, [form.logoSource, form.customLogoPath, form.mainUrl, service?.faviconUrl])
+  }, [form.logoSource, form.customLogoPath, form.mainUrl, service?.faviconUrl, localLogoPreview])
 
   const hasAdditionalHealthCheckTarget = Boolean(form.additionalUrl?.trim())
   const hasAnyHealthCheckEnabled = form.mainUrlHealthCheckEnabled
@@ -165,6 +166,8 @@ export function ServiceModal({ open, onOpenChange, service }: Props) {
   const onLogoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !service) return
+    const objectUrl = URL.createObjectURL(file)
+    setLocalLogoPreview(objectUrl)
     const path = await uploadLogo.mutateAsync({ id: service.id, file })
     setForm((f) => ({ ...f, customLogoPath: path, logoSource: 'Custom' }))
   }
@@ -339,7 +342,11 @@ export function ServiceModal({ open, onOpenChange, service }: Props) {
                     <select
                       className={cn('service-modal-select', 'w-auto')}
                       value={form.logoSource as string}
-                      onChange={(e) => setForm({ ...form, logoSource: e.target.value as 'AutoFavicon' | 'Custom' })}
+                      onChange={(e) => {
+                        const next = e.target.value as 'AutoFavicon' | 'Custom'
+                        if (next !== 'Custom') setLocalLogoPreview(null)
+                        setForm({ ...form, logoSource: next })
+                      }}
                     >
                       <option value="AutoFavicon">Auto (favicon)</option>
                       <option value="Custom">Custom upload</option>

@@ -60,6 +60,10 @@ public abstract class WebResourcesControllerTestBase : IAsyncLifetime
             .Setup(f => f.ResolveFaviconUrlAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string url, CancellationToken _) => $"https://favicon.example.com?url={url}");
 
+        _faviconMock
+            .Setup(f => f.DownloadAsBase64Async(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string url, CancellationToken _) => $"data:image/png;base64,AAAA=={url}");
+
         _healthCheckerMock
             .Setup(h => h.CheckAsync(It.IsAny<WebResourceEntity>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((WebResourceEntity service, CancellationToken _) => new ServiceCheckResult(

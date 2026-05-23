@@ -21,8 +21,9 @@ public class UploadLogoEndpointTests : WebResourcesControllerTestBase
         mock.Setup(f => f.Length).Returns(bytes.Length);
         mock.Setup(f => f.ContentType).Returns(contentType);
         mock.Setup(f => f.CopyToAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .Callback<Stream, CancellationToken>((s, _) => stream.CopyTo(s))
+            .Callback<Stream, CancellationToken>((s, _) => { stream.Position = 0; stream.CopyTo(s); })
             .Returns(Task.CompletedTask);
+        mock.Setup(f => f.OpenReadStream()).Returns(() => { stream.Position = 0; return stream; });
         return mock.Object;
     }
 

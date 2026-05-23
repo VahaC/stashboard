@@ -12,9 +12,30 @@ public sealed class WebResourceMapper(
 {
     public async Task<WebResourceResponse> MapAsync(WebResourceEntity entity, CancellationToken cancellationToken)
     {
-        var faviconUrl = entity.LogoSource == LogoSource.Custom || !string.IsNullOrEmpty(entity.CustomLogoPath)
-            ? null
-            : await favicon.ResolveFaviconUrlAsync(entity.MainUrl, cancellationToken);
+        string? faviconUrl;
+        string? customLogoPath;
+
+        if (entity.LogoSource == LogoSource.Custom)
+        {
+            // Base64 takes priority; fall back to file path for existing records
+            customLogoPath = entity.LogoBase64 ?? entity.CustomLogoPath;
+            faviconUrl = null;
+        }
+        else
+        {
+            customLogoPath = null;
+            if (!string.IsNullOrEmpty(entity.CustomLogoPath))
+            {
+                // Legacy: AutoFavicon source but a custom path is already stored — treat as custom.
+                faviconUrl = null;
+            }
+            else
+            {
+                // Return stored base64 when available to avoid re-downloading on every response
+                faviconUrl = entity.LogoBase64
+                    ?? await favicon.ResolveFaviconUrlAsync(entity.MainUrl, cancellationToken);
+            }
+        }
 
         return new WebResourceResponse(
             entity.Id,
@@ -32,7 +53,7 @@ public sealed class WebResourceMapper(
             entity.Category?.Name,
             entity.Category?.Color,
             entity.LogoSource,
-            entity.CustomLogoPath,
+            customLogoPath,
             faviconUrl,
             entity.CurrentStatus,
             entity.LastCheckedUtc,

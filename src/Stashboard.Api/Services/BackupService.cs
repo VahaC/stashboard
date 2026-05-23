@@ -63,7 +63,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             Services: services.Select(s => new ServiceDto(
                 s.Id, s.Name, s.MainUrl, s.MainUrlHealthCheckEnabled, s.AdditionalUrl, s.AdditionalUrlHealthCheckEnabled,
                 s.OfflineNotificationsEnabled, s.HealthCheckUrl, s.HealthCheckMethod, s.ExpectedStatusRange,
-                s.Notes, s.CategoryId, s.LogoSource, s.CustomLogoPath, s.DockerConnectionId,
+                s.Notes, s.CategoryId, s.LogoSource, s.CustomLogoPath, s.LogoBase64, s.DockerConnectionId,
                 s.Credentials.Select(c => new CredentialDto(c.Key, Dec(c.EncryptedValue)!, c.IsSecret)).ToList(),
                 s.WebResourceTags.Select(st => st.TagId).ToList())).ToList(),
             DockerWatches: watches.Select(w => new DockerWatchDto(
@@ -175,6 +175,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 CategoryId = MapOrNull(idMap, s.CategoryId),
                 LogoSource = s.LogoSource,
                 CustomLogoPath = s.CustomLogoPath,
+                LogoBase64 = s.LogoBase64,
                 DockerConnectionId = MapOrNull(idMap, s.DockerConnectionId),
             };
             foreach (var c in s.Credentials ?? [])
@@ -281,7 +282,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         Guid Id, string Name, string MainUrl, bool MainUrlHealthCheckEnabled, string? AdditionalUrl,
         bool AdditionalUrlHealthCheckEnabled, bool OfflineNotificationsEnabled, string? HealthCheckUrl,
         HealthCheckMethod HealthCheckMethod, string? ExpectedStatusRange, string? Notes, Guid? CategoryId,
-        LogoSource LogoSource, string? CustomLogoPath, Guid? DockerConnectionId,
+        LogoSource LogoSource, string? CustomLogoPath, string? LogoBase64, Guid? DockerConnectionId,
         List<CredentialDto> Credentials, List<Guid> TagIds);
 
     private sealed record CredentialDto(string Key, string Value, bool IsSecret);

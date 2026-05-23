@@ -42,6 +42,10 @@ public class WebResourceEntity : AuditableEntity
     [MaxLength(500)]
     public string? CustomLogoPath { get; set; }
 
+    /// <summary>Base64-encoded data URI of the service logo/favicon stored in the database.
+    /// Format: <c>data:&lt;mime&gt;;base64,&lt;data&gt;</c></summary>
+    public string? LogoBase64 { get; set; }
+
     public ServiceStatus CurrentStatus { get; set; } = ServiceStatus.Unknown;
     public DateTime? LastCheckedUtc { get; set; }
     public int? LastResponseTimeMs { get; set; }

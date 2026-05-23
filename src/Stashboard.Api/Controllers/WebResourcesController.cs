@@ -65,6 +65,7 @@ public class WebResourcesController(
         await db.SaveChangesAsync(cancellationToken);
         await ReplaceCredentialsAsync(entity, request.Credentials, cancellationToken);
         await ReplaceTagsAsync(entity, request.Tags, cancellationToken);
+        await StoreFaviconBase64Async(entity, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         var fresh = await LoadOwnedAsync(entity.Id, cancellationToken);
         return CreatedAtAction(nameof(Get), new { id = entity.Id }, await mapper.MapAsync(fresh!, cancellationToken));
@@ -82,9 +83,12 @@ public class WebResourcesController(
             || entity.AdditionalUrl != request.AdditionalUrl
             || entity.AdditionalUrlHealthCheckEnabled != request.AdditionalUrlHealthCheckEnabled
             || entity.HealthCheckUrl != request.HealthCheckUrl;
+        var isUrlChanged = entity.MainUrl != request.MainUrl || entity.LogoSource != request.LogoSource;
         ApplyScalar(entity, request);
         await ReplaceCredentialsAsync(entity, request.Credentials, cancellationToken);
         await ReplaceTagsAsync(entity, request.Tags, cancellationToken);
+        if (isUrlChanged)
+            await StoreFaviconBase64Async(entity, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
         if (isShouldRecheckHealth)
@@ -171,6 +175,15 @@ public class WebResourcesController(
         await using (var fs = System.IO.File.Create(path))
             await file.CopyToAsync(fs, cancellationToken);
 
+        // Store the uploaded image as base64 so it can be served without the file system
+        using var readStream = new MemoryStream();
+        file.OpenReadStream().CopyTo(readStream);
+        var uploadedBytes = readStream.ToArray();
+        var mime = file.ContentType;
+        entity.LogoBase64 = uploadedBytes.Length > 0
+            ? $"data:{mime};base64,{Convert.ToBase64String(uploadedBytes)}"
+            : null;
+
         entity.CustomLogoPath = $"/uploads/logos/{fileName}";
         entity.LogoSource = Stashboard.Core.Enums.LogoSource.Custom;
         await db.SaveChangesAsync(cancellationToken);
@@ -186,13 +199,26 @@ public class WebResourcesController(
         DeleteCustomLogoFileIfExists(entity.CustomLogoPath);
         entity.CustomLogoPath = null;
         entity.LogoSource = LogoSource.AutoFavicon;
+        entity.LogoBase64 = null;
         entity.UpdatedUtc = DateTime.UtcNow;
 
         faviconService.InvalidateSiteFaviconCache(entity.MainUrl);
+        await StoreFaviconBase64Async(entity, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
         var fresh = await LoadOwnedAsync(id, cancellationToken);
         return Ok(await mapper.MapAsync(fresh!, cancellationToken));
+    }
+
+    private async Task StoreFaviconBase64Async(WebResourceEntity entity, CancellationToken cancellationToken)
+    {
+        if (entity.LogoSource == LogoSource.Custom) return;
+
+        var url = await faviconService.ResolveFaviconUrlAsync(entity.MainUrl, cancellationToken);
+        if (url is null) return;
+
+        var base64 = await faviconService.DownloadAsBase64Async(url, cancellationToken);
+        entity.LogoBase64 = base64;
     }
 
     private void DeleteCustomLogoFileIfExists(string? customLogoPath)
