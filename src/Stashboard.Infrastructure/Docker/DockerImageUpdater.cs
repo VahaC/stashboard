@@ -34,9 +34,14 @@ public sealed class DockerImageUpdater(
     IDockerClientFactory dockerClientFactory,
     IImageReferenceParser imageReferenceParser,
     IAwsEcrTokenProvider awsEcrTokenProvider,
+    IComposeCommandRunner composeCommandRunner,
     IOptions<DockerUpdateOptions> updateOptions,
     ILogger<DockerImageUpdater> logger) : IDockerImageUpdater
 {
+    /// <summary>The standard Compose label every Compose-managed container
+    /// carries. Its value is the service name <c>docker compose</c> expects.</summary>
+    private const string ComposeServiceLabel = "com.docker.compose.service";
+
     private readonly DockerUpdateOptions _options = updateOptions.Value;
 
     /// <summary>V3.2 — exposed so unit tests can stub the per-attempt
@@ -87,6 +92,23 @@ public sealed class DockerImageUpdater(
             var previousImageId = inspect.Image;
             var previousDigest = await TryResolveDigestAsync(
                 client, previousImageId, profile.RegistryHost, profile.Repository, cancellationToken);
+
+            // V5.2 — true Compose-aware recreate. When the connection is a
+            // local socket, a Compose project path is configured, the running
+            // container carries the standard com.docker.compose.service label,
+            // and the compose CLI is present inside the Stashboard container,
+            // delegate the pull + recreate to `docker compose` so the full
+            // Compose lifecycle (env_file resolution, depends_on ordering,
+            // profiles, Compose's own network / subnet allocation) is honoured
+            // — none of which the raw Docker.DotNet recreate below can
+            // replicate. A missing binary degrades gracefully to the raw path.
+            var composeService = TryGetComposeService(inspect);
+            if (ShouldUseCompose(profile, composeService)
+                && await composeCommandRunner.IsAvailableAsync(cancellationToken))
+            {
+                return await RecreateViaComposeAsync(
+                    client, profile, composeService!, previousDigest, cancellationToken);
+            }
 
             // 1) Pull the new image. Failure here leaves the original
             //    container untouched — we only stop / remove after the pull
@@ -222,38 +244,125 @@ public sealed class DockerImageUpdater(
             //    inspect call to avoid a second round-trip.
             var verification = await VerifyHealthAsync(
                 client, created.ID, profile, newDigest, cancellationToken);
-            newDigest = verification.NewDigest ?? newDigest;
-
-            if (verification.Outcome == HealthOutcome.Unhealthy)
-            {
-                return new DockerUpdateResult(
-                    DockerUpdateAttemptStatus.RecreateFailed,
-                    previousDigest,
-                    newDigest,
-                    $"Container started but reported 'unhealthy' within the {VerificationWindowSeconds()}-second verification window.",
-                    HealthVerified: false,
-                    HealthVerifiedUtc: null);
-            }
-
-            if (verification.Outcome == HealthOutcome.Timeout)
-            {
-                return new DockerUpdateResult(
-                    DockerUpdateAttemptStatus.RecreateFailed,
-                    previousDigest,
-                    newDigest,
-                    $"Container started but did not become healthy within {VerificationWindowSeconds()} s.",
-                    HealthVerified: false,
-                    HealthVerifiedUtc: null);
-            }
-
-            return new DockerUpdateResult(
-                DockerUpdateAttemptStatus.Success,
-                previousDigest,
-                newDigest,
-                null,
-                HealthVerified: verification.Outcome == HealthOutcome.Healthy || verification.Outcome == HealthOutcome.NoHealthcheck,
-                HealthVerifiedUtc: verification.VerifiedAtUtc);
+            return BuildVerifiedResult(verification, previousDigest, newDigest);
         }
+    }
+
+    // ── V5.2 — true Compose-aware recreate ───────────────────────────────────
+
+    /// <summary>
+    /// Whether this update should go through <c>docker compose</c> rather than
+    /// the raw recreate. Local-socket only (the CLI inside the container talks
+    /// to the local daemon); requires a configured project path and a
+    /// Compose-managed container (one carrying <see cref="ComposeServiceLabel"/>).
+    /// </summary>
+    private static bool ShouldUseCompose(DockerUpdateProfile profile, string? composeService) =>
+        profile.HostTransport.HostType == DockerHostType.LocalSocket
+        && !string.IsNullOrWhiteSpace(profile.ComposeProjectPath)
+        && !string.IsNullOrWhiteSpace(composeService);
+
+    private static string? TryGetComposeService(ContainerInspectResponse inspect) =>
+        inspect.Config?.Labels is { } labels
+        && labels.TryGetValue(ComposeServiceLabel, out var service)
+        && !string.IsNullOrWhiteSpace(service)
+            ? service
+            : null;
+
+    /// <summary>
+    /// Delegates the pull + recreate to <c>docker compose</c>, then re-inspects
+    /// the container by name to resolve the new digest and run the same V3.2
+    /// health verification the raw path uses.
+    /// </summary>
+    private async Task<DockerUpdateResult> RecreateViaComposeAsync(
+        IDockerClient client,
+        DockerUpdateProfile profile,
+        string composeService,
+        string? previousDigest,
+        CancellationToken cancellationToken)
+    {
+        ComposeRunResult run;
+        try
+        {
+            run = await composeCommandRunner.RecreateServiceAsync(
+                new ComposeRecreateRequest(profile.ComposeProjectPath!, composeService), cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "docker compose recreate of {Service} threw", composeService);
+            return new DockerUpdateResult(DockerUpdateAttemptStatus.RecreateFailed, previousDigest, null,
+                $"docker compose recreate failed: {ex.Message}");
+        }
+
+        // The compose CLI is missing despite the up-front availability probe
+        // (race / environment change). Don't silently fall through to a
+        // destructive raw recreate here — surface the misconfiguration. The
+        // old container is still running because compose never removed it.
+        if (run.Status == ComposeRunnerStatus.CliNotAvailable)
+            return new DockerUpdateResult(DockerUpdateAttemptStatus.RecreateFailed, previousDigest, null,
+                run.Error ?? "The docker compose CLI is not available inside the Stashboard container.");
+
+        if (run.Status == ComposeRunnerStatus.ProjectPathNotFound)
+            return new DockerUpdateResult(DockerUpdateAttemptStatus.RecreateFailed, previousDigest, null,
+                $"{run.Error} Verify the project directory is bind-mounted read-only into the Stashboard container "
+                + "and that ComposeProjectPath points at the in-container mount path.");
+
+        if (!run.IsSuccess)
+            return new DockerUpdateResult(DockerUpdateAttemptStatus.RecreateFailed, previousDigest, null,
+                run.Error ?? "docker compose recreate failed.");
+
+        // Re-inspect by name to capture the recreated container's id + digest.
+        ContainerInspectResponse after;
+        try
+        {
+            after = await client.Containers.InspectContainerAsync(profile.ContainerName, cancellationToken);
+        }
+        catch (Exception ex) when (ex is DockerApiException or HttpRequestException or TaskCanceledException)
+        {
+            // Compose reported success but we can't re-inspect — report success
+            // without health verification rather than a false failure. The
+            // container is up; we just can't read its new digest.
+            logger.LogWarning(ex, "Re-inspect after compose recreate of {Container} failed", profile.ContainerName);
+            return new DockerUpdateResult(DockerUpdateAttemptStatus.Success, previousDigest, null, null,
+                HealthVerified: false, HealthVerifiedUtc: null);
+        }
+
+        var newDigest = await TryResolveDigestAsync(
+            client, after.Image, profile.RegistryHost, profile.Repository, cancellationToken);
+
+        if (string.IsNullOrEmpty(after.ID))
+            return new DockerUpdateResult(DockerUpdateAttemptStatus.Success, previousDigest, newDigest, null);
+
+        var verification = await VerifyHealthAsync(client, after.ID, profile, newDigest, cancellationToken);
+        return BuildVerifiedResult(verification, previousDigest, newDigest);
+    }
+
+    /// <summary>
+    /// V3.2 — maps the post-start health verification outcome onto the typed
+    /// update result. Shared by the raw recreate and the V5.2 Compose recreate
+    /// so both honour the same "unhealthy / timeout downgrade to RecreateFailed"
+    /// contract.
+    /// </summary>
+    private DockerUpdateResult BuildVerifiedResult(
+        HealthVerificationResult verification, string? previousDigest, string? newDigest)
+    {
+        newDigest = verification.NewDigest ?? newDigest;
+
+        if (verification.Outcome == HealthOutcome.Unhealthy)
+            return new DockerUpdateResult(
+                DockerUpdateAttemptStatus.RecreateFailed, previousDigest, newDigest,
+                $"Container started but reported 'unhealthy' within the {VerificationWindowSeconds()}-second verification window.",
+                HealthVerified: false, HealthVerifiedUtc: null);
+
+        if (verification.Outcome == HealthOutcome.Timeout)
+            return new DockerUpdateResult(
+                DockerUpdateAttemptStatus.RecreateFailed, previousDigest, newDigest,
+                $"Container started but did not become healthy within {VerificationWindowSeconds()} s.",
+                HealthVerified: false, HealthVerifiedUtc: null);
+
+        return new DockerUpdateResult(
+            DockerUpdateAttemptStatus.Success, previousDigest, newDigest, null,
+            HealthVerified: verification.Outcome is HealthOutcome.Healthy or HealthOutcome.NoHealthcheck,
+            HealthVerifiedUtc: verification.VerifiedAtUtc);
     }
 
     // ── V3.2 health verification ─────────────────────────────────────────────

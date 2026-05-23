@@ -65,5 +65,18 @@ public class DockerConnectionEntity : AuditableEntity
     [MaxLength(200)]
     public string? SshRemoteSocketPath { get; set; }
 
+    /// <summary>
+    /// V5.2 — absolute path, as visible from inside the Stashboard container,
+    /// to the directory that holds this host's <c>docker-compose.yml</c>. The
+    /// operator bind-mounts the host's Compose project directory to this path
+    /// (e.g. <c>/compose-projects/home-server</c>) so the <c>docker compose</c>
+    /// CLI inside the container can resolve <c>env_file</c> paths,
+    /// <c>depends_on</c> ordering and profiles when "Update now" recreates a
+    /// container. <c>null</c> keeps the V2.7 raw <c>Docker.DotNet</c> recreate.
+    /// Only honoured for <see cref="DockerHostType.LocalSocket"/> connections.
+    /// </summary>
+    [MaxLength(500)]
+    public string? ComposeProjectPath { get; set; }
+
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

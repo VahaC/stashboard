@@ -91,6 +91,10 @@ public static class DependencyInjection
         // V3.4 — streams per-second CPU / memory / network / block-I/O
         // counters. Same per-call ownership semantics as the log streamer.
         services.AddSingleton<IDockerStatsStreamer, DockerStatsStreamer>();
+        // V5.2 — shells out to the host `docker compose` CLI for a true
+        // Compose-aware recreate. Singleton so the CLI-availability probe is
+        // cached for the process lifetime.
+        services.AddSingleton<IComposeCommandRunner, ComposeCommandRunner>();
         // V2.7 — one-click "Update now" pulls + recreates the target
         // container. Singleton: stateless, pulls the per-request transport
         // from the same factory the host client uses.

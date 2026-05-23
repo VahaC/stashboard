@@ -633,7 +633,8 @@
   margin-left: auto;
   color: var(--primary);
   text-decoration: none;
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .docker-release-panel-link:hover {

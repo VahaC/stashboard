@@ -246,6 +246,79 @@ public class DockerConnectionMapperTests
         Assert.Null(transport.HostUrl);
     }
 
+    // ── V5.2 — Compose project path ──────────────────────────────────────────
+
+    [Fact]
+    public void ApplyUpsert_LocalSocketWithComposeProjectPath_PersistsTrimmedPath()
+    {
+        var entity = new DockerConnectionEntity { Name = "x" };
+        var request = new DockerConnectionUpsertRequest(
+            Name: "home",
+            HostType: DockerHostType.LocalSocket,
+            HostUrl: null,
+            TlsCaCert: null, TlsClientCert: null, TlsClientKey: null,
+            ComposeProjectPath: "  /compose-projects/home  ");
+
+        _mapper.ApplyUpsert(entity, request);
+
+        Assert.Equal(DockerHostType.LocalSocket, entity.HostType);
+        Assert.Equal("/compose-projects/home", entity.ComposeProjectPath);
+    }
+
+    [Fact]
+    public void ApplyUpsert_SwitchToRemoteHost_ClearsComposeProjectPath()
+    {
+        // Compose-aware recreate runs the *local* CLI, so a project path is
+        // meaningless on a remote transport and must not shadow the switch.
+        var entity = new DockerConnectionEntity
+        {
+            Name = "x",
+            HostType = DockerHostType.LocalSocket,
+            ComposeProjectPath = "/compose-projects/home",
+        };
+        var request = new DockerConnectionUpsertRequest(
+            Name: "home",
+            HostType: DockerHostType.TcpTls,
+            HostUrl: "tcp://h:2376",
+            TlsCaCert: null, TlsClientCert: null, TlsClientKey: null,
+            ComposeProjectPath: "/should-be-ignored");
+
+        _mapper.ApplyUpsert(entity, request);
+
+        Assert.Null(entity.ComposeProjectPath);
+    }
+
+    [Fact]
+    public void ApplyUpsert_BlankComposeProjectPath_NormalizesToNull()
+    {
+        var entity = new DockerConnectionEntity { Name = "x" };
+        var request = new DockerConnectionUpsertRequest(
+            Name: "home",
+            HostType: DockerHostType.LocalSocket,
+            HostUrl: null,
+            TlsCaCert: null, TlsClientCert: null, TlsClientKey: null,
+            ComposeProjectPath: "   ");
+
+        _mapper.ApplyUpsert(entity, request);
+
+        Assert.Null(entity.ComposeProjectPath);
+    }
+
+    [Fact]
+    public void ToResponse_SurfacesComposeProjectPath()
+    {
+        var entity = new DockerConnectionEntity
+        {
+            Name = "home",
+            HostType = DockerHostType.LocalSocket,
+            ComposeProjectPath = "/compose-projects/home",
+        };
+
+        var response = _mapper.ToResponse(entity, usageCount: 0);
+
+        Assert.Equal("/compose-projects/home", response.ComposeProjectPath);
+    }
+
     // ── Fixtures ────────────────────────────────────────────────────────────
 
     private DockerConnectionEntity SshEntity(bool withPassphrase) => new()

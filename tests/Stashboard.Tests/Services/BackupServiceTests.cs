@@ -65,6 +65,7 @@ public class BackupServiceTests
                     SshHost = "1.2.3.4", SshUsername = "root",
                     TlsCaCertEncrypted = enc.Encrypt("CA-CERT"),
                     SshPrivateKeyEncrypted = enc.Encrypt("SSH-KEY"),
+                    ComposeProjectPath = "/compose-projects/home",
                 };
                 ctx.DockerConnections.Add(connection);
 
@@ -128,6 +129,7 @@ public class BackupServiceTests
                 Assert.Equal(DockerHostType.Ssh, conn.HostType);
                 Assert.Equal("CA-CERT", enc.Decrypt(conn.TlsCaCertEncrypted!));
                 Assert.Equal("SSH-KEY", enc.Decrypt(conn.SshPrivateKeyEncrypted!));
+                Assert.Equal("/compose-projects/home", conn.ComposeProjectPath);
 
                 var svc = await ctx.WebResources.AsNoTracking()
                     .Include(s => s.Credentials).Include(s => s.WebResourceTags)

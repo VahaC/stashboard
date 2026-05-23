@@ -167,11 +167,15 @@ public sealed class SshDockerTunnel : IDisposable
             _logger?.LogWarning("Failed to open SSH exec channel for Docker tunnel.");
             return;
         }
+
         if (!primaryOk)
             _logger?.LogDebug("Falling back to socat-based SSH bridge for Docker tunnel.");
 
-        var inputStream = cmd.CreateInputStream();
+        // ExecuteAsync must run first: it opens the channel. CreateInputStream
+        // throws InvalidOperationException if the channel isn't open yet, so the
+        // order here is load-bearing — do not reorder.
         var execTask = cmd.ExecuteAsync(token);
+        var inputStream = cmd.CreateInputStream();
 
         var clientToRemote = CopyAsync(tcpStream, inputStream, token);
         var remoteToClient = CopyAsync(cmd.OutputStream, tcpStream, token);

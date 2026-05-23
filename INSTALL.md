@@ -76,7 +76,7 @@ STASHBOARD_JWT_SECRET=
 # Host port to expose the app on (default 8080).
 STASHBOARD_PORT=8080
 
-# Image version: `latest`, or pin one, e.g. 5.1.0.
+# Image version: `latest`, or pin one, e.g. 5.2.0.
 STASHBOARD_TAG=latest
 ```
 
@@ -87,7 +87,7 @@ What each setting does:
 | `STASHBOARD_ENCRYPTION_KEY` | ❌ No | Leave blank. On first start the app generates a strong AES‑256 key and saves it on the data volume. See [§7](#7-how-secrets-are-handled). |
 | `STASHBOARD_JWT_SECRET` | ❌ No | Same — auto-generated and persisted if blank. |
 | `STASHBOARD_PORT` | only to change it | Change if `8080` is taken, e.g. `9090`. |
-| `STASHBOARD_TAG` | only to pin | `latest` tracks the newest build. Pin (e.g. `5.1.0`) for a reproducible deploy. |
+| `STASHBOARD_TAG` | only to pin | `latest` tracks the newest build. Pin (e.g. `5.2.0`) for a reproducible deploy. |
 
 > **When would you set the keys yourself?** Only if you manage secrets in an
 > external system, or you are **migrating an existing deployment** and must reuse
@@ -157,7 +157,7 @@ chmod +x deploy.sh   # first time only
 ./deploy.sh
 ```
 
-To move to a specific version, set `STASHBOARD_TAG=5.1.0` in `.env` first, then
+To move to a specific version, set `STASHBOARD_TAG=5.2.0` in `.env` first, then
 run the commands above. The new image applies any pending schema migrations on
 startup — there is no separate migration step.
 

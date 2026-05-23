@@ -338,6 +338,18 @@ public class DockerWatchMapperTests
     }
 
     [Fact]
+    public void BuildUpdateProfile_CarriesComposeProjectPathFromConnection()
+    {
+        var entity = SampleEntity(withRegistryCreds: false);
+        var connection = SampleConnection(withTls: false);
+        connection.ComposeProjectPath = "/compose-projects/home";
+
+        var profile = _mapper.BuildUpdateProfile(entity, connection);
+
+        Assert.Equal("/compose-projects/home", profile.ComposeProjectPath);
+    }
+
+    [Fact]
     public void ToResponse_AttemptEntity_RoundTripsAllFields()
     {
         var entity = new DockerUpdateAttemptEntity

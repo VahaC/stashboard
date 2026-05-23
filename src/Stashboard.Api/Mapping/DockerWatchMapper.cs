@@ -200,7 +200,10 @@ public sealed class DockerWatchMapper(
             watch.RegistryAuthType,
             SafeDecrypt(watch.AwsAccessKeyIdEncrypted),
             SafeDecrypt(watch.AwsSecretAccessKeyEncrypted),
-            watch.AwsRegion);
+            watch.AwsRegion,
+            // V5.2 — only honoured for local-socket hosts; the updater enforces
+            // that, but passing it unconditionally keeps the mapper simple.
+            connection.ComposeProjectPath);
     }
 
     public DockerUpdateAttemptResponse ToResponse(DockerUpdateAttemptEntity entity) =>

@@ -376,6 +376,160 @@ public class DockerImageUpdaterTests
         Assert.Contains("docker ps -a", result.Error);
     }
 
+    // ── V5.2 — true Compose-aware recreate ───────────────────────────────────
+
+    private static DockerUpdateProfile ComposeProfile() =>
+        NginxProfile() with { ComposeProjectPath = "/compose-projects/home" };
+
+    private static Dictionary<string, string> ComposeLabels() => new()
+    {
+        ["com.docker.compose.project"] = "myproject",
+        ["com.docker.compose.service"] = "web",
+    };
+
+    [Fact]
+    public async Task Update_ComposeConfigured_LocalSocket_RecreatesViaComposeAndSkipsRawRecreate()
+    {
+        var compose = Harness.SucceedingCompose();
+        var harness = Harness.BuildComposeHappyPath(compose);
+
+        var result = await harness.Updater.UpdateAsync(ComposeProfile());
+
+        Assert.Equal(DockerUpdateAttemptStatus.Success, result.Status);
+        Assert.Equal(OldDigest, result.PreviousDigest);
+        Assert.Equal(NewDigest, result.NewDigest);
+
+        // The compose CLI did the work — pass the project path + the service
+        // name read from the com.docker.compose.service label.
+        compose.Verify(r => r.RecreateServiceAsync(
+            It.Is<ComposeRecreateRequest>(req => req.ProjectPath == "/compose-projects/home" && req.ServiceName == "web"),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        // The raw stop / remove / create sequence must NOT run — compose owns
+        // the lifecycle.
+        harness.Containers.Verify(c => c.StopContainerAsync(
+            It.IsAny<string>(), It.IsAny<ContainerStopParameters>(), It.IsAny<CancellationToken>()), Times.Never);
+        harness.Containers.Verify(c => c.RemoveContainerAsync(
+            It.IsAny<string>(), It.IsAny<ContainerRemoveParameters>(), It.IsAny<CancellationToken>()), Times.Never);
+        harness.Containers.Verify(c => c.CreateContainerAsync(
+            It.IsAny<CreateContainerParameters>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_ComposeRecreateFails_ReturnsRecreateFailedAndNeverTouchesContainerDirectly()
+    {
+        var compose = new Mock<IComposeCommandRunner>();
+        compose.Setup(r => r.IsAvailableAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        compose.Setup(r => r.RecreateServiceAsync(It.IsAny<ComposeRecreateRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComposeRunResult(
+                ComposeRunnerStatus.CommandFailed, 1, null, "docker compose up -d failed: port is already allocated"));
+        var harness = Harness.BuildComposeHappyPath(compose);
+
+        var result = await harness.Updater.UpdateAsync(ComposeProfile());
+
+        Assert.Equal(DockerUpdateAttemptStatus.RecreateFailed, result.Status);
+        Assert.Equal(OldDigest, result.PreviousDigest);
+        Assert.Contains("port is already allocated", result.Error);
+
+        // No destructive raw recreate when compose fails — the old container
+        // is still running because compose never removed it.
+        harness.Containers.Verify(c => c.RemoveContainerAsync(
+            It.IsAny<string>(), It.IsAny<ContainerRemoveParameters>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_ComposeProjectPathMissing_ReturnsRecreateFailedWithBindMountHint()
+    {
+        var compose = new Mock<IComposeCommandRunner>();
+        compose.Setup(r => r.IsAvailableAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        compose.Setup(r => r.RecreateServiceAsync(It.IsAny<ComposeRecreateRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComposeRunResult(
+                ComposeRunnerStatus.ProjectPathNotFound, null, null,
+                "Compose project directory '/compose-projects/home' was not found inside the container."));
+        var harness = Harness.BuildComposeHappyPath(compose);
+
+        var result = await harness.Updater.UpdateAsync(ComposeProfile());
+
+        Assert.Equal(DockerUpdateAttemptStatus.RecreateFailed, result.Status);
+        Assert.Contains("bind-mounted", result.Error);
+    }
+
+    [Fact]
+    public async Task Update_ComposeConfigured_RunsHealthVerificationOnRecreatedContainer()
+    {
+        var compose = Harness.SucceedingCompose();
+        var harness = Harness.BuildComposeHappyPath(
+            compose,
+            options: new DockerUpdateOptions
+            {
+                HealthVerificationMaxAttempts = 5,
+                HealthVerificationIntervalSeconds = 1,
+            },
+            postStartHealth: new Health?[] { new() { Status = "healthy" } });
+
+        var result = await harness.Updater.UpdateAsync(ComposeProfile());
+
+        Assert.Equal(DockerUpdateAttemptStatus.Success, result.Status);
+        Assert.True(result.HealthVerified);
+        Assert.NotNull(result.HealthVerifiedUtc);
+    }
+
+    [Fact]
+    public async Task Update_ComposeCliUnavailable_FallsBackToRawRecreate()
+    {
+        // Local socket + project path + compose-managed container, but the
+        // compose CLI isn't installed in the image → graceful raw recreate.
+        var harness = Harness.BuildHappyPath(inspectLabels: ComposeLabels());
+
+        var result = await harness.Updater.UpdateAsync(ComposeProfile());
+
+        Assert.Equal(DockerUpdateAttemptStatus.Success, result.Status);
+        harness.Containers.Verify(c => c.CreateContainerAsync(
+            It.IsAny<CreateContainerParameters>(), It.IsAny<CancellationToken>()), Times.Once);
+        harness.Compose.Verify(r => r.RecreateServiceAsync(
+            It.IsAny<ComposeRecreateRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_ContainerNotComposeManaged_UsesRawRecreateWithoutProbingCli()
+    {
+        // Project path configured but the container has no
+        // com.docker.compose.service label → not a compose container, raw path.
+        var compose = Harness.SucceedingCompose();
+        var harness = Harness.BuildHappyPath(inspectLabels: null, compose: compose);
+
+        var result = await harness.Updater.UpdateAsync(ComposeProfile());
+
+        Assert.Equal(DockerUpdateAttemptStatus.Success, result.Status);
+        harness.Containers.Verify(c => c.CreateContainerAsync(
+            It.IsAny<CreateContainerParameters>(), It.IsAny<CancellationToken>()), Times.Once);
+        compose.Verify(r => r.IsAvailableAsync(It.IsAny<CancellationToken>()), Times.Never);
+        compose.Verify(r => r.RecreateServiceAsync(
+            It.IsAny<ComposeRecreateRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_RemoteHost_IgnoresComposeProjectPathAndUsesRawRecreate()
+    {
+        // Compose-aware recreate is local-socket only — a TCP+TLS host with a
+        // project path configured still goes through the raw recreate.
+        var compose = Harness.SucceedingCompose();
+        var harness = Harness.BuildHappyPath(inspectLabels: ComposeLabels(), compose: compose);
+        var profile = ComposeProfile() with
+        {
+            HostTransport = new DockerHostTransport(DockerHostType.TcpTls, "tcp://remote:2376", null),
+        };
+
+        var result = await harness.Updater.UpdateAsync(profile);
+
+        Assert.Equal(DockerUpdateAttemptStatus.Success, result.Status);
+        harness.Containers.Verify(c => c.CreateContainerAsync(
+            It.IsAny<CreateContainerParameters>(), It.IsAny<CancellationToken>()), Times.Once);
+        compose.Verify(r => r.IsAvailableAsync(It.IsAny<CancellationToken>()), Times.Never);
+        compose.Verify(r => r.RecreateServiceAsync(
+            It.IsAny<ComposeRecreateRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── Harness ──────────────────────────────────────────────────────────────
 
     private sealed class Harness
@@ -383,6 +537,7 @@ public class DockerImageUpdaterTests
         public required DockerImageUpdater Updater { get; init; }
         public required Mock<IContainerOperations> Containers { get; init; }
         public required Mock<IImageOperations> Images { get; init; }
+        public required Mock<IComposeCommandRunner> Compose { get; init; }
 
         public static Harness BuildHappyPath(
             string registryHost = "docker.io",
@@ -392,6 +547,7 @@ public class DockerImageUpdaterTests
             Action<AuthConfig?>? captureAuth = null,
             Action<ImagesCreateParameters>? capturePull = null,
             DockerUpdateOptions? options = null,
+            Mock<IComposeCommandRunner>? compose = null,
             // V3.2 — drives the post-start health poll. When non-null the
             // happy-path harness feeds these <c>State.Health</c> snapshots
             // out of consecutive <c>InspectContainerAsync</c> calls on the
@@ -520,11 +676,13 @@ public class DockerImageUpdaterTests
                         It.IsAny<string>(), It.IsAny<ContainerStartParameters>(), It.IsAny<CancellationToken>()))
                     .ReturnsAsync(true);
             });
+            var composeMock = compose ?? NotAvailableCompose();
             return new Harness
             {
-                Updater = BuildUpdater(factory, options),
+                Updater = BuildUpdater(factory, composeMock.Object, options),
                 Containers = daemon.Containers,
                 Images = daemon.Images,
+                Compose = composeMock,
             };
         }
 
@@ -536,7 +694,8 @@ public class DockerImageUpdaterTests
                         It.IsAny<string>(), It.IsAny<CancellationToken>()))
                     .ThrowsAsync(new DockerContainerNotFoundException(HttpStatusCode.NotFound, "missing"));
             });
-            return new Harness { Updater = BuildUpdater(factory), Containers = daemon.Containers, Images = daemon.Images };
+            var compose = NotAvailableCompose();
+            return new Harness { Updater = BuildUpdater(factory, compose.Object), Containers = daemon.Containers, Images = daemon.Images, Compose = compose };
         }
 
         public static Harness BuildContainerThrows(Exception ex)
@@ -547,7 +706,8 @@ public class DockerImageUpdaterTests
                         It.IsAny<string>(), It.IsAny<CancellationToken>()))
                     .ThrowsAsync(ex);
             });
-            return new Harness { Updater = BuildUpdater(factory), Containers = daemon.Containers, Images = daemon.Images };
+            var compose = NotAvailableCompose();
+            return new Harness { Updater = BuildUpdater(factory, compose.Object), Containers = daemon.Containers, Images = daemon.Images, Compose = compose };
         }
 
         public static Harness BuildPullFails(Exception pullException)
@@ -574,11 +734,118 @@ public class DockerImageUpdaterTests
                         It.IsAny<IProgress<JSONMessage>>(), It.IsAny<CancellationToken>()))
                     .ThrowsAsync(pullException);
             });
-            return new Harness { Updater = BuildUpdater(factory), Containers = daemon.Containers, Images = daemon.Images };
+            var compose = NotAvailableCompose();
+            return new Harness { Updater = BuildUpdater(factory, compose.Object), Containers = daemon.Containers, Images = daemon.Images, Compose = compose };
+        }
+
+        /// <summary>
+        /// V5.2 — happy path through the Compose-aware recreate. The container
+        /// carries the <c>com.docker.compose.service</c> label and the compose
+        /// runner reports success; the updater re-inspects the container by name
+        /// (so the second InspectContainerAsync returns the recreated container)
+        /// rather than running the raw stop / remove / create sequence.
+        /// </summary>
+        public static Harness BuildComposeHappyPath(
+            Mock<IComposeCommandRunner> compose,
+            DockerUpdateOptions? options = null,
+            IReadOnlyList<Health?>? postStartHealth = null)
+        {
+            var oldInspect = new ContainerInspectResponse
+            {
+                ID = "container-old-id",
+                Image = OldImageId,
+                Name = "/web",
+                Config = new Config
+                {
+                    Image = "nginx:1.27",
+                    Labels = new Dictionary<string, string>
+                    {
+                        ["com.docker.compose.project"] = "myproject",
+                        ["com.docker.compose.service"] = "web",
+                    },
+                },
+                HostConfig = new HostConfig { NetworkMode = "bridge" },
+            };
+
+            var (factory, daemon) = BuildMockFactory(d =>
+            {
+                // The container name is inspected twice: once up-front (old
+                // container → previous digest + compose service label) and once
+                // after `docker compose up` (recreated container → new digest).
+                d.Containers.SetupSequence(c => c.InspectContainerAsync(
+                        "web", It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(oldInspect)
+                    .ReturnsAsync(new ContainerInspectResponse
+                    {
+                        ID = NewContainerId,
+                        Image = NewImageId,
+                        Name = "/web",
+                        State = new ContainerState { Running = true, Status = "running" },
+                    });
+
+                // Health-verification polls inspect the new container id.
+                var healthIndex = 0;
+                d.Containers.Setup(c => c.InspectContainerAsync(
+                        NewContainerId, It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(() =>
+                    {
+                        Health? health = postStartHealth is { Count: > 0 }
+                            ? postStartHealth[Math.Min(healthIndex++, postStartHealth.Count - 1)]
+                            : null;
+                        return new ContainerInspectResponse
+                        {
+                            ID = NewContainerId,
+                            Image = NewImageId,
+                            State = new ContainerState { Running = true, Status = "running", Health = health },
+                        };
+                    });
+
+                d.Images.Setup(i => i.InspectImageAsync(OldImageId, It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new ImageInspectResponse
+                    {
+                        ID = OldImageId,
+                        RepoDigests = new List<string> { $"docker.io/library/nginx@{OldDigest}" },
+                    });
+                d.Images.Setup(i => i.InspectImageAsync(NewImageId, It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new ImageInspectResponse
+                    {
+                        ID = NewImageId,
+                        RepoDigests = new List<string> { $"docker.io/library/nginx@{NewDigest}" },
+                    });
+            });
+
+            return new Harness
+            {
+                Updater = BuildUpdater(factory, compose.Object, options),
+                Containers = daemon.Containers,
+                Images = daemon.Images,
+                Compose = compose,
+            };
+        }
+
+        /// <summary>A compose runner that reports the CLI as absent — keeps the
+        /// V2.7-era tests on the raw recreate path.</summary>
+        private static Mock<IComposeCommandRunner> NotAvailableCompose()
+        {
+            var mock = new Mock<IComposeCommandRunner>();
+            mock.Setup(r => r.IsAvailableAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
+            return mock;
+        }
+
+        /// <summary>A compose runner that reports the CLI present and the recreate
+        /// successful.</summary>
+        public static Mock<IComposeCommandRunner> SucceedingCompose()
+        {
+            var mock = new Mock<IComposeCommandRunner>();
+            mock.Setup(r => r.IsAvailableAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+            mock.Setup(r => r.RecreateServiceAsync(It.IsAny<ComposeRecreateRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ComposeRunResult(ComposeRunnerStatus.Success, 0, "Recreated web", null));
+            return mock;
         }
 
         private static DockerImageUpdater BuildUpdater(
             IDockerClientFactory factory,
+            IComposeCommandRunner compose,
             DockerUpdateOptions? options = null)
         {
             // We don't need a real ECR token provider for these tests —
@@ -589,6 +856,7 @@ public class DockerImageUpdaterTests
             var updater = new DockerImageUpdater(
                 factory, new ImageReferenceParser(),
                 ecrMock.Object,
+                compose,
                 Options.Create(options ?? new DockerUpdateOptions
                 {
                     // V3.2 — short-circuit the post-start health poll for the

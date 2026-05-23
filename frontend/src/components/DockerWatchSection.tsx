@@ -50,6 +50,8 @@ import { Link } from 'react-router-dom'
 import { ContainerInspectBody } from '@/components/docker/ContainerInspectBody'
 import { ContainerLogsPanel } from '@/components/docker/ContainerLogsPanel'
 import { ContainerStatsPanel } from '@/components/docker/ContainerStatsPanel'
+import { UpdateConfirmDialog } from '@/components/docker/atoms/UpdateConfirmDialog'
+import '@/styles/service-modal.css'
 
 interface Props {
   service: Service
@@ -346,6 +348,8 @@ interface ConnectionFormState {
   sshPort: string
   sshUsername: string
   sshRemoteSocketPath: string
+  /** V5.2 — in-container Compose project directory (LocalSocket only). */
+  composeProjectPath: string
 }
 
 export function DockerConnectionForm({
@@ -376,6 +380,7 @@ export function DockerConnectionForm({
     sshPort: existing?.sshPort ? String(existing.sshPort) : '22',
     sshUsername: existing?.sshUsername ?? '',
     sshRemoteSocketPath: existing?.sshRemoteSocketPath ?? '/var/run/docker.sock',
+    composeProjectPath: existing?.composeProjectPath ?? '',
   }))
   const [tlsCa, setTlsCa] = useState<SecretField>(() => existingSecret(existing?.hasTlsConfigured ?? false))
   const [tlsCert, setTlsCert] = useState<SecretField>(() => existingSecret(existing?.hasTlsConfigured ?? false))
@@ -391,6 +396,7 @@ export function DockerConnectionForm({
 
   const isTcpTls = form.hostType === 'TcpTls'
   const isSsh = form.hostType === 'Ssh'
+  const isLocalSocket = form.hostType === 'LocalSocket'
 
   const parsedSshPort = (() => {
     const n = parseInt(form.sshPort, 10)
@@ -410,6 +416,7 @@ export function DockerConnectionForm({
     sshPrivateKey: isSsh ? toUpsert(sshPrivateKey) : null,
     sshPrivateKeyPassphrase: isSsh ? toUpsert(sshPassphrase) : null,
     sshRemoteSocketPath: isSsh ? (form.sshRemoteSocketPath.trim() || null) : null,
+    composeProjectPath: isLocalSocket ? (form.composeProjectPath.trim() || null) : null,
   })
 
   const save = async () => {
@@ -476,6 +483,7 @@ export function DockerConnectionForm({
   const sshPrivateKeyError = pickFieldError(fieldErrors, 'sshprivatekey', 'sshPrivateKey')
   const sshPassphraseError = pickFieldError(fieldErrors, 'sshprivatekeypassphrase', 'sshPrivateKeyPassphrase')
   const sshRemoteSocketError = pickFieldError(fieldErrors, 'sshremotesocketpath', 'sshRemoteSocketPath')
+  const composeProjectPathError = pickFieldError(fieldErrors, 'composeprojectpath', 'composeProjectPath')
 
   const onDelete = async () => {
     if (!existing) return
@@ -527,6 +535,26 @@ export function DockerConnectionForm({
             <option value="Ssh">SSH tunnel</option>
           </select>
         </div>
+
+        {isLocalSocket && (
+          <div className="service-modal-field docker-section-field-full">
+            <Label className="service-modal-label">Compose project path (optional)</Label>
+            <Input
+              placeholder="/compose-projects/home-server"
+              value={form.composeProjectPath}
+              onChange={(e) => setForm({ ...form, composeProjectPath: e.target.value })}
+              className={cn('font-mono text-[12px]', composeProjectPathError && 'border-destructive')}
+            />
+            {composeProjectPathError && <p className="service-modal-field-error">{composeProjectPathError}</p>}
+            <p className="text-xs text-[var(--muted-foreground)] mt-1">
+              In-container path to this host's <code>docker-compose.yml</code> directory. Bind-mount the host
+              project dir into Stashboard (e.g. <code>/srv/stack:/compose-projects/home-server:ro</code>) and set
+              this to the in-container path. When set, <strong>Update now</strong> runs <code>docker compose pull</code>
+              {' + '}<code>up&nbsp;-d</code> so <code>env_file</code>, <code>depends_on</code> ordering and profiles
+              are honoured. Leave blank for the raw recreate.
+            </p>
+          </div>
+        )}
 
         {isTcpTls && (
           <div className="service-modal-field docker-section-field-full">
@@ -1511,44 +1539,54 @@ function WebhookPanel({ connectionId, watch }: { connectionId: string; watch: Do
  * we have a Docker connection (the back-end is the source of truth on
  * whether an update is actually available, but we keep the button live
  * for a re-pull-from-tag refresh even when status is `UpToDate`).
- * Highlighted when an update is pending. Wraps the mutation in a native
- * `confirm()` so a misclick can't recreate a production container.
+ * Highlighted when an update is pending. V5.2 — clicking opens a
+ * confirmation dialog (warning + docs link); the recreate only runs once
+ * the user confirms there, so a misclick can't recreate a production
+ * container.
  */
 function UpdateNowButton({ connectionId, watch }: { connectionId: string; watch: DockerWatch }) {
   const update = useUpdateConnectionWatchNow(connectionId)
   const status = resolveDockerUpdateStatus(watch.updateStatus)
   const highlight = status === 'UpdateAvailable'
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   // Don't show the button for disabled watches — Update now has no
   // meaning when the schedule isn't running. The Enabled checkbox in
   // the form handles re-enabling.
   if (!watch.enabled) return null
 
-  const onClick = async () => {
-    const message =
-      `Pull "${watch.imageReference}" and recreate container "${watch.containerName}"?\n\n`
-      + `The container will be stopped, removed, and a new one created with the same name and configuration `
-      + `(mounts, env, ports, labels). This can't be undone automatically.`
-    if (!confirm(message)) return
-    try {
-      await update.mutateAsync(watch.id)
-    } catch { /* error surfaces via the mutation state */ }
+  // Runs only after the user confirms in the dialog. On success the dialog
+  // closes; on failure it stays open and surfaces the error inline.
+  const confirmUpdate = async () => {
+    await update.mutateAsync(watch.id)
+    setConfirmOpen(false)
   }
 
   return (
-    <Button
-      type="button"
-      variant={highlight ? 'default' : 'outline'}
-      size="sm"
-      onClick={() => void onClick()}
-      disabled={update.isPending}
-      title={highlight
-        ? 'Pull the new image and recreate the container'
-        : 'Re-pull the configured tag and recreate the container'}
-    >
-      <Download className={cn('h-3.5 w-3.5', update.isPending && 'animate-pulse')} />
-      {update.isPending ? 'Updating…' : 'Update now'}
-    </Button>
+    <>
+      <Button
+        type="button"
+        variant={highlight ? 'default' : 'outline'}
+        size="sm"
+        onClick={() => setConfirmOpen(true)}
+        disabled={update.isPending}
+        title={highlight
+          ? 'Pull the new image and recreate the container'
+          : 'Re-pull the configured tag and recreate the container'}
+      >
+        <Download className={cn('h-3.5 w-3.5', update.isPending && 'animate-pulse')} />
+        {update.isPending ? 'Updating…' : 'Update now'}
+      </Button>
+
+      <UpdateConfirmDialog
+        open={confirmOpen}
+        imageReference={watch.imageReference}
+        containerName={watch.containerName}
+        updateAvailable={highlight}
+        onConfirm={confirmUpdate}
+        onCancel={() => setConfirmOpen(false)}
+      />
+    </>
   )
 }
 

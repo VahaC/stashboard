@@ -59,7 +59,8 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 c.Id, c.Name, c.HostType, c.HostUrl,
                 Dec(c.TlsCaCertEncrypted), Dec(c.TlsClientCertEncrypted), Dec(c.TlsClientKeyEncrypted),
                 c.SshHost, c.SshPort, c.SshUsername,
-                Dec(c.SshPrivateKeyEncrypted), Dec(c.SshPrivateKeyPassphraseEncrypted), c.SshRemoteSocketPath)).ToList(),
+                Dec(c.SshPrivateKeyEncrypted), Dec(c.SshPrivateKeyPassphraseEncrypted), c.SshRemoteSocketPath,
+                c.ComposeProjectPath)).ToList(),
             Services: services.Select(s => new ServiceDto(
                 s.Id, s.Name, s.MainUrl, s.MainUrlHealthCheckEnabled, s.AdditionalUrl, s.AdditionalUrlHealthCheckEnabled,
                 s.OfflineNotificationsEnabled, s.HealthCheckUrl, s.HealthCheckMethod, s.ExpectedStatusRange,
@@ -146,6 +147,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                     SshPrivateKeyEncrypted = Enc(dc.SshPrivateKey),
                     SshPrivateKeyPassphraseEncrypted = Enc(dc.SshPrivateKeyPassphrase),
                     SshRemoteSocketPath = dc.SshRemoteSocketPath,
+                    ComposeProjectPath = dc.ComposeProjectPath,
                 };
                 db.DockerConnections.Add(fresh);
                 idMap[dc.Id] = fresh.Id;
@@ -276,7 +278,8 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         Guid Id, string Name, DockerHostType HostType, string? HostUrl,
         string? TlsCaCert, string? TlsClientCert, string? TlsClientKey,
         string? SshHost, int? SshPort, string? SshUsername,
-        string? SshPrivateKey, string? SshPrivateKeyPassphrase, string? SshRemoteSocketPath);
+        string? SshPrivateKey, string? SshPrivateKeyPassphrase, string? SshRemoteSocketPath,
+        string? ComposeProjectPath = null);
 
     private sealed record ServiceDto(
         Guid Id, string Name, string MainUrl, bool MainUrlHealthCheckEnabled, string? AdditionalUrl,

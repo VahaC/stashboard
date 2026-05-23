@@ -588,9 +588,11 @@ deploys that need a downstream test, etc.):
 ### 5.1 Update now (V2.7)
 
 The **Update now** button next to **Check now** in the watch's status row
-does the whole pull + recreate cycle without leaving the modal. Each
-click pops a confirmation modal naming the exact image reference and
-container name; on **OK**, Stashboard:
+does the whole pull + recreate cycle without leaving the modal. Each click
+pops a confirmation dialog that names the exact image reference and container,
+warns that recreating a running container isn't risk-free, and links back to
+this section — the recreate only runs once you confirm there. On
+**Update now** (confirm), Stashboard:
 
 1. Pulls the configured tag from the registry (using the watch's stored
    registry credentials / ECR token / anonymous as appropriate).
@@ -661,14 +663,14 @@ status badge tells you which leg of the sequence failed:
 
 #### Limitations
 
-- **Single recreate path.** Stashboard does a Watchtower-style raw
-  recreate (`stop` → `rm -f` → `create` → `start`) rather than shelling
-  out to `docker compose up -d <service>`. The labels are preserved, so
-  the container continues to look Compose-managed afterwards
-  (`docker compose ps` still lists it), but a downstream `docker compose
-  up -d` will treat the recreate as drift. Re-run your normal
-  `docker compose up -d` after the next change to bring the project back
-  in sync.
+- **Raw recreate by default.** Out of the box Stashboard does a
+  Watchtower-style raw recreate (`stop` → `rm -f` → `create` → `start`)
+  rather than shelling out to `docker compose up -d <service>`. The labels
+  are preserved, so the container continues to look Compose-managed
+  afterwards (`docker compose ps` still lists it), but a downstream
+  `docker compose up -d` will treat the recreate as drift. **V5.2 adds an
+  opt-in Compose-aware path that removes this limitation — see
+  [§5.1a](#51a-compose-aware-recreate-v52).**
 - **One primary network at create time.** Multi-network containers get
   their primary network attached at create and the rest re-attached
   after start. Plain `bridge`-only containers — the overwhelming
@@ -678,6 +680,140 @@ status badge tells you which leg of the sequence failed:
   manually from your `docker-compose.yml` / launch command. The
   `RecreateFailed` row records the digest of the image we just pulled
   so you know what to point the manual recreate at.
+
+### 5.1a Compose-aware recreate (V5.2)
+
+The raw recreate above is faithful for the common case but bypasses Docker
+Compose entirely — so `env_file` values are frozen at the last `up` time,
+`depends_on` ordering is ignored, profiles aren't considered, and Compose's
+own subnet allocation isn't used. **V5.2** lets "Update now" delegate the
+recreate to the real `docker compose` CLI instead, preserving the full
+Compose lifecycle.
+
+When it's used, **Update now** runs:
+
+```bash
+docker compose pull <service>
+docker compose up -d <service>      # no --no-deps, so depends_on order is honoured
+```
+
+against your project directory, then runs the same post-start health
+verification (V3.2) and writes the same audit row. The image bundles the
+standalone `docker compose` v2 binary, so nothing extra needs installing.
+
+#### The two recreate variants at a glance
+
+"Update now" always does **one** of these two. Stashboard picks automatically
+per attempt — there is no global switch:
+
+| | **Raw recreate** (default, V2.7) | **Compose-aware** (opt-in, V5.2) |
+|---|---|---|
+| Mechanism | `stop` → `rm -f` → `create` → `start` via the Docker API | `docker compose pull <svc>` → `up -d <svc>` |
+| `env_file` values | **frozen** — copied from the old container's inspect snapshot | **re-resolved** from the file at `up` time |
+| `depends_on` ordering | ignored (only this one container is touched) | honoured — dependencies start in order |
+| Compose `profiles` | ignored | honoured |
+| Network / subnet | re-attaches the same named networks | Compose's own IP / subnet allocation |
+| Registry auth for the pull | the **watch's** stored credentials / ECR token / anonymous | the **host's** `docker login` state |
+| Private images | work with the credentials stored on the watch | the host must already be `docker login`'d |
+| Remote hosts (TCP+TLS / SSH) | ✅ supported | ❌ not supported — always falls back to raw |
+| Non-Compose (`docker run`) containers | ✅ supported | ❌ falls back to raw (no `com.docker.compose.service` label) |
+| Drift vs. a later `docker compose up -d` | the manual recreate looks like drift | none — it *is* a `compose up` |
+| If the pull fails | old container untouched, still running | old container untouched, still running |
+| If create/`up` fails | old container may already be gone → manual recovery (`RecreateFailed`) | Compose manages the partial state; reported as `RecreateFailed` |
+
+#### Which one to pick
+
+- **Use the raw recreate (the default — just don't set a project path) when:**
+  - the host is remote (TCP+TLS / SSH) — the Compose path can't run there;
+  - the container was started with `docker run` (not Compose);
+  - the image is private and **only Stashboard** holds the credentials (the
+    host isn't `docker login`'d) — the raw path uses the watch's stored creds;
+  - it's a single, self-contained container with no `depends_on` and an
+    `env_file` that doesn't change between updates — the raw path is simpler
+    and needs no extra mounts.
+- **Prefer the Compose-aware path when:**
+  - the service has `depends_on` relationships that must come up in order;
+  - the `env_file` / `.env` is edited on the host between updates and you want
+    the new values picked up;
+  - the stack uses `profiles`, or you want to avoid the "drift" a raw recreate
+    leaves behind so your own `docker compose up -d` stays a clean no-op.
+- **Avoid the Compose-aware path when:**
+  - you do **not** want `up -d <service>` to also (re)start stopped
+    dependency services as a side effect — `up -d` brings up anything the
+    service `depends_on` that isn't already running;
+  - the host can't reach the registry with its own `docker login` for a
+    private image — fall back to the raw path, which uses the watch's creds.
+
+#### When the Compose path kicks in
+
+All four must be true; otherwise Stashboard transparently falls back to the
+raw recreate:
+
+1. The connection is a **Local socket** (the CLI runs against the local
+   daemon; remote TCP+TLS / SSH connections stay on the raw recreate).
+2. The connection has a **Compose project path** set (see below).
+3. The tracked container is **Compose-managed** — it carries the
+   `com.docker.compose.service` label (i.e. it was originally started by
+   `docker compose`).
+4. The `docker compose` CLI is present in the container (it is, in the
+   official image).
+
+#### Setting it up
+
+1. **Bind-mount the host's Compose project directory** (the folder
+   containing your `docker-compose.yml`, plus any `.env` / `env_file` paths
+   it references) read-only into the Stashboard container:
+
+   ```yaml
+   services:
+     app:
+       volumes:
+         - /var/run/docker.sock:/var/run/docker.sock   # writable — Update now needs it
+         - /srv/my-stack:/compose-projects/home-server:ro
+   ```
+
+2. **Set the connection's "Compose project path"** (the field appears on the
+   connection form for Local socket hosts) to the **in-container** path —
+   `/compose-projects/home-server` in the example above, *not* the host path.
+
+3. Recreate Stashboard (`docker compose up -d --force-recreate app`) and click
+   **Update now** on a Compose-managed watch. The Update history row is
+   written exactly as for the raw path.
+
+#### What each feature level needs in `docker-compose.yml`
+
+The Docker tab works in stages — mount only as much as the feature you want
+requires:
+
+| You want… | Socket mount | Extra mounts |
+|---|---|---|
+| Digest tracking + email/Telegram notifications (V1–V2.6) | `:ro` is enough | — |
+| "Update now" — **raw** recreate (V2.7) | **writable** (drop `:ro`) | — |
+| "Update now" — **Compose-aware** recreate (V5.2) | **writable** (drop `:ro`) | bind-mount the project dir `:ro` **+** set the connection's *Compose project path* to the in-container path |
+
+So for the Compose-aware path the only additions over the V2.7 setup are:
+**(a)** one read-only volume line pointing at the host's Compose project
+directory, and **(b)** the *Compose project path* field in the connection
+form. No environment variables, no image change (the `docker compose` binary
+is already baked in). `docker-compose.yml` in this repo ships both lines as
+commented-out examples — uncomment and adjust the host path.
+
+> **Heads-up on the socket:** the Compose-aware path still needs the **writable**
+> socket — `docker compose up -d` issues the same create/start writes the raw
+> path does. A `:ro` socket only covers tracking + notifications.
+
+#### Notes & limitations
+
+- **Pull auth.** The compose CLI pulls using the host's Docker login state,
+  **not** the watch's stored registry credentials. For private images, make
+  sure the host is already `docker login`'d to the registry.
+- **Local socket only.** Remote hosts remain on the raw recreate until a
+  separate piece of work tackles remote Compose shelling.
+- **Misconfiguration is surfaced, not silently downgraded.** If the project
+  path is set but the directory isn't reachable inside the container (missing
+  bind mount), the attempt is recorded as **RecreateFailed** with a hint —
+  it does **not** fall back to a destructive raw recreate. A missing CLI (only
+  possible on a custom image) *does* fall back to the raw recreate.
 
 ### 5.2 Diagnostics inside the watch modal (V3.1 – V3.4)
 

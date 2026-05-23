@@ -409,6 +409,9 @@ export interface DockerConnection {
   hasSshPrivateKeyPassphrase: boolean
   /** V2.5 — remote socket path (default `/var/run/docker.sock`). */
   sshRemoteSocketPath: string | null
+  /** V5.2 — in-container path to the Compose project directory used by the
+   *  Compose-aware "Update now" recreate. Non-null only for `LocalSocket`. */
+  composeProjectPath: string | null
   /** Number of services currently assigned to this connection — drives
    *  the delete-blocked warning. */
   usageCount: number
@@ -435,6 +438,9 @@ export interface DockerConnectionUpsert {
   sshPrivateKeyPassphrase: SecretValueUpsert | null
   /** V2.5 — remote socket path override (default `/var/run/docker.sock`). */
   sshRemoteSocketPath: string | null
+  /** V5.2 — absolute in-container path to the Compose project directory.
+   *  Only meaningful for `LocalSocket` hosts. */
+  composeProjectPath: string | null
 }
 
 export interface DockerConnectionPingRequest {

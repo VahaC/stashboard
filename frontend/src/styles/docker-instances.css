@@ -830,6 +830,10 @@
   padding: 0.25rem 0 0.5rem;
 }
 
+.warning-strong {
+  color: hsl(var(--destructive));
+}
+
 .remove-confirm-error {
   padding: 0.4rem 0.6rem;
   border: 1px solid hsl(var(--destructive) / 0.4);

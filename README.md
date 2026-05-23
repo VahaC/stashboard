@@ -49,7 +49,7 @@ Built as **ASP.NET Core 10 Web API + React SPA**, deployed as a **single Docker 
 - **Flexible check schedules** — Hourly (1/2/4/6/12/24 h), Daily at a fixed UTC time, or Weekly; the background loop handles missed windows gracefully
 - **Docker host types:** local socket, remote TCP+TLS, or SSH-tunnelled daemon (no exposed Docker port required)
 - **Webhook receiver** — per-watch token-authenticated `POST` endpoint so registries can push instant update notifications; hybrid fallback to the schedule-driven sweep
-- **One-click "Update now"** — pulls the new image and recreates the container in place (Watchtower-style, with a per-click confirmation); every attempt written to an immutable audit log
+- **One-click "Update now"** — pulls the new image and recreates the container in place (Watchtower-style, with a per-click confirmation); every attempt written to an immutable audit log. Compose-managed containers on a local socket can opt into a **true Compose-aware recreate** (`docker compose pull` + `up -d <service>`) that honours `env_file`, `depends_on` ordering, and profiles
 - **Post-update health verification** — polls the container's health state after recreate; downgrades the audit row to `RecreateFailed` if the container doesn't become healthy within the configured window
 - **GitHub Releases enrichment** — for GHCR images, fetches the matching GitHub Release and surfaces the changelog inline in the modal's "What's new" panel and in notification emails
 
@@ -114,7 +114,7 @@ The script:
 2. (Re)starts the single `app` container
 3. Waits for the app to become healthy; on failure, prints the last 50 log lines
 
-To move to a specific version, set `STASHBOARD_TAG=5.1.0` in `.env` first.
+To move to a specific version, set `STASHBOARD_TAG=5.2.0` in `.env` first.
 
 **Migrations** are applied automatically by the app on startup — there is no separate migrator step.
 
@@ -280,6 +280,10 @@ services:
       # Drop `:ro` if you also want the "Update now" button to
       # pull + recreate containers from the UI.
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Optional (V5.2): bind-mount a Compose project directory read-only and
+      # set the connection's "Compose project path" to make "Update now" run
+      # `docker compose pull` + `up -d <service>` instead of the raw recreate.
+      # - /srv/my-stack:/compose-projects/home-server:ro
 ```
 
 Then in the UI: open any service → **Docker** tab → **+ Add container** → fill in a short label, image reference (e.g. `ghcr.io/owner/repo:tag`), and container name → **Test connection** → **Save**.
@@ -400,11 +404,12 @@ dotnet ef database update <PreviousMigrationName>    --project src/Stashboard.Ap
 
 ✅ **V5.1 — Secure key auto-provisioning** _(shipped in 5.1.0)_ — the encryption key and JWT secret are generated and persisted automatically on first run, and preserved across updates. See the [CHANGELOG](./CHANGELOG.md).
 
+✅ **V5.2 — True Compose-aware recreate** _(shipped in 5.2.0)_ — when a local-socket connection has a bind-mounted **Compose project path**, "Update now" runs `docker compose pull` + `up -d <service>` (honouring `env_file`, `depends_on` ordering, and profiles) instead of the raw recreate. The image now ships the `docker compose` binary; falls back to the raw recreate when not configured. See the [CHANGELOG](./CHANGELOG.md) and [guide §5.1a](./DOCKER_UPDATE_MONITORING_GUIDE.md).
+
 These are the next items on the roadmap, ordered from simplest to most complex.
 
 | Phase | Feature | Description |
 |---|---|---|
-| V5.2 | **Compose-aware recreate** | True `docker compose up -d <service>` recreate that honours lifecycle hooks, `depends_on` ordering, and `env_file` resolution — instead of the current Watchtower-style raw `ContainerInspect` + recreate. Requires the `docker compose` binary and a bind-mounted Compose project path. |
 | V5.3 | **Compose project grouping & bulk update** | Group containers on the instances page by `com.docker.compose.project` label; a project-level "Update all" button drives `docker compose pull && up -d` (with V5.2) or falls back to per-container recreate in `depends_on` order. |
 | V5.4 | **Image cleanup / prune** | Scheduled background task that calls `ImagesPruneAsync` per host to remove dangling images left behind by "Update now"; "Storage" widget on the instances page + manual **Prune now** button. |
 | V5.5 | **Proxmox LXC update monitoring** | Track pending package updates on Proxmox LXC containers via the Proxmox REST API (`GET /nodes/{node}/apt/update` for the host; `exec`-based `apt list --upgradable` inside each LXC). Same Hourly/Daily/Weekly schedule model as Docker watches; same email notification channel. |

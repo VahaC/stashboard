@@ -57,6 +57,7 @@ public sealed class DockerConnectionMapper(IEncryptionService encryption) : IDoc
             HasSshPrivateKey: !string.IsNullOrEmpty(entity.SshPrivateKeyEncrypted),
             HasSshPrivateKeyPassphrase: !string.IsNullOrEmpty(entity.SshPrivateKeyPassphraseEncrypted),
             SshRemoteSocketPath: entity.SshRemoteSocketPath,
+            ComposeProjectPath: entity.ComposeProjectPath,
             UsageCount: usageCount,
             entity.CreatedUtc,
             entity.UpdatedUtc);
@@ -93,6 +94,14 @@ public sealed class DockerConnectionMapper(IEncryptionService encryption) : IDoc
             entity.SshPrivateKeyPassphraseEncrypted = null;
             entity.SshRemoteSocketPath = null;
         }
+
+        // V5.2 — the Compose-aware recreate runs the local `docker compose`
+        // CLI, so the project path is only meaningful for a local socket.
+        // Clear it for remote transports so a stale path can't shadow a switch
+        // back to LocalSocket.
+        entity.ComposeProjectPath = request.HostType == DockerHostType.LocalSocket
+            ? NormalizeNullableString(request.ComposeProjectPath)
+            : null;
 
         entity.UpdatedUtc = DateTime.UtcNow;
     }

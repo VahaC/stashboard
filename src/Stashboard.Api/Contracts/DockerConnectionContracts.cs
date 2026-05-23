@@ -37,6 +37,9 @@ public sealed record DockerConnectionResponse(
     bool HasSshPrivateKeyPassphrase,
     /// <summary>V2.5 — remote socket path (default <c>/var/run/docker.sock</c>).</summary>
     string? SshRemoteSocketPath,
+    /// <summary>V5.2 — in-container path to the Compose project directory used
+    /// by the Compose-aware "Update now" recreate. <c>null</c> = raw recreate.</summary>
+    string? ComposeProjectPath,
     int UsageCount,
     DateTime CreatedUtc,
     DateTime UpdatedUtc);
@@ -68,7 +71,12 @@ public sealed record DockerConnectionUpsertRequest(
     SecretValueUpsert? SshPrivateKeyPassphrase = null,
     /// <summary>V2.5 — remote socket path override (default
     /// <c>/var/run/docker.sock</c>; useful for rootless Docker).</summary>
-    [MaxLength(200)] string? SshRemoteSocketPath = null);
+    [MaxLength(200)] string? SshRemoteSocketPath = null,
+    /// <summary>V5.2 — absolute in-container path to the Compose project
+    /// directory (the bind-mount target of the host's project dir). Enables
+    /// the Compose-aware "Update now" recreate for <c>LocalSocket</c> hosts.
+    /// Plaintext (not a secret).</summary>
+    [MaxLength(500)] string? ComposeProjectPath = null);
 
 /// <summary>
 /// Test-connection request — same shape as the upsert but never persisted.
