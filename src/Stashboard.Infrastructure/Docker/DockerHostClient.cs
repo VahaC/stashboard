@@ -78,7 +78,7 @@ public sealed class DockerHostClient(
             catch (HttpRequestException ex)
             {
                 logger.LogWarning(ex, "Docker host unreachable: {Host}", DescribeHost(transport));
-                return new DockerHostResult(DockerHostStatus.HostUnreachable, null, null, null, ex.Message);
+                return new DockerHostResult(DockerHostStatus.HostUnreachable, null, null, null, DescribeError(ex));
             }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
@@ -115,7 +115,7 @@ public sealed class DockerHostClient(
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or DockerApiException)
             {
-                return new DockerHostPingResult(false, $"Docker host unreachable: {ex.Message}");
+                return new DockerHostPingResult(false, $"Docker host unreachable: {DescribeError(ex)}");
             }
         }
     }
@@ -148,7 +148,7 @@ public sealed class DockerHostClient(
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or DockerApiException)
             {
                 return new DockerHostConnectionResult(false, false,
-                    $"Docker host unreachable: {ex.Message}");
+                    $"Docker host unreachable: {DescribeError(ex)}");
             }
 
             try
@@ -163,7 +163,7 @@ public sealed class DockerHostClient(
             }
             catch (HttpRequestException ex)
             {
-                return new DockerHostConnectionResult(false, false, ex.Message);
+                return new DockerHostConnectionResult(false, false, DescribeError(ex));
             }
         }
     }
@@ -298,7 +298,7 @@ public sealed class DockerHostClient(
             catch (HttpRequestException ex)
             {
                 logger.LogWarning(ex, "Docker host unreachable: {Host}", DescribeHost(transport));
-                return new DockerContainerInspectResult(DockerHostStatus.HostUnreachable, null, ex.Message);
+                return new DockerContainerInspectResult(DockerHostStatus.HostUnreachable, null, DescribeError(ex));
             }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
@@ -447,7 +447,7 @@ public sealed class DockerHostClient(
             catch (HttpRequestException ex)
             {
                 logger.LogWarning(ex, "Docker host unreachable on {Action} {Container}", actionName, containerName);
-                return new DockerContainerActionResult(DockerHostStatus.HostUnreachable, null, ex.Message);
+                return new DockerContainerActionResult(DockerHostStatus.HostUnreachable, null, DescribeError(ex));
             }
 
             try
@@ -474,7 +474,7 @@ public sealed class DockerHostClient(
             catch (HttpRequestException ex)
             {
                 logger.LogWarning(ex, "Docker host unreachable on {Action} {Container}", actionName, containerName);
-                return new DockerContainerActionResult(DockerHostStatus.HostUnreachable, containerId, ex.Message);
+                return new DockerContainerActionResult(DockerHostStatus.HostUnreachable, containerId, DescribeError(ex));
             }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
@@ -506,6 +506,26 @@ public sealed class DockerHostClient(
     private static bool IsSshConnectFailure(Exception ex) =>
         ex is SshException
         or System.Net.Sockets.SocketException;
+
+    /// <summary>
+    /// Flattens an exception's <see cref="Exception.InnerException"/> chain into
+    /// a single readable string. Docker.DotNet's transport wraps the real cause
+    /// in an opaque <see cref="HttpRequestException"/> whose own message is just
+    /// "The requested ... see inner exception for details." — surfacing only
+    /// <c>ex.Message</c> hides what actually failed (DNS, TCP reset, the SSH
+    /// bridge dying, etc.). Walking the chain keeps the actionable detail.
+    /// </summary>
+    internal static string DescribeError(Exception ex)
+    {
+        var messages = new List<string>();
+        for (Exception? current = ex; current is not null; current = current.InnerException)
+        {
+            var message = current.Message?.Trim();
+            if (!string.IsNullOrEmpty(message) && (messages.Count == 0 || messages[^1] != message))
+                messages.Add(message);
+        }
+        return messages.Count == 0 ? ex.GetType().Name : string.Join(" → ", messages);
+    }
 
     private static string NormalizeName(IList<string>? names)
     {

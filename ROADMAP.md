@@ -1488,15 +1488,19 @@ Work:
 ## 14. Post-V4 backlog (V5+) — deferred Docker features
 
 > The Docker items here were previously catalogued as **V3.6 – V3.11**. They are
-> sequenced **after the V4 SQLite migration** and renumbered **V5.2 – V5.7**
-> (the Docker-recreate/grouping/prune/Proxmox/shell sequence). **V5.0–V5.1** are
+> sequenced **after the V4 SQLite migration** and renumbered **V5.2 – V5.8**.
+> The interactive-shell phases — **V5.3** host terminal, **V5.7** container-exec
+> and **V5.8** Proxmox-LXC SSH — share one xterm.js + WebSocket + ticket
+> transport, which **V5.3 introduces**. **V5.0–V5.1** are
 > shipped cross-cutting work that landed in the same window: V5.0/V5.0.x are the
 > instances-page + notifications refinements, and **V5.1** is secure key
-> auto-provisioning. The Docker phases remain ordered simplest → most complex: earlier phases
-> reuse infrastructure already in place (Docker client, audit log, permission
-> gate); later phases require new transports (WebSocket / SignalR), new external
-> integrations (Proxmox API, SSH), or new security surfaces (interactive shells)
-> and so are deliberately back-loaded.
+> auto-provisioning. Most Docker phases are ordered simplest → most complex —
+> earlier phases reuse infrastructure already in place (Docker client, audit
+> log, permission gate) before the phases that need new transports (WebSocket),
+> new external integrations (Proxmox API, SSH) or new security surfaces
+> (interactive shells). **Exception:** V5.3 (host terminal) is a high-complexity
+> shell phase pulled to the front by priority — it also establishes the shared
+> WebSocket / ticket transport the later shell phases reuse.
 >
 > *(Note: the "first-class containers" decoupling that the codebase tags `V3.6`
 > in comments is a separate, already-shipped piece of work — not the
@@ -1829,11 +1833,74 @@ whose connection has a Compose project path bind-mounted in runs
 profiles), the watch's inline re-check flips it back to **Up to date**, and the
 attempt is audited — verified by
 `DockerImageUpdaterTests.Update_ComposeConfigured_LocalSocket_RecreatesViaComposeAndSkipsRawRecreate`.
-✅ Remote hosts and bulk/project-level Compose updates remain deferred (V5.3).
+✅ Remote hosts and bulk/project-level Compose updates remain deferred (V5.4).
 
 ---
 
-### Phase V5.3 — Compose project grouping & bulk update
+### Phase V5.3 — Host terminal (browser SSH shell to the Docker host)
+
+**Complexity:** High (pulled ahead of the medium-complexity V5.4–V5.6 phases by
+priority — see the §14 note above).
+**Value:** The "I need a shell on the box itself, not inside a container" case —
+today the user has to leave Stashboard and SSH to the host manually. Complements
+the container-exec phase (V5.7): exec drops you *inside* a workload; this drops
+you onto the *host* running it. For **SSH-type** connections Stashboard already
+holds everything required (V2.5), so the host shell is largely a transport-and-UX
+exercise rather than new plumbing.
+
+**Proposed approach:**
+
+- **SSH connections only.** The V2.5 work already stores and decrypts the
+  material this needs — `SshHost` / `SshPort` / `SshUsername` /
+  `SshPrivateKeyEncrypted` / passphrase on `DockerConnectionEntity`, decrypted
+  through `DockerConnectionMapper.BuildTransport`, key parsing in
+  `SshDockerTunnel.LoadKeyFile`. Instead of the `docker system dial-stdio` exec
+  channel the tunnel uses, open an interactive PTY via SSH.NET's
+  `CreateShellStream("xterm", cols, rows, …)`.
+- `LocalSocket` and `TcpTls` connections have **no** host-shell channel:
+  `LocalSocket` would mean a shell on Stashboard's *own* container host (needs a
+  privileged sidecar / `nsenter` — explicitly out of scope), and `TcpTls`
+  exposes only the Docker API, never a shell. The feature is therefore SSH-only
+  by construction.
+- **Transport.** As the first interactive-shell phase, this one **introduces**
+  the xterm.js + WebSocket bridge that the later shell phases (V5.7 container
+  exec, V5.8 Proxmox-LXC SSH) reuse. Authentication is the one genuinely new
+  wrinkle: a browser `WebSocket` cannot send the JWT `Authorization` header (the
+  same limitation that kept log/stat streaming on NDJSON-over-`fetch` — see
+  `frontend/src/lib/docker-logs.ts`), and a query-string token leaks into proxy
+  logs. So the handshake is authenticated with a **short-lived, single-use
+  ticket**: an authenticated `POST` mints a ticket bound to the connection id;
+  the socket opens with `?ticket=…`. `Program.cs` must enable `UseWebSockets()`
+  (no WebSocket / SignalR is wired today).
+- A new session service bridges WebSocket ↔ `ShellStream` bytes, mirroring the
+  existing `SshDockerTunnel.CopyAsync` pump and reusing `LoadKeyFile` for the
+  PEM key.
+- **Caveat:** PTY window-resize (`window-change`) support in SSH.NET 2024.2.0 is
+  limited — verify before promising live resize. The terminal works regardless;
+  only auto-resize is at risk.
+
+**UX — the Terminal tab is always present:**
+
+- The **Terminal** tab renders on the container / connection modal for **every**
+  host type, so the affordance is always discoverable.
+- For `LocalSocket` / `TcpTls` connections the tab body is a disabled state with
+  the message **"Available only for SSH tunnel connections"** (plus a hint
+  pointing at the connection's host-type setting). Only `Ssh` connections render
+  the live terminal.
+
+**Security model — the most dangerous surface in the product (host-level RCE):**
+
+- Off by default; opt-in per `DockerConnection` (e.g. `AllowHostShell = false`).
+- Admin role required; gated behind the existing feature-flag mechanism
+  (`FeaturesController`).
+- Every session writes a start/stop audit row (who, when, connection / host,
+  duration, byte counts) and streams to the application log.
+- Per-user / per-host concurrent-session caps; server-side inactivity timeout
+  closes idle sessions regardless of client state.
+
+---
+
+### Phase V5.4 — Compose project grouping & bulk update
 
 **Complexity:** Medium
 **Value:** Real-world Docker hosts run *stacks*, not isolated containers.
@@ -1857,7 +1924,7 @@ operation.
 
 ---
 
-### Phase V5.4 — Image cleanup / prune
+### Phase V5.5 — Image cleanup / prune
 
 **Complexity:** Medium
 **Value:** Auto-update without cleanup is the fastest way to fill a disk.
@@ -1880,7 +1947,7 @@ new one is in use; over months these dangling images can grow to many GB.
 
 ---
 
-### Phase V5.5 — Proxmox LXC update monitoring
+### Phase V5.6 — Proxmox LXC update monitoring
 
 **Complexity:** Medium–High
 **Value:** Stashboard already tracks Docker image updates; the natural next
@@ -1914,13 +1981,13 @@ exposes a stable REST API.
 **Out of scope for the first cut:**
 
 - Triggering the actual `apt upgrade` inside the LXC from Stashboard — this
-  is V5.7-adjacent and should land separately, after the shell story exists.
+  is V5.8-adjacent and should land separately, after the shell story exists.
 - Non-Debian LXC templates (Alpine `apk`, Rocky `dnf`) — add as follow-ups
   once the Debian path is stable.
 
 ---
 
-### Phase V5.6 — Container exec (browser terminal into a Docker container)
+### Phase V5.7 — Container exec (browser terminal into a Docker container)
 
 **Complexity:** High
 **Value:** The "I just need to run one command in this container" use case
@@ -1933,9 +2000,10 @@ with V3.3 (logs) and V3.5 (instances page).
   /exec/{id}/start` upgrades the connection to a hijacked bidirectional
   stream. `Docker.DotNet` exposes this via `ExecCreateContainerAsync` +
   `StartAndAttachContainerExecAsync`.
-- Backend: a SignalR hub (or raw WebSocket) that pumps bytes between the
-  browser and the hijacked Docker stream. Per-session params: command
-  (defaults to `/bin/sh`), TTY size, env.
+- Backend: reuse the WebSocket bridge + short-lived-ticket auth introduced by
+  V5.3 (host terminal), pumping bytes between the browser and the hijacked
+  Docker stream. Per-session params: command (defaults to `/bin/sh`), TTY
+  size, env.
 - Frontend: `xterm.js` terminal in a full-page tab or side drawer; window
   resize calls `ResizeContainerExecTtyAsync` on the daemon.
 - **Security model — the most sensitive feature on the list:**
@@ -1950,10 +2018,10 @@ with V3.3 (logs) and V3.5 (instances page).
 
 ---
 
-### Phase V5.7 — Browser-based SSH client for Proxmox LXC
+### Phase V5.8 — Browser-based SSH client for Proxmox LXC
 
 **Complexity:** High
-**Value:** Closes the loop on V5.5: once the user sees "LXC `pihole` has 7
+**Value:** Closes the loop on V5.6: once the user sees "LXC `pihole` has 7
 package updates pending", they can `apt upgrade` it without leaving the
 browser. Also useful for any non-Docker host Stashboard is asked to monitor.
 
@@ -1963,8 +2031,9 @@ browser. Also useful for any non-Docker host Stashboard is asked to monitor.
   host. To reach a specific LXC, the channel runs `pct enter <vmid>` (or
   `pct exec <vmid> -- /bin/bash`) on the host. No direct SSH into the LXC
   required, no per-container key management.
-- Transport: identical SignalR/WebSocket bridge to V5.6; the browser side
-  reuses the same `xterm.js` component, just pointed at a different hub.
+- Transport: the same xterm.js + WebSocket + ticket bridge the earlier shell
+  phases introduce (V5.3 host terminal, V5.7 container exec); the browser side
+  reuses the same `xterm.js` component, just pointed at a different endpoint.
 - Credential storage: SSH keys live encrypted in the database (ASP.NET Core
   Data Protection — the same approach the existing `DockerConnection` SSH
   path uses in V2.5). Passwords are not supported.
@@ -1973,7 +2042,7 @@ browser. Also useful for any non-Docker host Stashboard is asked to monitor.
 
 **Security model:**
 
-- All the V5.6 guardrails apply (off by default, admin only, audited,
+- All the V5.3 / V5.7 guardrails apply (off by default, admin only, audited,
   per-user / per-host caps, idle timeout).
 - An extra setting `AllowRootShell = false` blocks `pct enter` when the
   default user inside the LXC is root, forcing the user to specify an

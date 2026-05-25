@@ -12,7 +12,6 @@ import {
   useDeleteDockerConnection,
   useDockerConnection,
   useDockerConnections,
-  useDockerContainers,
   useDockerInstanceInspect,
   useDockerUpdateCommand,
   useRotateConnectionWebhook,
@@ -31,7 +30,6 @@ import type {
   DayOfWeek,
   DockerConnection,
   DockerConnectionUpsert,
-  DockerContainerInfo,
   DockerWatch,
   DockerWatchUpsert,
   LinkedDockerWatchSummary,
@@ -795,7 +793,6 @@ export function DockerWatchForm({
   const create = useCreateConnectionWatch(connectionId)
   const update = useUpdateConnectionWatch(connectionId)
   const testWatch = useTestConnectionWatch(connectionId)
-  const containersQuery = useDockerContainers(connectionId)
   const servicesQuery = useServices()
   const telegramSettings = useTelegramSettings()
   const telegramConfigured = Boolean(
@@ -921,17 +918,7 @@ export function DockerWatchForm({
     }
   }
 
-  const onContainerPick = (container: DockerContainerInfo | null) => {
-    setForm((prev) => ({
-      ...prev,
-      containerName: container?.name ?? '',
-      imageReference: container?.image ?? prev.imageReference,
-      label: prev.label || container?.composeService || container?.name || '',
-    }))
-  }
-
   const labelError = pickFieldError(fieldErrors, 'label')
-  const containerError = pickFieldError(fieldErrors, 'containername', 'containerName')
   const imageReferenceError = pickFieldError(fieldErrors, 'imagereference', 'imageReference')
   const scheduleError = pickFieldError(fieldErrors, 'scheduletype', 'scheduleType',
     'checkeveryhours', 'checkEveryHours',
@@ -1004,21 +991,14 @@ export function DockerWatchForm({
         </div>
 
         <div className="service-modal-field">
-          <Label className="service-modal-label">Container</Label>
-          <ContainerPicker
-            containers={containersQuery.data ?? []}
-            loading={containersQuery.isLoading}
-            error={containersQuery.error ? extractError(containersQuery.error) ?? 'Failed to list containers' : null}
-            value={form.containerName}
-            onPick={onContainerPick}
-            className={containerError ? 'border-destructive' : ''}
-          />
-          {containerError && <p className="service-modal-field-error">{containerError}</p>}
-        </div>
-
-        <div className="service-modal-field docker-section-field-full">
           <Label className="service-modal-label">
             Linked service <span className="service-modal-label-help">(optional)</span>
+            <span
+              title="Link this container to a service so its update status shows on the dashboard. Leave as standalone to track it on its own."
+              className="docker-label-help"
+            >
+              <HelpCircle className="h-3 w-3 inline" />
+            </span>
           </Label>
           <select
             className="service-modal-select"
@@ -1030,10 +1010,6 @@ export function DockerWatchForm({
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
-          <p className="service-modal-help">
-            Link this container to a service so its update status shows on the dashboard.
-            Leave as standalone to track it on its own.
-          </p>
         </div>
 
         <div className="service-modal-field docker-section-field-full">
@@ -1131,59 +1107,63 @@ export function DockerWatchForm({
           </>
         )}
 
-        {isGhcr && (
-          <SecretFieldRow
-            label="GitHub PAT for release notes (optional)"
-            tooltip="V2.3 — GitHub personal access token used to fetch release notes from the upstream GitHub repository. Public repos work without a PAT but anonymous calls are limited to 60 requests / hour. A PAT raises the ceiling to 5 000 / hour and is required for private repos. Only the public_repo / repo scope is needed."
-            field={gitHubPat}
-            hasExisting={existing?.hasGitHubPat ?? false}
-            secret
-            error={gitHubPatError}
-            onChange={setGitHubPat}
-          />
-        )}
-
-        <div className="service-modal-field docker-section-field-full">
-          <Label className="service-modal-label">Check schedule</Label>
-          <SchedulePicker
-            form={form}
-            onChange={(patch) => setForm({ ...form, ...patch })}
-            nextCheckUtc={existing?.nextCheckUtc ?? null}
-          />
-          {scheduleError && <p className="service-modal-field-error">{scheduleError}</p>}
-        </div>
-
-        <div className="service-modal-field docker-section-field-full">
-          <Label className="service-modal-label">
-            Tag pattern filter (optional)
-            <span
-              title="Restrict which registry tags count as &quot;latest&quot;. Useful when the upstream publishes pre-release tags (-rc, -beta) alongside the stable track. Leave blank to compare the pinned tag's digest directly. Accepts a .NET regex."
-              className="docker-label-help"
-            >
-              <HelpCircle className="h-3 w-3 inline" />
-            </span>
-          </Label>
-          <div className="docker-secret-row">
-            <select
-              value={form.tagPatternFilter}
-              onChange={(e) => setForm({ ...form, tagPatternFilter: e.target.value })}
-            >
-              <option value="">— no filter —</option>
-              {TAG_FILTER_PRESETS.map((p) => (
-                <option key={p.pattern} value={p.pattern}>{p.label}</option>
-              ))}
-              {form.tagPatternFilter
-                && !TAG_FILTER_PRESETS.some((p) => p.pattern === form.tagPatternFilter)
-                && <option value={form.tagPatternFilter}>Custom…</option>}
-            </select>
-            <Input
-              placeholder="^v\\d+\\.\\d+\\.\\d+$"
-              value={form.tagPatternFilter}
-              onChange={(e) => setForm({ ...form, tagPatternFilter: e.target.value })}
-              className={cn('font-mono text-[12px]', tagFilterError && 'border-destructive')}
+        <div className="docker-release-schedule-grid docker-section-field-full">
+          <div className="service-modal-field">
+            <Label className="service-modal-label">Check schedule</Label>
+            <SchedulePicker
+              form={form}
+              onChange={(patch) => setForm({ ...form, ...patch })}
+              nextCheckUtc={existing?.nextCheckUtc ?? null}
             />
+            {scheduleError && <p className="service-modal-field-error">{scheduleError}</p>}
           </div>
-          {tagFilterError && <p className="service-modal-field-error">{tagFilterError}</p>}
+
+          <div className="docker-release-settings-stack">
+            {isGhcr && (
+              <SecretFieldRow
+                label="GitHub PAT for release notes (optional)"
+                tooltip="V2.3 — GitHub personal access token used to fetch release notes from the upstream GitHub repository. Public repos work without a PAT but anonymous calls are limited to 60 requests / hour. A PAT raises the ceiling to 5 000 / hour and is required for private repos. Only the public_repo / repo scope is needed."
+                field={gitHubPat}
+                hasExisting={existing?.hasGitHubPat ?? false}
+                secret
+                error={gitHubPatError}
+                onChange={setGitHubPat}
+              />
+            )}
+
+            <div className="service-modal-field">
+              <Label className="service-modal-label">
+                Tag pattern filter (optional)
+                <span
+                  title="Restrict which registry tags count as &quot;latest&quot;. Useful when the upstream publishes pre-release tags (-rc, -beta) alongside the stable track. Leave blank to compare the pinned tag's digest directly. Accepts a .NET regex."
+                  className="docker-label-help"
+                >
+                  <HelpCircle className="h-3 w-3 inline" />
+                </span>
+              </Label>
+              <div className="docker-secret-row">
+                <select
+                  value={form.tagPatternFilter}
+                  onChange={(e) => setForm({ ...form, tagPatternFilter: e.target.value })}
+                >
+                  <option value="">— no filter —</option>
+                  {TAG_FILTER_PRESETS.map((p) => (
+                    <option key={p.pattern} value={p.pattern}>{p.label}</option>
+                  ))}
+                  {form.tagPatternFilter
+                    && !TAG_FILTER_PRESETS.some((p) => p.pattern === form.tagPatternFilter)
+                    && <option value={form.tagPatternFilter}>Custom…</option>}
+                </select>
+                <Input
+                  placeholder="^v\\d+\\.\\d+\\.\\d+$"
+                  value={form.tagPatternFilter}
+                  onChange={(e) => setForm({ ...form, tagPatternFilter: e.target.value })}
+                  className={cn('font-mono text-[12px]', tagFilterError && 'border-destructive')}
+                />
+              </div>
+              {tagFilterError && <p className="service-modal-field-error">{tagFilterError}</p>}
+            </div>
+          </div>
         </div>
 
         <div className="service-modal-field service-modal-field-full">
@@ -1224,13 +1204,13 @@ export function DockerWatchForm({
         </div>
 
         {form.containerName && (
-          <div className="service-modal-field docker-section-field-full">
+          <div className="service-modal-field service-modal-field-full">
             <UpdateCommandPanel connectionId={connectionId} containerName={form.containerName} />
           </div>
         )}
 
         {testResult && (
-          <div className="service-modal-field docker-section-field-full">
+          <div className="service-modal-field service-modal-field-full">
             <div className="docker-test-result">
               <span className={testResult.host ? 'docker-test-result-ok' : 'docker-test-result-fail'}>
                 {testResult.host ? '✓' : '✗'}
@@ -1264,67 +1244,6 @@ export function DockerWatchForm({
         </div>
       </div>
     </div>
-  )
-}
-
-// ── Container picker dropdown ──────────────────────────────────────────────
-
-function ContainerPicker({
-  containers,
-  loading,
-  error,
-  value,
-  onPick,
-  className,
-}: {
-  containers: DockerContainerInfo[]
-  loading: boolean
-  error: string | null
-  value: string
-  onPick: (container: DockerContainerInfo | null) => void
-  className?: string
-}) {
-  const knownNames = new Set(containers.map((c) => c.name))
-  const showOrphan = value && !knownNames.has(value)
-
-  if (error) {
-    return (
-      <div className="docker-test-result-error" role="alert">
-        <AlertCircle className="h-3.5 w-3.5 inline" /> {error}
-      </div>
-    )
-  }
-
-  return (
-    <select
-      className={cn('service-modal-select font-mono text-[12px]', className)}
-      value={value}
-      disabled={loading}
-      onChange={(e) => {
-        const picked = containers.find((c) => c.name === e.target.value) ?? null
-        if (picked) onPick(picked)
-        else onPick({
-          name: e.target.value,
-          image: '',
-          imageId: '',
-          state: '',
-          status: '',
-          composeProject: null,
-          composeService: null,
-          composeConfigFiles: null,
-        })
-      }}
-    >
-      <option value="">{loading ? 'Loading containers…' : '— select a container —'}</option>
-      {showOrphan && (
-        <option value={value}>{value} (not found on host)</option>
-      )}
-      {containers.map((c) => (
-        <option key={c.name} value={c.name}>
-          {c.name} — {c.image} {c.state ? `(${c.state})` : ''}
-        </option>
-      ))}
-    </select>
   )
 }
 

@@ -314,6 +314,49 @@ public class DockerHostClientTests
         Assert.Equal("/run/docker.sock", captured.RemoteSocketPath);
     }
 
+    // ── error flattening (opaque Docker.DotNet wrappers) ────────────────────
+
+    [Fact]
+    public async Task Ping_DaemonError_SurfacesInnerExceptionDetail()
+    {
+        // Docker.DotNet wraps the real cause in an HttpRequestException whose own
+        // message is useless ("The requested ... see inner exception for
+        // details."). The user must still see what actually failed.
+        var inner = new IOException("connection reset by peer");
+        var opaque = new HttpRequestException("The requested failed, see inner exception for details.", inner);
+        var harness = Harness.BuildPingThrows(opaque);
+
+        var result = await harness.Client.PingAsync(
+            new DockerHostTransport(DockerHostType.LocalSocket, null, null));
+
+        Assert.False(result.HostReachable);
+        Assert.Contains("connection reset by peer", result.Error);
+    }
+
+    [Fact]
+    public void DescribeError_WalksInnerExceptionChain()
+    {
+        var ex = new HttpRequestException(
+            "The requested failed, see inner exception for details.",
+            new IOException("Unable to read data from the transport connection",
+                new System.Net.Sockets.SocketException(10054)));
+
+        var described = DockerHostClient.DescribeError(ex);
+
+        Assert.Contains("The requested failed", described);
+        Assert.Contains("Unable to read data from the transport connection", described);
+        // The socket exception's own message is appended too.
+        Assert.EndsWith(new System.Net.Sockets.SocketException(10054).Message, described);
+    }
+
+    [Fact]
+    public void DescribeError_CollapsesDuplicateMessages()
+    {
+        var ex = new HttpRequestException("same", new Exception("same"));
+
+        Assert.Equal("same", DockerHostClient.DescribeError(ex));
+    }
+
     // ── Harness ──────────────────────────────────────────────────────────────
 
     private sealed class Harness

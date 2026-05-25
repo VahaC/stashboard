@@ -406,15 +406,17 @@ dotnet ef database update <PreviousMigrationName>    --project src/Stashboard.Ap
 
 ✅ **V5.2 — True Compose-aware recreate** _(shipped in 5.2.0)_ — when a local-socket connection has a bind-mounted **Compose project path**, "Update now" runs `docker compose pull` + `up -d <service>` (honouring `env_file`, `depends_on` ordering, and profiles) instead of the raw recreate. The image now ships the `docker compose` binary; falls back to the raw recreate when not configured. See the [CHANGELOG](./CHANGELOG.md) and [guide §5.1a](./DOCKER_UPDATE_MONITORING_GUIDE.md).
 
-These are the next items on the roadmap, ordered from simplest to most complex.
+These are the next items on the roadmap. V5.3 (host terminal) is pulled to the
+front by priority; the rest are ordered roughly simplest → most complex.
 
 | Phase | Feature | Description |
 |---|---|---|
-| V5.3 | **Compose project grouping & bulk update** | Group containers on the instances page by `com.docker.compose.project` label; a project-level "Update all" button drives `docker compose pull && up -d` (with V5.2) or falls back to per-container recreate in `depends_on` order. |
-| V5.4 | **Image cleanup / prune** | Scheduled background task that calls `ImagesPruneAsync` per host to remove dangling images left behind by "Update now"; "Storage" widget on the instances page + manual **Prune now** button. |
-| V5.5 | **Proxmox LXC update monitoring** | Track pending package updates on Proxmox LXC containers via the Proxmox REST API (`GET /nodes/{node}/apt/update` for the host; `exec`-based `apt list --upgradable` inside each LXC). Same Hourly/Daily/Weekly schedule model as Docker watches; same email notification channel. |
-| V5.6 | **Container exec (browser terminal)** | `xterm.js` terminal in the modal backed by a SignalR/WebSocket bridge to `docker exec`. Off by default; admin only; every session audited. |
-| V5.7 | **Browser-based SSH client for Proxmox LXC** | Closes the loop on V5.5 — `pct enter <vmid>` over the same `xterm.js` component. SSH keys stored encrypted; host-key TOFU on first connect; all V5.6 guardrails apply. |
+| V5.3 | **Host terminal (browser SSH shell to the Docker host)** | `xterm.js` terminal that opens an interactive SSH PTY on the **host** of an SSH-type connection (reuses the V2.5 SSH credentials). Introduces the WebSocket bridge + short-lived ticket auth that the later shell phases reuse. The **Terminal** tab is always visible; for non-SSH connections it shows _"Available only for SSH tunnel connections"_. Off by default; admin only; every session audited. |
+| V5.4 | **Compose project grouping & bulk update** | Group containers on the instances page by `com.docker.compose.project` label; a project-level "Update all" button drives `docker compose pull && up -d` (with V5.2) or falls back to per-container recreate in `depends_on` order. |
+| V5.5 | **Image cleanup / prune** | Scheduled background task that calls `ImagesPruneAsync` per host to remove dangling images left behind by "Update now"; "Storage" widget on the instances page + manual **Prune now** button. |
+| V5.6 | **Proxmox LXC update monitoring** | Track pending package updates on Proxmox LXC containers via the Proxmox REST API (`GET /nodes/{node}/apt/update` for the host; `exec`-based `apt list --upgradable` inside each LXC). Same Hourly/Daily/Weekly schedule model as Docker watches; same email notification channel. |
+| V5.7 | **Container exec (browser terminal)** | `xterm.js` terminal in the modal backed by the V5.3 WebSocket bridge to `docker exec`. Off by default; admin only; every session audited. |
+| V5.8 | **Browser-based SSH client for Proxmox LXC** | Closes the loop on V5.6 — `pct enter <vmid>` over the same `xterm.js` component. SSH keys stored encrypted; host-key TOFU on first connect; all V5.3 / V5.7 guardrails apply. |
 
 ## License
 

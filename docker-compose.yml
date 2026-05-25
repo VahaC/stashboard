@@ -56,6 +56,15 @@ services:
       # host.
       # - /var/run/docker.sock:/var/run/docker.sock:ro    # tracking only (V1..V2.6)
       # - /var/run/docker.sock:/var/run/docker.sock       # tracking + Update now (V2.7)
+      #
+      # ─── V5.2 Compose-aware "Update now" (optional) ──────────────────────
+      # Bind-mount each LocalSocket host's Compose project directory so the
+      # bundled `docker compose` CLI can run `pull` + `up -d` for the recreate
+      # — preserving env_file resolution, depends_on ordering and profiles that
+      # the raw recreate can't. Then set the connection's "Compose project path"
+      # to the IN-CONTAINER path below. Read-only is enough. Local socket only;
+      # remote (TCP/SSH) connections stay on the raw recreate.
+      # - /srv/my-stack:/compose-projects/home-server:ro
 
 volumes:
   stashboard-data:

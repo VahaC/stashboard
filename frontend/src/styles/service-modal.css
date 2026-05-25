@@ -532,7 +532,7 @@
 
 .docker-section-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
 }
 
@@ -544,6 +544,25 @@
 
 .docker-section-field-full {
   grid-column: 1 / -1;
+}
+
+.docker-release-schedule-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.docker-release-settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .docker-release-schedule-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
 }
 
 .docker-secret-row {
@@ -961,6 +980,7 @@
 
 .docker-copy-command pre {
   flex: 1;
+  min-width: 0;
   margin: 0;
   overflow-x: auto;
   white-space: pre;
