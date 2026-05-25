@@ -5,7 +5,7 @@
 > feature (V1 → V3, all delivered); §13 is the active **V4 — migration to SQLite**
 > release; §14 is the post-V4 feature backlog (V5+).
 >
-> **Status:** ✅ **V1, V2 and the delivered V3 phases are shipped.** V1 (planning + 7 phases) shipped 2026-05-16; V2.1 → V2.7 shipped between 2026-05-17 and 2026-05-18; V3.1 → V3.5 + the container/connection decoupling shipped between 2026-05-19 and 2026-05-21 (container inspect, async health verification, live logs/stats, instances page, first-class containers). The remaining Docker ideas (grouping, prune, Proxmox, exec/SSH shells) are **deferred to the post-V4 backlog (V5+) — see §14.** ✅ **V4 (migration to SQLite, single-container self-hosted) shipped 2026-05-21 — see §13.** ✅ **V5.0 (disabled card style + one-click removal) shipped 2026-05-21 — see §14.** ✅ **V5.0.1 (unlink container from service) shipped 2026-05-22 — see §14.** ✅ **V5.0.2 (editable SMTP / email settings) shipped 2026-05-22 — see §14.** ✅ **V5.0.3 (dedicated notifications settings page) shipped 2026-05-22 — see §14.** ✅ **V5.1 (secure key auto-provisioning) shipped 2026-05-22 in image 5.1.0 — see §14.** ✅ **V5.2 (true Compose-aware recreate) shipped 2026-05-23 in image 5.2.0 — see §14.** End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md). For the feature's source-level surface see §6 — every phase links to the PR that landed it.
+> **Status:** ✅ **V1, V2 and the delivered V3 phases are shipped.** V1 (planning + 7 phases) shipped; V2.1 → V2.7 shipped; V3.1 → V3.5 + the container/connection decoupling shipped (container inspect, async health verification, live logs/stats, instances page, first-class containers). The remaining Docker ideas (grouping, prune, Proxmox, exec/SSH shells) are **deferred to the post-V4 backlog (V5+) — see §14.** ✅ **V4 (migration to SQLite, single-container self-hosted) shipped — see §13.** ✅ **V5.0 (disabled card style + one-click removal) — see §14.** ✅ **V5.0.1 (unlink container from service) — see §14.** ✅ **V5.0.2 (editable SMTP / email settings) shipped — see §14.** ✅ **V5.0.3 (dedicated notifications settings page) — see §14.** ✅ **V5.1 (secure key auto-provisioning) shipped in image 5.1.0 — see §14.** ✅ **V5.2 (true Compose-aware recreate) shipped in image 5.2.0 — see §14.** ✅ **Phase V5.3 — Host terminal (browser SSH shell to the Docker host) shipped in image v5.3.0** End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md). For the feature's source-level surface see §6 — every phase links to the PR that landed it.
 
 ## 1. Goal
 
@@ -1727,7 +1727,7 @@ keys without overwriting them. ✅
 
 ---
 
-### ✅ Phase V5.2 — True Compose-aware recreate (shipped 2026-05-23 in image 5.2.0)
+### ✅ Phase V5.2 — True Compose-aware recreate 
 
 **Complexity:** Medium
 **Value:** Preserves the full Compose lifecycle (env-file resolution, profile
@@ -1837,7 +1837,7 @@ attempt is audited — verified by
 
 ---
 
-### ✅ Phase V5.3 — Host terminal (browser SSH shell to the Docker host)
+### ✅ Phase V5.3 — Host terminal (browser SSH shell to the Docker host) 
 
 **Complexity:** High (pulled ahead of the medium-complexity V5.4–V5.6 phases by
 priority — see the §14 note above).
@@ -1957,7 +1957,38 @@ new one is in use; over months these dangling images can grow to many GB.
 
 ---
 
-### Phase V5.6 — Proxmox LXC update monitoring
+### Phase V5.6 — Container exec (browser terminal into a Docker container)
+
+**Complexity:** High
+**Value:** The "I just need to run one command in this container" use case
+that today forces the user to SSH to the Docker host first. Pairs naturally
+with V3.3 (logs) and V3.5 (instances page).
+
+**Proposed approach:**
+
+- Docker API: `POST /containers/{id}/exec` creates an exec instance; `POST
+  /exec/{id}/start` upgrades the connection to a hijacked bidirectional
+  stream. `Docker.DotNet` exposes this via `ExecCreateContainerAsync` +
+  `StartAndAttachContainerExecAsync`.
+- Backend: reuse the WebSocket bridge + short-lived-ticket auth introduced by
+  V5.3 (host terminal), pumping bytes between the browser and the hijacked
+  Docker stream. Per-session params: command (defaults to `/bin/sh`), TTY
+  size, env.
+- Frontend: `xterm.js` terminal in a full-page tab or side drawer; window
+  resize calls `ResizeContainerExecTtyAsync` on the daemon.
+- **Security model — the most sensitive feature on the list:**
+  - Off by default; opt-in per `DockerConnection` (`AllowExec = false`).
+  - Admin role required; UI hidden for non-admins.
+  - Every exec session writes a start/stop row to a new
+    `DockerExecSessionEntity` (who, when, container, command, duration, byte
+    counts). Sessions also stream to the application log.
+  - Hard cap on concurrent sessions per user and per host.
+  - Server-side inactivity timeout (default 10 min) closes the connection
+    regardless of client state.
+
+---
+
+### Phase V6.0 — Proxmox LXC update monitoring
 
 **Complexity:** Medium–High
 **Value:** Stashboard already tracks Docker image updates; the natural next
@@ -1997,38 +2028,7 @@ exposes a stable REST API.
 
 ---
 
-### Phase V5.7 — Container exec (browser terminal into a Docker container)
-
-**Complexity:** High
-**Value:** The "I just need to run one command in this container" use case
-that today forces the user to SSH to the Docker host first. Pairs naturally
-with V3.3 (logs) and V3.5 (instances page).
-
-**Proposed approach:**
-
-- Docker API: `POST /containers/{id}/exec` creates an exec instance; `POST
-  /exec/{id}/start` upgrades the connection to a hijacked bidirectional
-  stream. `Docker.DotNet` exposes this via `ExecCreateContainerAsync` +
-  `StartAndAttachContainerExecAsync`.
-- Backend: reuse the WebSocket bridge + short-lived-ticket auth introduced by
-  V5.3 (host terminal), pumping bytes between the browser and the hijacked
-  Docker stream. Per-session params: command (defaults to `/bin/sh`), TTY
-  size, env.
-- Frontend: `xterm.js` terminal in a full-page tab or side drawer; window
-  resize calls `ResizeContainerExecTtyAsync` on the daemon.
-- **Security model — the most sensitive feature on the list:**
-  - Off by default; opt-in per `DockerConnection` (`AllowExec = false`).
-  - Admin role required; UI hidden for non-admins.
-  - Every exec session writes a start/stop row to a new
-    `DockerExecSessionEntity` (who, when, container, command, duration, byte
-    counts). Sessions also stream to the application log.
-  - Hard cap on concurrent sessions per user and per host.
-  - Server-side inactivity timeout (default 10 min) closes the connection
-    regardless of client state.
-
----
-
-### Phase V5.8 — Browser-based SSH client for Proxmox LXC
+### Phase V6.1 — Browser-based SSH client for Proxmox LXC
 
 **Complexity:** High
 **Value:** Closes the loop on V5.6: once the user sees "LXC `pihole` has 7
