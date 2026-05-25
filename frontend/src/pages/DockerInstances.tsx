@@ -208,6 +208,8 @@ export function DockerInstances() {
         <ContainerModalHost
           state={modal}
           allowRemoval={features.data?.allowContainerRemoval ?? false}
+          allowHostShellGlobal={features.data?.allowHostShell ?? false}
+          connection={(connections.data ?? []).find((c) => c.id === modal.connectionId) ?? null}
           onClose={() => setModal(null)}
           onCardRefresh={(card) => setModal((prev) => prev && prev.card.id === card.id ? { ...prev, card } : prev)}
         />
@@ -246,11 +248,15 @@ export function DockerInstances() {
 function ContainerModalHost({
   state,
   allowRemoval,
+  allowHostShellGlobal,
+  connection,
   onClose,
   onCardRefresh,
 }: {
   state: ModalState
   allowRemoval: boolean
+  allowHostShellGlobal: boolean
+  connection: DockerConnection | null
   onClose: () => void
   onCardRefresh: (card: DockerContainerCard) => void
 }) {
@@ -289,6 +295,9 @@ function ContainerModalHost({
       allowRemoval={allowRemoval}
       busy={action.isPending}
       actionError={error}
+      hostType={resolveDockerHostType(connection?.hostType ?? 'LocalSocket')}
+      allowHostShell={connection?.allowHostShell ?? false}
+      allowHostShellGlobal={allowHostShellGlobal}
       onAction={handleAction}
       onClose={onClose}
     />

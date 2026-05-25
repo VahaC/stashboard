@@ -911,6 +911,68 @@ or to `appsettings.json`:
 then recreate the container: `docker compose up -d --force-recreate app`.
 The button shows up automatically — no rebuild required.
 
+### 5.4 Host terminal (V5.3)
+
+The container modal has a **Terminal** tab that opens an interactive shell **on
+the Docker host itself** — handy when you need to poke at the box (`df -h`,
+`journalctl`, edit a compose file) without leaving Stashboard and `ssh`-ing in
+manually. It complements the diagnostics tabs: Logs/Stats/Inspect look *inside*
+a container; the terminal drops you onto the *host* running it.
+
+This is the most dangerous feature in Stashboard — it is full, interactive,
+host-level shell access. It is therefore **off by default and SSH-only**, and
+must be enabled in **two** places before the live terminal appears:
+
+1. **Globally**, by the operator — go to **Settings → Host terminal** in the UI
+   and turn on **Enable the host terminal server-wide**. That page also lays out
+   every condition and the risks. (No env var / restart needed — the switch is
+   stored in the database, like the SMTP settings. The optional
+   `Stashboard:AllowHostShell` config flag only *seeds* the toggle on first run.)
+
+2. **Per connection** — edit the SSH connection and tick **Allow host terminal**.
+   The option only appears for **SSH tunnel** connections; `LocalSocket` and
+   `TCP+TLS` connections show *"Available only for SSH tunnel connections"* on
+   the Terminal tab because they have no host shell to offer.
+
+Once both are on, open any container on that host, switch to **Terminal**, and
+click **Connect**. The shell uses the same SSH key you configured for the
+connection in [§2.3](#23-ssh-tunnel-v25--easiest-for-vps-hosts).
+
+**Guardrails (all enforced server-side):**
+
+- **Audited.** Every session is recorded (who, when, which host, duration, bytes
+  in/out, why it ended) and streamed to the application log.
+- **Concurrency caps + idle timeout** — tune via
+  `STASHBOARD_Stashboard__HostShell__MaxSessionsPerUser` (default 3),
+  `__MaxSessionsPerHost` (5), `__IdleTimeoutSeconds` (600; `0` disables) and
+  `__TicketTtlSeconds` (30). Idle sessions are closed server-side regardless of
+  whether the browser tab is still open.
+- **No header-less token leakage** — the WebSocket is authorised by a single-use
+  ticket minted by an authenticated request, not a JWT on the query string.
+
+> **Live resize caveat:** the terminal is created at your browser window's size
+> on connect. SSH.NET 2024.2.0 can't change the PTY window afterwards, so
+> resizing the browser later won't reflow the remote shell — reconnect to pick
+> up a new size. Everything else works normally.
+
+**Behind a reverse proxy?** The terminal uses a WebSocket
+(`/api/docker/connections/{id}/host-shell/ws`). If the tab stays stuck on
+*"connecting…"*, your proxy isn't forwarding the WebSocket upgrade. Pass the
+`Upgrade` / `Connection` headers for `/api` — e.g. nginx:
+
+```nginx
+location /api/ {
+    proxy_pass http://stashboard:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+```
+
+Traefik forwards WebSockets automatically; Cloudflare proxied (orange-cloud)
+hosts do too. The single-container deployment (no external proxy) needs no extra
+config.
+
 ---
 
 ## 6. Status reference

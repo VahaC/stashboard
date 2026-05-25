@@ -59,6 +59,7 @@ Built as **ASP.NET Core 10 Web API + React SPA**, deployed as a **single Docker 
 - **Live logs panel** — real-time NDJSON stream with stdout/stderr toggles, pause/resume/stop, clear, and snapshot download; supports SSH-tunnelled hosts
 - **Live stats panel** — per-second CPU/memory/network/block I/O with inline sparklines; no chart library dependency
 - **Docker instances page** (`/docker`) — top-down view of every container across every host with inline **Start / Stop / Restart** actions and (gated by `Stashboard:AllowContainerRemoval`) **Remove**; "Open in service" deep link surfaces the Inspect / Logs / Stats panels for tracked containers; auto-refreshes every 10 s
+- **Host terminal** (V5.3) — a **Terminal** tab on the container modal opens an interactive `xterm.js` shell *on the Docker host* over SSH (not inside a container), bridged over a WebSocket with single-use ticket auth. **Off by default** and the most dangerous surface in the product: it requires the server-wide toggle at **Settings → Host terminal** **and** a per-connection **Allow host terminal** opt-in **and** an SSH connection. Every session is audited (who / when / host / duration / bytes / end reason) with per-user & per-host caps and a server-side idle timeout
 
 See [DOCKER_UPDATE_MONITORING_GUIDE.md](./DOCKER_UPDATE_MONITORING_GUIDE.md) for the full walkthrough.
 
@@ -190,6 +191,12 @@ All settings can be overridden via env vars prefixed with `STASHBOARD_` (use `__
 | Health verification attempts | `STASHBOARD_DockerUpdate__HealthVerificationMaxAttempts` | `10` | Polls after "Update now" recreate; set to `0` to disable and accept success on container start. |
 | Health verification interval | `STASHBOARD_DockerUpdate__HealthVerificationIntervalSeconds` | `3` | Seconds between health polls |
 | Allow container removal | `STASHBOARD_Stashboard__AllowContainerRemoval` | `false` | When `true`, the Docker instances page renders the **Remove** action. Off by default — removing a container is irreversible from the UI. |
+| Host shell — max sessions/user | `STASHBOARD_Stashboard__HostShell__MaxSessionsPerUser` | `3` | Concurrent host-terminal sessions a single user may hold. |
+| Host shell — max sessions/host | `STASHBOARD_Stashboard__HostShell__MaxSessionsPerHost` | `5` | Concurrent host-terminal sessions against one connection. |
+| Host shell — idle timeout | `STASHBOARD_Stashboard__HostShell__IdleTimeoutSeconds` | `600` | Server-side inactivity timeout; closes idle sessions regardless of client state. `0` disables. |
+| Host shell — ticket TTL | `STASHBOARD_Stashboard__HostShell__TicketTtlSeconds` | `30` | Lifetime of the single-use connect ticket between the authenticated POST and the WebSocket upgrade. |
+
+> **The host terminal's master switch is *not* an env var** — it is a DB-backed toggle managed in the UI at **Settings → Host terminal**, alongside an explanation of every condition and the risks (mirrors the editable SMTP settings). `Stashboard:AllowHostShell` exists only as an optional **first-run seed** for that toggle. The `HostShell__*` rows above are advanced tuning that still apply once the feature is enabled.
 
 > **Email settings are stored in the database and editable from the UI** (Notifications → **Email server (SMTP)**). The `STASHBOARD_Email__*` values above only **seed** the settings row on first startup; after that, manage the provider, host, credentials and from-address from the Notifications page and changes apply without a restart. The SMTP password is encrypted at rest (AES-256-GCM) and never returned by the API.
 
@@ -346,7 +353,13 @@ POST   /api/docker/connections/{id}/instance/containers/{name}/stop       → Do
 POST   /api/docker/connections/{id}/instance/containers/{name}/restart    → DockerContainerActionResponse
 DELETE /api/docker/connections/{id}/instance/containers/{name}            → DockerContainerActionResponse  (403 unless AllowContainerRemoval=true)
 
+# Host terminal (V5.3) — gated: AllowHostShell flag + per-connection opt-in + SSH connection
+POST   /api/docker/connections/{id}/host-shell/ticket                     → HostShellTicketResponse    (single-use, short-TTL ticket; 403/400/404 when not eligible)
+GET    /api/docker/connections/{id}/host-shell/ws?ticket=&cols=&rows=     → WebSocket upgrade          (ticket-authenticated interactive SSH PTY; binary = stdin/stdout, text = resize)
+
 GET    /api/features                                                      → StashboardFeatures         (server-side feature flags the UI gates against)
+GET    /api/settings/host-shell                                           → HostShellSettings          (host-terminal master switch — Settings page)
+PUT    /api/settings/host-shell                  { enabled }              → 204                        (toggle the host terminal server-wide)
 
 # Public webhook receiver (no JWT; the URL token is the auth)
 POST   /api/docker/webhooks/{watchToken}     (any body)           → 202 Accepted
@@ -406,12 +419,12 @@ dotnet ef database update <PreviousMigrationName>    --project src/Stashboard.Ap
 
 ✅ **V5.2 — True Compose-aware recreate** _(shipped in 5.2.0)_ — when a local-socket connection has a bind-mounted **Compose project path**, "Update now" runs `docker compose pull` + `up -d <service>` (honouring `env_file`, `depends_on` ordering, and profiles) instead of the raw recreate. The image now ships the `docker compose` binary; falls back to the raw recreate when not configured. See the [CHANGELOG](./CHANGELOG.md) and [guide §5.1a](./DOCKER_UPDATE_MONITORING_GUIDE.md).
 
-These are the next items on the roadmap. V5.3 (host terminal) is pulled to the
-front by priority; the rest are ordered roughly simplest → most complex.
+✅ **V5.3 — Host terminal (browser SSH shell to the Docker host)** _(shipped in 5.3.0)_ — a **Terminal** tab on the container modal opens an interactive `xterm.js` shell on the **host** of an SSH connection, bridged over a WebSocket with single-use ticket auth (the transport later shell phases reuse). Off by default and gated three ways (global flag + per-connection opt-in + SSH connection); every session is audited with per-user/host caps and an idle timeout. See the [CHANGELOG](./CHANGELOG.md).
+
+These are the next items on the roadmap; they're ordered roughly simplest → most complex.
 
 | Phase | Feature | Description |
 |---|---|---|
-| V5.3 | **Host terminal (browser SSH shell to the Docker host)** | `xterm.js` terminal that opens an interactive SSH PTY on the **host** of an SSH-type connection (reuses the V2.5 SSH credentials). Introduces the WebSocket bridge + short-lived ticket auth that the later shell phases reuse. The **Terminal** tab is always visible; for non-SSH connections it shows _"Available only for SSH tunnel connections"_. Off by default; admin only; every session audited. |
 | V5.4 | **Compose project grouping & bulk update** | Group containers on the instances page by `com.docker.compose.project` label; a project-level "Update all" button drives `docker compose pull && up -d` (with V5.2) or falls back to per-container recreate in `depends_on` order. |
 | V5.5 | **Image cleanup / prune** | Scheduled background task that calls `ImagesPruneAsync` per host to remove dangling images left behind by "Update now"; "Storage" widget on the instances page + manual **Prune now** button. |
 | V5.6 | **Proxmox LXC update monitoring** | Track pending package updates on Proxmox LXC containers via the Proxmox REST API (`GET /nodes/{node}/apt/update` for the host; `exec`-based `apt list --upgradable` inside each LXC). Same Hourly/Daily/Weekly schedule model as Docker watches; same email notification channel. |

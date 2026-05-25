@@ -91,6 +91,10 @@ public static class DependencyInjection
         // V3.4 — streams per-second CPU / memory / network / block-I/O
         // counters. Same per-call ownership semantics as the log streamer.
         services.AddSingleton<IDockerStatsStreamer, DockerStatsStreamer>();
+        // V5.3 — opens an interactive SSH PTY for the browser host terminal.
+        // Stateless: each Connect() owns its own SshClient + ShellStream, torn
+        // down when the returned channel is disposed.
+        services.AddSingleton<IHostShellConnector, Docker.Ssh.SshHostShellConnector>();
         // V5.2 — shells out to the host `docker compose` CLI for a true
         // Compose-aware recreate. Singleton so the CLI-availability probe is
         // cached for the process lifetime.

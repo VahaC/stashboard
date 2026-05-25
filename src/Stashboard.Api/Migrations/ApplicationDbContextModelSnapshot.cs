@@ -73,6 +73,26 @@ namespace Stashboard.Api.Migrations
                     b.ToTable("EmailSettings");
                 });
 
+            modelBuilder.Entity("Stashboard.Api.Data.HostShellSettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("HostShellSettings");
+                });
+
             modelBuilder.Entity("Stashboard.Api.Data.RefreshTokenEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -281,6 +301,9 @@ namespace Stashboard.Api.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("AllowHostShell")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("ComposeProjectPath")
                         .HasMaxLength(500)
@@ -585,6 +608,60 @@ namespace Stashboard.Api.Migrations
                     b.ToTable("DockerWatches");
                 });
 
+            modelBuilder.Entity("Stashboard.Core.Entities.HostShellSessionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("BytesFromClient")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("BytesToClient")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ConnectionName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("DockerConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EndReason")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("EndedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("InitiatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SshHost")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SshUsername")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("StartedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DockerConnectionId", "StartedUtc");
+
+                    b.HasIndex("InitiatedByUserId", "StartedUtc");
+
+                    b.ToTable("HostShellSessions");
+                });
+
             modelBuilder.Entity("Stashboard.Core.Entities.TagEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -803,6 +880,20 @@ namespace Stashboard.Api.Migrations
                     b.Navigation("DockerConnection");
 
                     b.Navigation("WebResource");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.HostShellSessionEntity", b =>
+                {
+                    b.HasOne("Stashboard.Core.Entities.DockerConnectionEntity", null)
+                        .WithMany()
+                        .HasForeignKey("DockerConnectionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Stashboard.Api.Data.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("InitiatedByUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Stashboard.Core.Entities.TagEntity", b =>

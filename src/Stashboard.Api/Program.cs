@@ -10,6 +10,7 @@ using Stashboard.Api.Data;
 using Stashboard.Api.Mapping;
 using Stashboard.Api.Notifications;
 using Stashboard.Api.Services;
+using Stashboard.Api.Services.HostShell;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Options;
 using Stashboard.Infrastructure;
@@ -137,6 +138,15 @@ public class Program
         // container-removal gate, etc.). Default-off so destructive
         // actions never light up without the operator opting in.
         builder.Services.Configure<StashboardOptions>(builder.Configuration.GetSection(StashboardOptions.SectionName));
+        // V5.3 — host terminal tunables (concurrency caps, idle timeout, ticket
+        // TTL). The master on/off switch lives on StashboardOptions.AllowHostShell.
+        builder.Services.Configure<HostShellOptions>(builder.Configuration.GetSection(HostShellOptions.SectionName));
+        // Single-use ticket store + concurrency tally + per-session SSH PTY glue.
+        builder.Services.AddSingleton<IHostShellTicketService, HostShellTicketService>();
+        builder.Services.AddSingleton<IHostShellSessionRegistry, HostShellSessionRegistry>();
+        // DB-backed master switch (managed from the Settings page), seeded from
+        // the optional Stashboard:AllowHostShell config flag on first run.
+        builder.Services.AddScoped<IHostShellSettingsService, HostShellSettingsService>();
         builder.Services.AddHostedService<HealthCheckBackgroundService>();
         builder.Services.AddHostedService<DockerUpdateBackgroundService>();
 
@@ -198,6 +208,16 @@ public class Program
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseRateLimiter();
+
+        // V5.3 — host terminal upgrades GET .../host-shell/ws to a WebSocket.
+        // No WebSocket / SignalR was wired before this phase, so enable it here.
+        // KeepAliveInterval sends periodic pings so idle shells survive proxies
+        // that drop quiet connections; the app's own idle timeout still closes
+        // genuinely inactive sessions server-side.
+        app.UseWebSockets(new WebSocketOptions
+        {
+            KeepAliveInterval = TimeSpan.FromSeconds(30),
+        });
 
         app.MapControllers();
 

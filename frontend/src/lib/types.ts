@@ -412,6 +412,10 @@ export interface DockerConnection {
   /** V5.2 — in-container path to the Compose project directory used by the
    *  Compose-aware "Update now" recreate. Non-null only for `LocalSocket`. */
   composeProjectPath: string | null
+  /** V5.3 — whether this connection has opted in to the browser host terminal.
+   *  Only meaningful for SSH hosts; the server also requires the global
+   *  AllowHostShell flag before honouring it. */
+  allowHostShell: boolean
   /** Number of services currently assigned to this connection — drives
    *  the delete-blocked warning. */
   usageCount: number
@@ -441,6 +445,8 @@ export interface DockerConnectionUpsert {
   /** V5.2 — absolute in-container path to the Compose project directory.
    *  Only meaningful for `LocalSocket` hosts. */
   composeProjectPath: string | null
+  /** V5.3 — opt this connection in to the browser host terminal (SSH only). */
+  allowHostShell: boolean
 }
 
 export interface DockerConnectionPingRequest {
@@ -678,6 +684,14 @@ export interface DockerContainerCard {
 
 export interface StashboardFeatures {
   allowContainerRemoval: boolean
+  /** V5.3 — global master switch for the browser host terminal. A connection's
+   *  own `allowHostShell` opt-in is also required for the Terminal tab to go live. */
+  allowHostShell: boolean
+}
+
+/** V5.3 — app-wide host-terminal master switch, managed from Settings → Host terminal. */
+export interface HostShellSettings {
+  enabled: boolean
 }
 
 export interface DockerContainerActionResponse {

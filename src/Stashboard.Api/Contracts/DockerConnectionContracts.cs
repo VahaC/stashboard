@@ -40,6 +40,10 @@ public sealed record DockerConnectionResponse(
     /// <summary>V5.2 — in-container path to the Compose project directory used
     /// by the Compose-aware "Update now" recreate. <c>null</c> = raw recreate.</summary>
     string? ComposeProjectPath,
+    /// <summary>V5.3 — whether this connection has opted in to the browser host
+    /// terminal. Only meaningful for SSH hosts; the server also requires the
+    /// global <c>Stashboard:AllowHostShell</c> flag before honouring it.</summary>
+    bool AllowHostShell,
     int UsageCount,
     DateTime CreatedUtc,
     DateTime UpdatedUtc);
@@ -76,7 +80,11 @@ public sealed record DockerConnectionUpsertRequest(
     /// directory (the bind-mount target of the host's project dir). Enables
     /// the Compose-aware "Update now" recreate for <c>LocalSocket</c> hosts.
     /// Plaintext (not a secret).</summary>
-    [MaxLength(500)] string? ComposeProjectPath = null);
+    [MaxLength(500)] string? ComposeProjectPath = null,
+    /// <summary>V5.3 — opt this connection in to the browser host terminal.
+    /// Only honoured for SSH hosts (and only when the global
+    /// <c>Stashboard:AllowHostShell</c> flag is on). Defaults to <c>false</c>.</summary>
+    bool AllowHostShell = false);
 
 /// <summary>
 /// Test-connection request — same shape as the upsert but never persisted.
@@ -179,4 +187,8 @@ public sealed record DockerContainerActionResponse(
 /// gate UI affordances (e.g. hiding the Remove button when the flag is
 /// off). Read-only — never carries secret material.</summary>
 public sealed record StashboardFeaturesResponse(
-    bool AllowContainerRemoval);
+    bool AllowContainerRemoval,
+    /// <summary>V5.3 — global master switch for the browser host terminal.
+    /// The UI uses it to decide whether the Terminal tab can ever go live
+    /// (a connection's own <c>AllowHostShell</c> opt-in is also required).</summary>
+    bool AllowHostShell);

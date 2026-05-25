@@ -346,6 +346,8 @@ interface ConnectionFormState {
   sshPort: string
   sshUsername: string
   sshRemoteSocketPath: string
+  /** V5.3 — opt this SSH connection in to the browser host terminal. */
+  allowHostShell: boolean
   /** V5.2 — in-container Compose project directory (LocalSocket only). */
   composeProjectPath: string
 }
@@ -378,6 +380,7 @@ export function DockerConnectionForm({
     sshPort: existing?.sshPort ? String(existing.sshPort) : '22',
     sshUsername: existing?.sshUsername ?? '',
     sshRemoteSocketPath: existing?.sshRemoteSocketPath ?? '/var/run/docker.sock',
+    allowHostShell: existing?.allowHostShell ?? false,
     composeProjectPath: existing?.composeProjectPath ?? '',
   }))
   const [tlsCa, setTlsCa] = useState<SecretField>(() => existingSecret(existing?.hasTlsConfigured ?? false))
@@ -414,6 +417,7 @@ export function DockerConnectionForm({
     sshPrivateKey: isSsh ? toUpsert(sshPrivateKey) : null,
     sshPrivateKeyPassphrase: isSsh ? toUpsert(sshPassphrase) : null,
     sshRemoteSocketPath: isSsh ? (form.sshRemoteSocketPath.trim() || null) : null,
+    allowHostShell: isSsh ? form.allowHostShell : false,
     composeProjectPath: isLocalSocket ? (form.composeProjectPath.trim() || null) : null,
   })
 
@@ -649,6 +653,22 @@ export function DockerConnectionForm({
                 Stashboard opens an SSH connection per check and bridges <code>docker system dial-stdio</code> on
                 the remote host. Make sure the SSH user is in the <code>docker</code> group (or has equivalent
                 permission on the socket).
+              </p>
+            </div>
+
+            <div className="service-modal-field docker-section-field-full">
+              <label className="service-modal-checkbox-label service-modal-label">
+                <input
+                  type="checkbox"
+                  checked={form.allowHostShell}
+                  onChange={(e) => setForm({ ...form, allowHostShell: e.target.checked })}
+                />
+                Allow host terminal (interactive SSH shell on the host)
+              </label>
+              <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                Opens a full shell on the Docker host from the container modal's <strong>Terminal</strong> tab.
+                This is host-level remote access — every session is audited. Off by default; the server operator
+                must also enable it globally (<code>Stashboard:AllowHostShell</code>). Only applies to SSH connections.
               </p>
             </div>
           </>

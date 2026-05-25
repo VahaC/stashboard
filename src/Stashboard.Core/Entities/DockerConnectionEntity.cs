@@ -78,5 +78,17 @@ public class DockerConnectionEntity : AuditableEntity
     [MaxLength(500)]
     public string? ComposeProjectPath { get; set; }
 
+    /// <summary>
+    /// V5.3 — opt-in switch for the browser host terminal (an interactive SSH
+    /// shell on the Docker host). Off by default: this is the most dangerous
+    /// surface in the product (host-level RCE), so it has to be turned on
+    /// deliberately per connection, and only ever does anything for
+    /// <see cref="DockerHostType.Ssh"/> hosts (a <c>LocalSocket</c> shell would
+    /// land on Stashboard's own container and <c>TcpTls</c> exposes no shell).
+    /// The server also requires the global <c>Stashboard:AllowHostShell</c>
+    /// flag before honouring it.
+    /// </summary>
+    public bool AllowHostShell { get; set; }
+
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

@@ -58,6 +58,7 @@ public sealed class DockerConnectionMapper(IEncryptionService encryption) : IDoc
             HasSshPrivateKeyPassphrase: !string.IsNullOrEmpty(entity.SshPrivateKeyPassphraseEncrypted),
             SshRemoteSocketPath: entity.SshRemoteSocketPath,
             ComposeProjectPath: entity.ComposeProjectPath,
+            AllowHostShell: entity.AllowHostShell,
             UsageCount: usageCount,
             entity.CreatedUtc,
             entity.UpdatedUtc);
@@ -84,6 +85,9 @@ public sealed class DockerConnectionMapper(IEncryptionService encryption) : IDoc
             entity.SshRemoteSocketPath = string.IsNullOrWhiteSpace(request.SshRemoteSocketPath)
                 ? DefaultRemoteSocketPath
                 : request.SshRemoteSocketPath.Trim();
+            // V5.3 — the host terminal is an SSH-only feature; the opt-in only
+            // means anything on an SSH connection.
+            entity.AllowHostShell = request.AllowHostShell;
         }
         else
         {
@@ -93,6 +97,9 @@ public sealed class DockerConnectionMapper(IEncryptionService encryption) : IDoc
             entity.SshPrivateKeyEncrypted = null;
             entity.SshPrivateKeyPassphraseEncrypted = null;
             entity.SshRemoteSocketPath = null;
+            // Clear the host-shell opt-in for non-SSH hosts so a stale flag
+            // can't shadow a switch back to LocalSocket / TcpTls.
+            entity.AllowHostShell = false;
         }
 
         // V5.2 — the Compose-aware recreate runs the local `docker compose`

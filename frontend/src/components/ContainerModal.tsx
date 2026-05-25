@@ -9,6 +9,7 @@ import {
   FileText,
   Info,
   Search,
+  TerminalSquare,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ContainerStateBadge } from '@/components/docker/atoms/ContainerStateBadge'
@@ -19,6 +20,7 @@ import { UpdateStatusBadge } from '@/components/docker/atoms/UpdateStatusBadge'
 import { ContainerInspectBody } from '@/components/docker/ContainerInspectBody'
 import { ContainerLogsPanel } from '@/components/docker/ContainerLogsPanel'
 import { ContainerStatsPanel } from '@/components/docker/ContainerStatsPanel'
+import { HostTerminalPanel } from '@/components/docker/HostTerminalPanel'
 import { WatchTab } from '@/components/docker/WatchTab'
 import {
   Dialog,
@@ -58,7 +60,7 @@ import { cn, getApiErrorMessage } from '@/lib/utils'
  * The initial tab is passed in by the caller so each card button
  * opens the modal at the right view.
  */
-export type ContainerModalTab = 'overview' | 'inspect' | 'logs' | 'stats' | 'watch'
+export type ContainerModalTab = 'overview' | 'inspect' | 'logs' | 'stats' | 'watch' | 'terminal'
 
 interface ContainerModalProps {
   connectionId: string
@@ -67,6 +69,13 @@ interface ContainerModalProps {
   allowRemoval: boolean
   busy: boolean
   actionError?: string
+  /** V5.3 — connection host type, so the Terminal tab can show the live shell
+   *  for SSH or a disabled explainer otherwise. */
+  hostType: 'LocalSocket' | 'TcpTls' | 'Ssh'
+  /** V5.3 — per-connection host-terminal opt-in. */
+  allowHostShell: boolean
+  /** V5.3 — global host-terminal master switch (server feature flag). */
+  allowHostShellGlobal: boolean
   /** Optional context — when present, the Watch tab gains full edit
    *  capabilities for the service's watch (or empty-state with a create
    *  CTA when no watch exists yet). */
@@ -81,10 +90,12 @@ const TABS: ReadonlyArray<{ id: ContainerModalTab; label: string; icon: typeof I
   { id: 'logs', label: 'Logs', icon: FileText },
   { id: 'stats', label: 'Stats', icon: Activity },
   { id: 'watch', label: 'Watch', icon: Bell },
+  { id: 'terminal', label: 'Terminal', icon: TerminalSquare },
 ]
 
 export function ContainerModal({
-  connectionId, card, initialTab, allowRemoval, busy, actionError, serviceContext, onAction, onClose,
+  connectionId, card, initialTab, allowRemoval, busy, actionError, serviceContext,
+  hostType, allowHostShell, allowHostShellGlobal, onAction, onClose,
 }: ContainerModalProps) {
   const [tab, setTab] = useState<ContainerModalTab>(initialTab)
 
@@ -154,6 +165,14 @@ export function ContainerModal({
               connectionId={connectionId}
               card={card}
               serviceContext={serviceContext}
+            />
+          )}
+          {tab === 'terminal' && (
+            <HostTerminalPanel
+              connectionId={connectionId}
+              hostType={hostType}
+              allowHostShell={allowHostShell}
+              allowHostShellGlobal={allowHostShellGlobal}
             />
           )}
         </div>

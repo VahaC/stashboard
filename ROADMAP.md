@@ -1837,7 +1837,7 @@ attempt is audited — verified by
 
 ---
 
-### Phase V5.3 — Host terminal (browser SSH shell to the Docker host)
+### ✅ Phase V5.3 — Host terminal (browser SSH shell to the Docker host)
 
 **Complexity:** High (pulled ahead of the medium-complexity V5.4–V5.6 phases by
 priority — see the §14 note above).
@@ -1848,55 +1848,65 @@ you onto the *host* running it. For **SSH-type** connections Stashboard already
 holds everything required (V2.5), so the host shell is largely a transport-and-UX
 exercise rather than new plumbing.
 
-**Proposed approach:**
+**Shipped (5.3.0):**
 
-- **SSH connections only.** The V2.5 work already stores and decrypts the
-  material this needs — `SshHost` / `SshPort` / `SshUsername` /
-  `SshPrivateKeyEncrypted` / passphrase on `DockerConnectionEntity`, decrypted
-  through `DockerConnectionMapper.BuildTransport`, key parsing in
-  `SshDockerTunnel.LoadKeyFile`. Instead of the `docker system dial-stdio` exec
-  channel the tunnel uses, open an interactive PTY via SSH.NET's
-  `CreateShellStream("xterm", cols, rows, …)`.
-- `LocalSocket` and `TcpTls` connections have **no** host-shell channel:
-  `LocalSocket` would mean a shell on Stashboard's *own* container host (needs a
-  privileged sidecar / `nsenter` — explicitly out of scope), and `TcpTls`
-  exposes only the Docker API, never a shell. The feature is therefore SSH-only
-  by construction.
-- **Transport.** As the first interactive-shell phase, this one **introduces**
-  the xterm.js + WebSocket bridge that the later shell phases (V5.7 container
-  exec, V5.8 Proxmox-LXC SSH) reuse. Authentication is the one genuinely new
-  wrinkle: a browser `WebSocket` cannot send the JWT `Authorization` header (the
-  same limitation that kept log/stat streaming on NDJSON-over-`fetch` — see
-  `frontend/src/lib/docker-logs.ts`), and a query-string token leaks into proxy
-  logs. So the handshake is authenticated with a **short-lived, single-use
-  ticket**: an authenticated `POST` mints a ticket bound to the connection id;
-  the socket opens with `?ticket=…`. `Program.cs` must enable `UseWebSockets()`
-  (no WebSocket / SignalR is wired today).
-- A new session service bridges WebSocket ↔ `ShellStream` bytes, mirroring the
-  existing `SshDockerTunnel.CopyAsync` pump and reusing `LoadKeyFile` for the
-  PEM key.
-- **Caveat:** PTY window-resize (`window-change`) support in SSH.NET 2024.2.0 is
-  limited — verify before promising live resize. The terminal works regardless;
-  only auto-resize is at risk.
+- ✓ **SSH connections only.** Reuses the V2.5 material (`SshHost` / `SshPort` /
+  `SshUsername` / `SshPrivateKeyEncrypted` / passphrase, decrypted through
+  `DockerConnectionMapper.BuildTransport`) and the extracted `SshPrivateKeyLoader`
+  for PEM parsing. A new `IHostShellConnector` (`SshHostShellConnector`) opens an
+  interactive PTY via SSH.NET's `CreateShellStream("xterm-256color", cols, rows, …)`
+  instead of the tunnel's `docker system dial-stdio` exec channel. `LocalSocket`
+  / `TcpTls` have no host-shell channel by construction.
+- ✓ **Transport.** First interactive-shell phase — introduces the `xterm.js` +
+  WebSocket bridge later shell phases (V5.7 / V5.8) will reuse. `Program.cs` now
+  enables `UseWebSockets()` (the first WebSocket in the app). The browser can't
+  send the JWT header on a `WebSocket`, so an authenticated
+  `POST .../host-shell/ticket` mints a **short-lived, single-use ticket** bound to
+  `(user, connection)` (`IHostShellTicketService`) and the socket opens at
+  `.../host-shell/ws?ticket=…&cols=&rows=` (ticket-authenticated, `AllowAnonymous`).
+- ✓ A transport-agnostic byte pump (`HostShellSession`) bridges the WebSocket ↔
+  PTY, counting bytes both ways, dispatching resize, and enforcing the idle
+  timeout — unit-tested against in-memory fakes (the same split that keeps
+  `SshDockerTunnel` testable). `WebSocketShellClientTransport` adapts the real
+  socket (binary frames = stdin/stdout, text frames = `{"type":"resize",…}`).
+- ✓ **UX — the Terminal tab is always present** on the container modal for every
+  host type. SSH connections render the live `xterm.js` terminal (Connect /
+  Disconnect, audit warning, status dot); `LocalSocket` / `TcpTls` show the
+  disabled explainer **"Available only for SSH tunnel connections"**, and an
+  SSH connection without the opt-in (or with the server flag off) shows the
+  matching hint.
+- ✓ **Security model — off by default, gated three ways** (all required): the
+  server-wide master switch at **Settings → Host terminal** (a DB-backed setting
+  — `HostShellSettingsEntity` / `GET|PUT /api/settings/host-shell` —
+  managed in the UI like the editable SMTP settings, *not* an env var; surfaced
+  to the frontend via `FeaturesController`, seeded from the optional
+  `Stashboard:AllowHostShell` config flag on first run), the per-connection
+  `AllowHostShell` opt-in, and ownership of an **SSH** connection. *(There is no
+  role system in Stashboard — every connection is owned by exactly one user — so
+  the spec's "admin only" reduces to "the owner, with the toggle + opt-in on".)*
+  Every session writes a start/stop row to the new `HostShellSessions` table
+  (who, when, connection / host, duration, bytes in / out, end reason) and
+  streams to the application log. Per-user / per-host concurrent caps + a
+  server-side idle timeout (`HostShellSessionRegistry` + `Stashboard:HostShell`
+  options) close idle / over-cap sessions regardless of client state.
+- ✓ Pure-additive migrations `AddHostShell` (the per-connection `AllowHostShell`
+  column + the `HostShellSessions` audit table) and `AddHostShellSettings` (the
+  DB-backed master-switch row). A dedicated **Settings → Host terminal** page
+  hosts the toggle plus a full write-up of the conditions and risks. Tests:
+  mapper opt-in (set / cleared / surfaced), ticket service (single-use / expiry /
+  binding), session registry caps, the byte-pump end reasons + counts + resize,
+  the settings service (seed / persist), and the controller's three-way gate.
 
-**UX — the Terminal tab is always present:**
+**Caveat (confirmed):** SSH.NET 2024.2.0 exposes no PTY `window-change` on
+`ShellStream`, so `TryResize` is a no-op — the shell is created at the browser's
+reported size on connect and live auto-resize is unavailable. The terminal works
+regardless.
 
-- The **Terminal** tab renders on the container / connection modal for **every**
-  host type, so the affordance is always discoverable.
-- For `LocalSocket` / `TcpTls` connections the tab body is a disabled state with
-  the message **"Available only for SSH tunnel connections"** (plus a hint
-  pointing at the connection's host-type setting). Only `Ssh` connections render
-  the live terminal.
-
-**Security model — the most dangerous surface in the product (host-level RCE):**
-
-- Off by default; opt-in per `DockerConnection` (e.g. `AllowHostShell = false`).
-- Admin role required; gated behind the existing feature-flag mechanism
-  (`FeaturesController`).
-- Every session writes a start/stop audit row (who, when, connection / host,
-  duration, byte counts) and streams to the application log.
-- Per-user / per-host concurrent-session caps; server-side inactivity timeout
-  closes idle sessions regardless of client state.
+**DoD met:** an operator who turns on the **Settings → Host terminal** toggle and
+enables **Allow host terminal** for an SSH connection can open an interactive host
+shell from the container modal's Terminal tab; the session is audited start-to-finish;
+non-SSH connections and non-opted-in connections show the disabled states; and
+the WebSocket refuses to open without a valid single-use ticket. ✅
 
 ---
 

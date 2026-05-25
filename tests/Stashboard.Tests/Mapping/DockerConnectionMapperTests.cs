@@ -304,6 +304,50 @@ public class DockerConnectionMapperTests
         Assert.Null(entity.ComposeProjectPath);
     }
 
+    // ── V5.3 — host terminal opt-in ──────────────────────────────────────────
+
+    [Fact]
+    public void ApplyUpsert_SshWithAllowHostShell_PersistsTheFlag()
+    {
+        var entity = new DockerConnectionEntity { Name = "x" };
+        var request = SshUpsert(host: "vps", port: 22, username: "docker",
+            socketPath: null, keyAction: SecretValueAction.Set, keyValue: "PEM",
+            allowHostShell: true);
+
+        _mapper.ApplyUpsert(entity, request);
+
+        Assert.True(entity.AllowHostShell);
+    }
+
+    [Fact]
+    public void ApplyUpsert_SwitchAwayFromSsh_ClearsAllowHostShell()
+    {
+        // The host terminal is SSH-only — a stale opt-in must not survive a
+        // switch back to a local socket / TCP host.
+        var entity = SshEntity(withPassphrase: false);
+        entity.AllowHostShell = true;
+        var request = new DockerConnectionUpsertRequest(
+            Name: "renamed",
+            HostType: DockerHostType.LocalSocket,
+            HostUrl: null,
+            TlsCaCert: null, TlsClientCert: null, TlsClientKey: null);
+
+        _mapper.ApplyUpsert(entity, request);
+
+        Assert.False(entity.AllowHostShell);
+    }
+
+    [Fact]
+    public void ToResponse_SurfacesAllowHostShell()
+    {
+        var entity = SshEntity(withPassphrase: false);
+        entity.AllowHostShell = true;
+
+        var response = _mapper.ToResponse(entity, usageCount: 0);
+
+        Assert.True(response.AllowHostShell);
+    }
+
     [Fact]
     public void ToResponse_SurfacesComposeProjectPath()
     {
@@ -339,7 +383,8 @@ public class DockerConnectionMapperTests
     private static DockerConnectionUpsertRequest SshUpsert(
         string host, int? port, string username, string? socketPath,
         SecretValueAction keyAction, string? keyValue,
-        SecretValueAction passphraseAction = SecretValueAction.Keep, string? passphraseValue = null) =>
+        SecretValueAction passphraseAction = SecretValueAction.Keep, string? passphraseValue = null,
+        bool allowHostShell = false) =>
         new(
             Name: "vps-prod",
             HostType: DockerHostType.Ssh,
@@ -350,5 +395,6 @@ public class DockerConnectionMapperTests
             SshUsername: username,
             SshPrivateKey: new SecretValueUpsert(keyAction, keyValue),
             SshPrivateKeyPassphrase: new SecretValueUpsert(passphraseAction, passphraseValue),
-            SshRemoteSocketPath: socketPath);
+            SshRemoteSocketPath: socketPath,
+            AllowHostShell: allowHostShell);
 }

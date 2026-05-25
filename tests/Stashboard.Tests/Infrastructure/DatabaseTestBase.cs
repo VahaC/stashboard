@@ -51,6 +51,7 @@ public abstract class DatabaseTestBase : IAsyncLifetime
 
     protected static async Task ClearAllDataAsync(ApplicationDbContext db)
     {
+        await db.HostShellSessions.ExecuteDeleteAsync();
         await db.WebResourceTags.ExecuteDeleteAsync();
         await db.Credentials.ExecuteDeleteAsync();
         await db.WebResources.ExecuteDeleteAsync();
@@ -59,6 +60,7 @@ public abstract class DatabaseTestBase : IAsyncLifetime
         await db.RefreshTokens.ExecuteDeleteAsync();
         await db.Users.ExecuteDeleteAsync();
         await db.EmailSettings.ExecuteDeleteAsync();
+        await db.HostShellSettings.ExecuteDeleteAsync();
     }
 
     private static string BuildTestConnectionString()

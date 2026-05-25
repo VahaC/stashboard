@@ -1101,6 +1101,7 @@
 .docker-logs-viewport-empty {
   color: #94a3b8;
   font-style: italic;
+  min-height: 49vh;
 }
 
 .docker-logs-line {
@@ -1129,6 +1130,7 @@
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
+  min-height: 36rem;
 }
 
 .docker-stats-grid {
@@ -1145,6 +1147,7 @@
   border: 1px solid var(--border);
   border-radius: 0.375rem;
   background: var(--muted);
+  min-height: 15rem;
 }
 
 .docker-stats-tile-head {

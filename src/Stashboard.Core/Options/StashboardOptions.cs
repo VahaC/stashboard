@@ -21,4 +21,16 @@ public sealed class StashboardOptions
     /// behind a second confirmation when the flag is enabled.
     /// </summary>
     public bool AllowContainerRemoval { get; set; } = false;
+
+    /// <summary>
+    /// V5.3 — <strong>first-run seed</strong> for the browser host terminal
+    /// master switch. The live value is DB-backed and managed from the Settings
+    /// page (<c>HostShellSettingsEntity</c> / <c>/api/settings/host-shell</c>);
+    /// this config flag only seeds the row the first time it's read, so an
+    /// operator who set it on first boot keeps that value until they change it
+    /// in the UI. Default <c>false</c> — the host terminal is the most dangerous
+    /// surface in the product (host-level RCE) and also requires a per-connection
+    /// opt-in (<c>DockerConnection.AllowHostShell</c>) and an SSH connection.
+    /// </summary>
+    public bool AllowHostShell { get; set; } = false;
 }

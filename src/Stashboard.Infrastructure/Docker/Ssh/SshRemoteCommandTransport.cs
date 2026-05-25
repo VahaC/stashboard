@@ -32,7 +32,7 @@ internal sealed class SshRemoteCommandTransport : IRemoteCommandTransport
     {
         ArgumentNullException.ThrowIfNull(credentials);
 
-        var keyFile = LoadKeyFile(credentials);
+        var keyFile = SshPrivateKeyLoader.Load(credentials);
         var ssh = new SshClient(credentials.Host, credentials.Port, credentials.Username, keyFile)
         {
             // Keep the session alive only for the length of one inspect call.
@@ -86,20 +86,6 @@ internal sealed class SshRemoteCommandTransport : IRemoteCommandTransport
     public void Dispose()
     {
         try { _ssh.Dispose(); } catch { /* idempotent */ }
-    }
-
-    /// <summary>
-    /// Loads the PEM private key with an optional passphrase. SSH.NET's
-    /// <see cref="PrivateKeyFile"/> auto-detects RSA / DSA / ECDSA / Ed25519
-    /// formats — the user just pastes whatever <c>ssh-keygen</c> produced.
-    /// </summary>
-    private static PrivateKeyFile LoadKeyFile(DockerSshCredentials credentials)
-    {
-        var bytes = System.Text.Encoding.UTF8.GetBytes(credentials.PrivateKeyPem);
-        using var stream = new MemoryStream(bytes);
-        return string.IsNullOrEmpty(credentials.PrivateKeyPassphrase)
-            ? new PrivateKeyFile(stream)
-            : new PrivateKeyFile(stream, credentials.PrivateKeyPassphrase);
     }
 
     /// <summary>

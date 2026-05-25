@@ -6,7 +6,7 @@ import { useAuthStore } from '@/lib/auth-store'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import logo from '@/assets/logo.svg'
-import { LayoutGrid, Tags as TagsIcon, FolderTree, Database, LogOut, UserCog, Menu, X, Container, Bell, ChevronDown, Settings } from 'lucide-react'
+import { LayoutGrid, Tags as TagsIcon, FolderTree, Database, LogOut, UserCog, Menu, X, Container, Bell, ChevronDown, Settings, TerminalSquare } from 'lucide-react'
 import '@/styles/app-layout.css'
 
 const mainNavItems = [
@@ -18,6 +18,7 @@ const mainNavItems = [
 
 const settingsNavItems = [
   { to: '/notifications', label: 'Notifications', icon: Bell, end: false },
+  { to: '/host-terminal', label: 'Host terminal', icon: TerminalSquare, end: false },
   { to: '/backup', label: 'Backup / Restore', icon: Database, end: false },
   { to: '/account', label: 'Account', icon: UserCog, end: false },
 ]
@@ -63,6 +64,7 @@ export function AppLayout() {
           <Link to="/" className="app-brand" onClick={closeSidebar}>
             <img src={logo} alt="" className="h-5 w-5" />
             <span>Stashboard</span>
+            <span className="app-brand-version">v{__APP_VERSION__}</span>
           </Link>
           <Button variant="ghost" size="icon" className="md:hidden" onClick={closeSidebar}>
             <X className="h-4 w-4" />

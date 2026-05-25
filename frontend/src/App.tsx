@@ -18,6 +18,7 @@ const ConfirmEmail = lazy(() => import('./pages/ConfirmEmail').then((m) => ({ de
 const ConfirmEmailChange = lazy(() => import('./pages/ConfirmEmailChange').then((m) => ({ default: m.ConfirmEmailChange })))
 const Account = lazy(() => import('./pages/Account').then((m) => ({ default: m.Account })))
 const NotificationSettings = lazy(() => import('./pages/NotificationSettings').then((m) => ({ default: m.NotificationSettings })))
+const HostTerminalSettings = lazy(() => import('./pages/HostTerminalSettings').then((m) => ({ default: m.HostTerminalSettings })))
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -50,6 +51,7 @@ export default function App() {
                 <Route path="/tags" element={<Tags />} />
                 <Route path="/backup" element={<Backup />} />
                 <Route path="/notifications" element={<NotificationSettings />} />
+                <Route path="/host-terminal" element={<HostTerminalSettings />} />
                 <Route path="/account" element={<Account />} />
               </Route>
             </Route>
