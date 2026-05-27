@@ -187,6 +187,62 @@ public class DockerUpdateCheckerTests
     }
 
     [Fact]
+    public async Task CheckAsync_StableOnlyPreset_PrefersSemverOverNonSemverTags()
+    {
+        // Regression: the "Stable only" UI preset `^(?!.*-(rc|beta|alpha)).*$`
+        // also admits non-semver tags like `nightly`/`latest`. The orchestrator
+        // must still pick the highest real version (1.28.0), not `nightly`
+        // (which sorts above digits ordinally) — otherwise the watch would be
+        // stuck reporting UpdateAvailable against a moving `nightly` digest.
+        var host = MockHost(new DockerHostResult(
+            DockerHostStatus.Ok, DigestA, "owner/repo@" + DigestA, "sha256:img", null));
+        var registry = new Mock<IRegistryClient>();
+        registry.Setup(r => r.ListTagsAsync(
+                It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<RegistryAuthContext>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RegistryTagListResult(RegistryManifestStatus.Ok,
+                new[] { "latest", "nightly", "1.27.0", "1.28.0" }, null, DateTime.UtcNow));
+        registry.Setup(r => r.GetManifestDigestAsync(
+                It.IsAny<string>(), It.IsAny<string>(), "1.28.0",
+                It.IsAny<RegistryAuthContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RegistryManifestResult(RegistryManifestStatus.Ok, DigestA, null, null, DateTime.UtcNow));
+
+        var checker = BuildChecker(host, registry);
+
+        var result = await checker.CheckAsync(Profile(tagPatternFilter: @"^(?!.*-(rc|beta|alpha)).*$"));
+
+        Assert.Equal("1.28.0", result.LatestVersionTag);
+        Assert.Equal(DockerUpdateStatus.UpToDate, result.Status);
+    }
+
+    [Fact]
+    public async Task CheckAsync_FilterSet_UnanchoredPattern_StillRequiresFullMatch()
+    {
+        // `v\d+\.\d+\.\d+` (no ^…$) must NOT accept `v2.0.0-rc1` via a substring
+        // match — full-match semantics mean only the exact `v2.0.0` qualifies.
+        var host = MockHost(new DockerHostResult(
+            DockerHostStatus.Ok, DigestA, "owner/repo@" + DigestA, "sha256:img", null));
+        var registry = new Mock<IRegistryClient>();
+        registry.Setup(r => r.ListTagsAsync(
+                It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<RegistryAuthContext>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RegistryTagListResult(RegistryManifestStatus.Ok,
+                new[] { "v2.0.0", "v2.1.0-rc1" }, null, DateTime.UtcNow));
+        registry.Setup(r => r.GetManifestDigestAsync(
+                It.IsAny<string>(), It.IsAny<string>(), "v2.0.0",
+                It.IsAny<RegistryAuthContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RegistryManifestResult(RegistryManifestStatus.Ok, DigestA, null, null, DateTime.UtcNow));
+
+        var checker = BuildChecker(host, registry);
+
+        var result = await checker.CheckAsync(Profile(tagPatternFilter: @"v\d+\.\d+\.\d+"));
+
+        // v2.1.0-rc1 is excluded → highest full match is v2.0.0 (== running).
+        Assert.Equal("v2.0.0", result.LatestVersionTag);
+        Assert.Equal(DockerUpdateStatus.UpToDate, result.Status);
+    }
+
+    [Fact]
     public async Task CheckAsync_FilterSet_NoMatchingTag_ReturnsUpToDateWithExplanation()
     {
         var host = MockHost(new DockerHostResult(

@@ -185,7 +185,11 @@ public sealed class DockerUpdateChecker(
         List<string> matching;
         try
         {
-            matching = tagList.Tags.Where(t => regex.IsMatch(t)).ToList();
+            // Full-match semantics: the pattern must cover the entire tag, not
+            // just a substring. Otherwise an un-anchored pattern like
+            // `v\d+\.\d+\.\d+` would also accept `v1.2.3-rc1` (it matches the
+            // `v1.2.3` prefix), defeating the point of the filter.
+            matching = tagList.Tags.Where(t => IsFullMatch(regex, t)).ToList();
         }
         catch (RegexMatchTimeoutException ex)
         {
@@ -218,6 +222,15 @@ public sealed class DockerUpdateChecker(
     // can't stall the background loop.
     private static Regex CompileFilter(string pattern) =>
         new(pattern, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250));
+
+    // True only when the pattern matches the whole tag end-to-end. Anchors in
+    // the user's pattern (^…$) make this equivalent to IsMatch; the explicit
+    // length check is what enforces full-match for un-anchored patterns.
+    private static bool IsFullMatch(Regex regex, string tag)
+    {
+        var match = regex.Match(tag);
+        return match.Success && match.Index == 0 && match.Length == tag.Length;
+    }
 
     public async Task<DockerConnectionTestResult> TestConnectionAsync(DockerWatchProfile profile, CancellationToken cancellationToken = default)
     {

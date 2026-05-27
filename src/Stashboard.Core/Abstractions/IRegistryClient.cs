@@ -120,11 +120,12 @@ public interface IRegistryClient
     /// (skip pre-release / non-matching tags when deciding what "latest" means).
     /// </summary>
     /// <remarks>
-    /// V2.1 fetches a single page bounded by <paramref name="pageSize"/> (the
-    /// registry may return fewer). Pagination via the <c>Link</c> header is not
-    /// implemented yet — sufficient for current use cases since typical
-    /// repositories return a few hundred tags per page and the pattern filter
-    /// narrows that to a handful of candidates client-side.
+    /// <paramref name="pageSize"/> bounds each page (the registry may return
+    /// fewer). The client follows the RFC 5988 <c>Link: rel="next"</c> header
+    /// across pages and concatenates the results, so repositories with more
+    /// tags than a single page still surface their newest tag to the pattern
+    /// filter. Pagination is capped internally (page count + total tags) to
+    /// bound work on pathological repositories.
     /// </remarks>
     Task<RegistryTagListResult> ListTagsAsync(
         string registryHost,

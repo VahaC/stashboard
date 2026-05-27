@@ -18,17 +18,36 @@ public static class DockerWatchStatusWriter
         var previousLatest = watch.LatestDigest;
         watch.UpdateStatus = result.Status;
         watch.CurrentDigest = result.CurrentDigest ?? watch.CurrentDigest;
-        watch.LatestDigest = result.LatestDigest ?? watch.LatestDigest;
         watch.CurrentVersionTag = result.CurrentVersionTag ?? watch.CurrentVersionTag;
-        watch.LatestVersionTag = result.LatestVersionTag ?? watch.LatestVersionTag;
+
+        if (result.Status == DockerUpdateStatus.Error)
+        {
+            // Transient failure (host down, registry rate-limited, …): keep the
+            // last-known-good latest pointer so a flaky tick doesn't wipe a
+            // previously-detected update from the UI.
+            watch.LatestDigest = result.LatestDigest ?? watch.LatestDigest;
+            watch.LatestVersionTag = result.LatestVersionTag ?? watch.LatestVersionTag;
+        }
+        else
+        {
+            // Definitive comparison (UpToDate / UpdateAvailable): trust the
+            // result verbatim — including nulls. This clears a stale "latest
+            // vX" pointer when a tag-pattern filter now matches zero tags
+            // instead of leaving a phantom candidate behind.
+            watch.LatestDigest = result.LatestDigest;
+            watch.LatestVersionTag = result.LatestVersionTag;
+        }
+
         watch.LastCheckedUtc = result.CheckedAtUtc;
         watch.LastError = result.Error;
         watch.UpdatedUtc = result.CheckedAtUtc;
 
         // Release-notes enrichment: refresh the persisted pair on every digest
         // change; otherwise only fill in additional info, never blank out a
-        // previously-known value (enrichment is best-effort per tick).
-        var digestChanged = !string.Equals(previousLatest, result.LatestDigest, StringComparison.OrdinalIgnoreCase);
+        // previously-known value (enrichment is best-effort per tick). Keyed on
+        // the digest we actually wrote so the error path (digest preserved)
+        // doesn't drop the existing notes.
+        var digestChanged = !string.Equals(previousLatest, watch.LatestDigest, StringComparison.OrdinalIgnoreCase);
         if (digestChanged)
         {
             watch.LatestReleaseUrl = result.LatestReleaseUrl;

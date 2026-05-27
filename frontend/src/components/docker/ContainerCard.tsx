@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity, AlertCircle, Bell, FileText, MoreHorizontal, Search, Trash2 } from 'lucide-react'
+import { Activity, AlertCircle, Bell, FileText, MoreHorizontal, Search, Trash2, SquareTerminal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { DockerContainerCard, DockerWatch } from '@/lib/types'
 import { ContainerStateBadge } from './atoms/ContainerStateBadge'
@@ -137,7 +137,7 @@ export function ContainerCard({
                 title="Inspect container"
               >
                 <Search className="h-3.5 w-3.5" />
-                <span className="label-text">Inspect</span>
+                {/* <span className="label-text">Inspect</span> */}
               </Button>
               <Button
                 type="button"
@@ -147,7 +147,7 @@ export function ContainerCard({
                 title="Live container logs"
               >
                 <FileText className="h-3.5 w-3.5" />
-                <span className="label-text">Logs</span>
+                {/* <span className="label-text">Logs</span> */}
               </Button>
               <Button
                 type="button"
@@ -157,20 +157,30 @@ export function ContainerCard({
                 title="Live container stats"
               >
                 <Activity className="h-3.5 w-3.5" />
-                <span className="label-text">Stats</span>
+                {/* <span className="label-text">Stats</span> */}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpen('watch')}
+                title={linkedWatch ? 'Edit update tracking' : 'Track this container for updates'}
+              >
+                <Bell className="h-3.5 w-3.5" />
+                {/* <span className="label-text">{linkedWatch ? 'Watch' : 'Track'}</span> */}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpen('terminal')}
+                title="Open terminal for this container"
+              >
+                <SquareTerminal className="h-3.5 w-3.5" />
+                {/* <span className="label-text">{linkedWatch ? 'Watch' : 'Track'}</span> */}
               </Button>
             </>
           )}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onOpen('watch')}
-            title={linkedWatch ? 'Edit update tracking' : 'Track this container for updates'}
-          >
-            <Bell className="h-3.5 w-3.5" />
-            <span className="label-text">{linkedWatch ? 'Watch' : 'Track'}</span>
-          </Button>
         </div>
         <div className="cc-actions-right">
           {!notFound && (

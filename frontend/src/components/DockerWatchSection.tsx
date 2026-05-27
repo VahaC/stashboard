@@ -753,7 +753,7 @@ const DAY_LABELS: readonly { value: DayOfWeek; label: string }[] = [
  *  with the user guide examples. */
 const TAG_FILTER_PRESETS: { label: string; pattern: string }[] = [
   { label: 'SemVer only (vMAJOR.MINOR.PATCH)', pattern: '^v?\\d+\\.\\d+\\.\\d+$' },
-  { label: 'Stable only (no -rc/-beta/-alpha)', pattern: '^(?!.*-(rc|beta|alpha)).*$' },
+  { label: 'Stable only (no pre-release/rolling tags)', pattern: '(?i)^(?!.*-(rc|beta|alpha|dev|snapshot|pre|preview|canary|next|nightly|edge)).*$' },
   { label: 'Tag equals "stable"', pattern: '^stable$' },
 ]
 
@@ -1327,14 +1327,29 @@ function UpdateCommandPanel({ connectionId, containerName }: { connectionId: str
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Renders a digest row: the tag the digest belongs to (e.g. `v2.0.0`) as a
+ * chip, followed by the `sha256:…` value. Falls back to an em dash when the
+ * digest hasn't been resolved yet.
+ */
+function DigestValue({ tag, digest }: { tag: string | null; digest: string | null }) {
+  if (!digest) return <>—</>
+  return (
+    <>
+      {tag && <span className="docker-digest-tag">{tag}</span>}
+      {digest}
+    </>
+  )
+}
+
 function StatusPanel({ watch }: { watch: DockerWatch }) {
   return (
     <>
       <dl className="docker-status-panel">
         <dt>Current digest</dt>
-        <dd>{watch.currentDigest ?? '—'}</dd>
+        <dd><DigestValue tag={watch.currentVersionTag} digest={watch.currentDigest} /></dd>
         <dt>Latest digest</dt>
-        <dd>{watch.latestDigest ?? '—'}</dd>
+        <dd><DigestValue tag={watch.latestVersionTag} digest={watch.latestDigest} /></dd>
         {watch.lastError && (
           <>
             <dt>Last error</dt>

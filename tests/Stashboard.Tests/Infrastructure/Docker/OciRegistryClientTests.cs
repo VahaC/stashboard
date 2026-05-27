@@ -497,6 +497,85 @@ public class OciRegistryClientTests
         Assert.Equal("Bearer tags-tok", retryAuth);
     }
 
+    [Fact]
+    public async Task ListTags_FollowsLinkHeader_ConcatenatesAllPages()
+    {
+        var requested = new List<string>();
+        var harness = Harness.Build(request =>
+        {
+            requested.Add(request.RequestUri!.PathAndQuery);
+            // Page 1 advertises a relative next link; page 2 has none.
+            if (request.RequestUri.Query.Contains("last="))
+                return Reply.Json("""{"tags":["v2.0.0","v2.1.0"]}""");
+            return Reply.JsonWithNextLink(
+                """{"tags":["v1.0.0","v1.1.0"]}""",
+                "/v2/owner/repo/tags/list?n=200&last=v1.1.0");
+        });
+
+        var result = await harness.Client.ListTagsAsync("ghcr.io", "owner/repo", credentials: null);
+
+        Assert.Equal(RegistryManifestStatus.Ok, result.Status);
+        Assert.Equal(new[] { "v1.0.0", "v1.1.0", "v2.0.0", "v2.1.0" }, result.Tags);
+        Assert.Equal(2, requested.Count);
+        Assert.Contains("last=v1.1.0", requested[1]);
+    }
+
+    [Fact]
+    public async Task ListTags_NoLinkHeader_StopsAfterFirstPage()
+    {
+        var calls = 0;
+        var harness = Harness.Build(_ =>
+        {
+            calls++;
+            return Reply.Json("""{"tags":["v1.0.0"]}""");
+        });
+
+        var result = await harness.Client.ListTagsAsync("ghcr.io", "owner/repo", credentials: null);
+
+        Assert.Equal(new[] { "v1.0.0" }, result.Tags);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task ListTags_LaterPageFails_ReturnsTagsGatheredSoFar()
+    {
+        var harness = Harness.Build(request =>
+        {
+            if (request.RequestUri!.Query.Contains("last="))
+                return new HttpResponseMessage((HttpStatusCode)429);
+            return Reply.JsonWithNextLink(
+                """{"tags":["v1.0.0"]}""",
+                "/v2/owner/repo/tags/list?n=200&last=v1.0.0");
+        });
+
+        var result = await harness.Client.ListTagsAsync("ghcr.io", "owner/repo", credentials: null);
+
+        // First page succeeded → best-effort success with what we collected.
+        Assert.Equal(RegistryManifestStatus.Ok, result.Status);
+        Assert.Equal(new[] { "v1.0.0" }, result.Tags);
+    }
+
+    [Fact]
+    public async Task ListTags_PaginationCappedByPageCount()
+    {
+        // Every page advertises a next link → the cap (MaxTagPages = 20) must
+        // stop the loop instead of following forever.
+        var calls = 0;
+        var harness = Harness.Build(request =>
+        {
+            calls++;
+            return Reply.JsonWithNextLink(
+                $$"""{"tags":["v{{calls}}.0.0"]}""",
+                $"/v2/owner/repo/tags/list?n=200&last=page{calls}");
+        });
+
+        var result = await harness.Client.ListTagsAsync("ghcr.io", "owner/repo", credentials: null);
+
+        Assert.Equal(RegistryManifestStatus.Ok, result.Status);
+        Assert.Equal(20, calls);
+        Assert.Equal(20, result.Tags.Count);
+    }
+
     // ── V2.4: Basic-only auth strategy (Nexus / Gitea Packages) ──────────────
 
     [Fact]
@@ -659,6 +738,13 @@ public class OciRegistryClientTests
             {
                 Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
             };
+
+        public static HttpResponseMessage JsonWithNextLink(string body, string nextLink)
+        {
+            var resp = Json(body);
+            resp.Headers.Add("Link", $"<{nextLink}>; rel=\"next\"");
+            return resp;
+        }
 
         public static HttpResponseMessage UnauthorizedWithBearerChallenge(string parameter)
         {

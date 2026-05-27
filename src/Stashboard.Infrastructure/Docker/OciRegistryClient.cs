@@ -41,6 +41,13 @@ public sealed class OciRegistryClient(
     private const int TokenCacheSafetyMarginSeconds = 30;
     private const int TokenCacheFloorSeconds = 30;
 
+    // Pagination safety rails for tag listing: registries expose follow-on
+    // pages via a `Link: <…>; rel="next"` header (RFC 5988). We cap both the
+    // page count and the total tags so a pathological repository can't stall
+    // the background scan or balloon memory.
+    private const int MaxTagPages = 20;
+    private const int MaxTagsTotal = 5000;
+
     private static readonly string[] ManifestAcceptHeaders =
     {
         "application/vnd.oci.image.index.v1+json",
@@ -122,7 +129,7 @@ public sealed class OciRegistryClient(
     {
         var apiHost = ResolveApiHost(registryHost);
         var pageQuery = pageSize > 0 ? $"?n={pageSize}" : string.Empty;
-        var url = $"https://{apiHost}/v2/{repository}/tags/list{pageQuery}";
+        var firstUrl = $"https://{apiHost}/v2/{repository}/tags/list{pageQuery}";
         var fetchedAt = DateTime.UtcNow;
         var empty = Array.Empty<string>();
 
@@ -130,34 +137,79 @@ public sealed class OciRegistryClient(
         if (resolved.TagError is not null) return resolved.TagError;
         var credentials = resolved.Credentials;
         var client = httpClientFactory.CreateClient(HttpClientName);
+        var isBasic = auth.AuthType is RegistryAuthType.Basic or RegistryAuthType.AwsEcr;
 
         try
         {
-            if (auth.AuthType is RegistryAuthType.Basic or RegistryAuthType.AwsEcr)
+            // ── first page (with one-shot Bearer challenge handling) ──
+            string? bearer = null;
+            HttpResponseMessage response;
+            if (isBasic)
             {
-                using var basic = await SendTagListGetAsync(client, url, bearerToken: null, basicCredentials: credentials, cancellationToken);
-                return await BuildTagListResultAsync(basic, fetchedAt, cancellationToken);
+                response = await SendTagListGetAsync(client, firstUrl, bearerToken: null, basicCredentials: credentials, cancellationToken);
+            }
+            else
+            {
+                bearer = TryGetCachedToken(apiHost, repository, credentials);
+                response = await SendTagListGetAsync(client, firstUrl, bearer, basicCredentials: null, cancellationToken);
+                if (response.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    var challenge = response.Headers.WwwAuthenticate.FirstOrDefault();
+                    response.Dispose();
+                    if (challenge is null || !string.Equals(challenge.Scheme, "Bearer", StringComparison.OrdinalIgnoreCase))
+                        return new RegistryTagListResult(RegistryManifestStatus.Unauthorized, empty,
+                            "Registry returned 401 without a Bearer challenge.", fetchedAt);
+
+                    var freshToken = await AcquireTokenAsync(client, challenge.Parameter, credentials, cancellationToken);
+                    if (freshToken is null)
+                        return new RegistryTagListResult(RegistryManifestStatus.Unauthorized, empty,
+                            "Registry token acquisition failed.", fetchedAt);
+
+                    CacheToken(apiHost, repository, credentials, freshToken);
+                    bearer = freshToken.AccessToken;
+                    response = await SendTagListGetAsync(client, firstUrl, bearer, basicCredentials: null, cancellationToken);
+                }
             }
 
-            var cachedToken = TryGetCachedToken(apiHost, repository, credentials);
-            using var first = await SendTagListGetAsync(client, url, cachedToken, basicCredentials: null, cancellationToken);
-            if (first.StatusCode != HttpStatusCode.Unauthorized)
-                return await BuildTagListResultAsync(first, fetchedAt, cancellationToken);
+            // ── accumulate pages following Link: rel="next" ──
+            var accumulated = new List<string>();
+            var pages = 0;
+            while (true)
+            {
+                string? nextUrl;
+                using (response)
+                {
+                    if (response.StatusCode != HttpStatusCode.OK)
+                    {
+                        // First page error → surface it; a later page failing
+                        // returns the tags gathered so far (best-effort).
+                        if (pages == 0) return await BuildTagListResultAsync(response, fetchedAt, cancellationToken);
+                        break;
+                    }
 
-            var challenge = first.Headers.WwwAuthenticate.FirstOrDefault();
-            if (challenge is null || !string.Equals(challenge.Scheme, "Bearer", StringComparison.OrdinalIgnoreCase))
-                return new RegistryTagListResult(RegistryManifestStatus.Unauthorized, empty,
-                    "Registry returned 401 without a Bearer challenge.", fetchedAt);
+                    var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                    var tags = ParseTagsPayload(body);
+                    if (tags is null)
+                    {
+                        if (pages == 0)
+                            return new RegistryTagListResult(RegistryManifestStatus.InvalidResponse, empty,
+                                "Registry tags/list response did not include a tags array.", fetchedAt);
+                        break;
+                    }
 
-            var freshToken = await AcquireTokenAsync(client, challenge.Parameter, credentials, cancellationToken);
-            if (freshToken is null)
-                return new RegistryTagListResult(RegistryManifestStatus.Unauthorized, empty,
-                    "Registry token acquisition failed.", fetchedAt);
+                    accumulated.AddRange(tags);
+                    nextUrl = ResolveNextPageUrl(response, apiHost);
+                }
 
-            CacheToken(apiHost, repository, credentials, freshToken);
+                pages++;
+                if (nextUrl is null || pages >= MaxTagPages || accumulated.Count >= MaxTagsTotal) break;
 
-            using var retry = await SendTagListGetAsync(client, url, freshToken.AccessToken, basicCredentials: null, cancellationToken);
-            return await BuildTagListResultAsync(retry, fetchedAt, cancellationToken);
+                response = isBasic
+                    ? await SendTagListGetAsync(client, nextUrl, bearerToken: null, basicCredentials: credentials, cancellationToken)
+                    : await SendTagListGetAsync(client, nextUrl, bearer, basicCredentials: null, cancellationToken);
+            }
+
+            return new RegistryTagListResult(RegistryManifestStatus.Ok, accumulated, null, fetchedAt);
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -166,10 +218,42 @@ public sealed class OciRegistryClient(
         }
         catch (HttpRequestException ex)
         {
-            logger.LogWarning(ex, "Registry tag-list HTTP request to {Url} failed", url);
+            logger.LogWarning(ex, "Registry tag-list HTTP request to {Url} failed", firstUrl);
             return new RegistryTagListResult(RegistryManifestStatus.NetworkError, empty,
                 ex.Message, fetchedAt);
         }
+    }
+
+    /// <summary>
+    /// Extracts the <c>rel="next"</c> target from an RFC 5988 <c>Link</c> header,
+    /// if present. Registries usually return a path-only URL
+    /// (<c>/v2/{name}/tags/list?n=…&amp;last=…</c>), so a relative value is
+    /// resolved against the same API host the first page used.
+    /// </summary>
+    private static string? ResolveNextPageUrl(HttpResponseMessage response, string apiHost)
+    {
+        if (!response.Headers.TryGetValues("Link", out var headers)) return null;
+
+        foreach (var header in headers)
+        {
+            foreach (var segment in header.Split(','))
+            {
+                var part = segment.Trim();
+                if (part.IndexOf("rel=\"next\"", StringComparison.OrdinalIgnoreCase) < 0
+                    && part.IndexOf("rel=next", StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
+
+                var start = part.IndexOf('<');
+                var end = part.IndexOf('>');
+                if (start < 0 || end <= start) continue;
+
+                var raw = part[(start + 1)..end].Trim();
+                if (raw.Length == 0) continue;
+                if (Uri.TryCreate(raw, UriKind.Absolute, out var abs)) return abs.ToString();
+                return $"https://{apiHost}{(raw.StartsWith('/') ? raw : "/" + raw)}";
+            }
+        }
+        return null;
     }
 
     // ── HTTP exchange ────────────────────────────────────────────────────────

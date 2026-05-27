@@ -79,4 +79,48 @@ public class TagVersionComparerTests
         var tags = new[] { "1.27.3", "1.27.10", "1.28.0" };
         Assert.Equal("1.28.0", PickHighest(tags));
     }
+
+    [Fact]
+    public void NumericPrereleaseIdentifiersCompareNumerically()
+    {
+        // semver §11: numeric prerelease identifiers compare numerically, so
+        // rc.10 > rc.2. A raw ordinal compare wrongly ranks rc.2 above rc.10.
+        var tags = new[] { "v1.0.0-rc.2", "v1.0.0-rc.10" };
+        Assert.Equal("v1.0.0-rc.10", PickHighest(tags));
+    }
+
+    [Fact]
+    public void LongerPrereleaseOutranksItsPrefix()
+    {
+        // semver §11: a larger set of prerelease fields outranks a smaller one
+        // when all preceding identifiers are equal (alpha < alpha.1).
+        var tags = new[] { "v1.0.0-alpha", "v1.0.0-alpha.1" };
+        Assert.Equal("v1.0.0-alpha.1", PickHighest(tags));
+    }
+
+    [Fact]
+    public void AlphanumericPrereleaseOutranksNumeric()
+    {
+        // semver §11: numeric identifiers always rank below alphanumeric ones.
+        var tags = new[] { "v1.0.0-1", "v1.0.0-alpha" };
+        Assert.Equal("v1.0.0-alpha", PickHighest(tags));
+    }
+
+    [Fact]
+    public void BuildMetadataIgnoredForPrecedence()
+    {
+        // semver: build metadata (+...) must NOT affect precedence. The plain
+        // release with build metadata still outranks any prerelease.
+        var tags = new[] { "v1.0.0+build5", "v1.0.0-rc1" };
+        Assert.Equal("v1.0.0+build5", PickHighest(tags));
+    }
+
+    [Fact]
+    public void SemverTagOutranksNonSemverRegardlessOfOrdinal()
+    {
+        // 'zzz-…' sorts above 'v2.0.0' under a raw ordinal compare, but a real
+        // version tag must win so the filter doesn't pick a junk tag as latest.
+        var tags = new[] { "v2.0.0", "zzz-experimental" };
+        Assert.Equal("v2.0.0", PickHighest(tags));
+    }
 }
