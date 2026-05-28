@@ -28,4 +28,8 @@
     <ProjectReference Include="..\Stashboard.Infrastructure\Stashboard.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Stashboard.Tests" />
+  </ItemGroup>
+
 </Project>

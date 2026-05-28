@@ -57,26 +57,7 @@ public sealed class HealthCheckBackgroundService(
             var previousMainStatus = service.CurrentStatus;
             var previousAdditionalStatus = service.AdditionalUrlStatus;
             var result = await checker.CheckAsync(service, cancellationToken);
-            service.CurrentStatus = result.Main.Status;
-            service.LastResponseTimeMs = result.Main.ResponseTimeMs;
-            service.LastError = result.Main.Error;
-            service.LastCheckedUtc = result.Main.Status == Stashboard.Core.Enums.ServiceStatus.Unknown
-                && !service.MainUrlHealthCheckEnabled
-                ? null
-                : DateTime.UtcNow;
-
-            if (result.Additional is { } additional)
-            {
-                service.AdditionalUrlStatus = additional.Status;
-                service.AdditionalUrlLastResponseTimeMs = additional.ResponseTimeMs;
-                service.AdditionalUrlLastError = additional.Error;
-            }
-            else
-            {
-                service.AdditionalUrlStatus = Stashboard.Core.Enums.ServiceStatus.Unknown;
-                service.AdditionalUrlLastResponseTimeMs = null;
-                service.AdditionalUrlLastError = null;
-            }
+            HealthCheckStatusEvaluator.Apply(service, result, options.CurrentValue.FailureThreshold, DateTime.UtcNow);
 
             if (userIds.Contains(service.UserId))
             {
@@ -112,8 +93,10 @@ public sealed class HealthCheckBackgroundService(
         service.LastResponseTimeMs = null;
         service.LastError = null;
         service.LastCheckedUtc = null;
+        service.MainUrlConsecutiveFailures = 0;
         service.AdditionalUrlStatus = Stashboard.Core.Enums.ServiceStatus.Unknown;
         service.AdditionalUrlLastResponseTimeMs = null;
         service.AdditionalUrlLastError = null;
+        service.AdditionalUrlConsecutiveFailures = 0;
     }
 }

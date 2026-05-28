@@ -1,11 +1,13 @@
 using System.Net;
 using System.Security.Authentication;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using Moq.Protected;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
 using Stashboard.Core.Enums;
+using Stashboard.Core.Options;
 using Stashboard.Infrastructure.Services;
 
 namespace Stashboard.Tests.Infrastructure;
@@ -31,6 +33,14 @@ public class ServiceHealthCheckerTests
     private static HttpClient BuildClient(Func<HttpRequestMessage, HttpResponseMessage> responseFactory)
         => BuildClient((req, _) => Task.FromResult(responseFactory(req)));
 
+    private static IOptionsMonitor<HealthCheckOptions> Options(int retryCount = 0, int retryDelayMs = 0)
+    {
+        var opts = new HealthCheckOptions { RetryCount = retryCount, RetryDelayMs = retryDelayMs };
+        var monitor = new Mock<IOptionsMonitor<HealthCheckOptions>>();
+        monitor.Setup(m => m.CurrentValue).Returns(opts);
+        return monitor.Object;
+    }
+
     private static ServiceHealthChecker BuildChecker(HttpStatusCode responseCode)
     {
         var factory = new Mock<IHttpClientFactory>();
@@ -39,7 +49,7 @@ public class ServiceHealthCheckerTests
         factory.Setup(f => f.CreateClient("healthcheck-insecure"))
             .Returns(BuildClient(_ => new HttpResponseMessage(responseCode)));
 
-        return new ServiceHealthChecker(factory.Object, NullLogger<ServiceHealthChecker>.Instance);
+        return new ServiceHealthChecker(factory.Object, Options(), NullLogger<ServiceHealthChecker>.Instance);
     }
 
     private static ServiceHealthChecker BuildCheckerPerClient(HttpClient regularClient, HttpClient insecureClient)
@@ -47,7 +57,15 @@ public class ServiceHealthCheckerTests
         var factory = new Mock<IHttpClientFactory>();
         factory.Setup(f => f.CreateClient("healthcheck")).Returns(regularClient);
         factory.Setup(f => f.CreateClient("healthcheck-insecure")).Returns(insecureClient);
-        return new ServiceHealthChecker(factory.Object, NullLogger<ServiceHealthChecker>.Instance);
+        return new ServiceHealthChecker(factory.Object, Options(), NullLogger<ServiceHealthChecker>.Instance);
+    }
+
+    private static ServiceHealthChecker BuildChecker(HttpClient client, IOptionsMonitor<HealthCheckOptions> options)
+    {
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(f => f.CreateClient("healthcheck")).Returns(client);
+        factory.Setup(f => f.CreateClient("healthcheck-insecure")).Returns(client);
+        return new ServiceHealthChecker(factory.Object, options, NullLogger<ServiceHealthChecker>.Instance);
     }
 
     private static ServiceHealthChecker BuildCheckerPerUrl(Dictionary<string, HttpStatusCode> urlMap)
@@ -295,5 +313,81 @@ public class ServiceHealthCheckerTests
 
         // ServiceHealthChecker must not write back to the entity — that is the caller's responsibility.
         Assert.Equal(ServiceStatus.Unknown, entity.AdditionalUrlStatus);
+    }
+
+    // ── In-probe retries (transient connection failures) ─────────────────────
+
+    [Fact]
+    public async Task CheckUrlAsync_WhenTransientFailureThenSuccess_RetriesAndReturnsUp()
+    {
+        var attempts = 0;
+        var client = BuildClient((_, _) =>
+        {
+            attempts++;
+            return attempts < 3
+                ? Task.FromException<HttpResponseMessage>(new HttpRequestException("Name or service not known"))
+                : Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+        });
+        var checker = BuildChecker(client, Options(retryCount: 3));
+
+        var result = await checker.CheckUrlAsync("https://example.com", HealthCheckMethod.Get, null);
+
+        Assert.Equal(ServiceStatus.Up, result.Status);
+        Assert.Equal(3, attempts);
+    }
+
+    [Fact]
+    public async Task CheckUrlAsync_WhenTimeoutThenSuccess_RetriesAndReturnsUp()
+    {
+        var attempts = 0;
+        var client = BuildClient((_, _) =>
+        {
+            attempts++;
+            return attempts == 1
+                ? Task.FromException<HttpResponseMessage>(new TaskCanceledException())
+                : Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+        });
+        var checker = BuildChecker(client, Options(retryCount: 2));
+
+        var result = await checker.CheckUrlAsync("https://example.com", HealthCheckMethod.Get, null);
+
+        Assert.Equal(ServiceStatus.Up, result.Status);
+        Assert.Equal(2, attempts);
+    }
+
+    [Fact]
+    public async Task CheckUrlAsync_WhenTransientFailurePersists_ReturnsDownAfterExhaustingRetries()
+    {
+        var attempts = 0;
+        var client = BuildClient((_, _) =>
+        {
+            attempts++;
+            return Task.FromException<HttpResponseMessage>(new HttpRequestException("Network is unreachable"));
+        });
+        var checker = BuildChecker(client, Options(retryCount: 2));
+
+        var result = await checker.CheckUrlAsync("https://example.com", HealthCheckMethod.Get, null);
+
+        Assert.Equal(ServiceStatus.Down, result.Status);
+        Assert.Equal("Network is unreachable", result.Error);
+        Assert.Equal(3, attempts); // initial attempt + 2 retries
+    }
+
+    [Fact]
+    public async Task CheckUrlAsync_WhenHttpErrorStatus_DoesNotRetry()
+    {
+        var attempts = 0;
+        var client = BuildClient(_ =>
+        {
+            attempts++;
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+        var checker = BuildChecker(client, Options(retryCount: 3));
+
+        var result = await checker.CheckUrlAsync("https://example.com", HealthCheckMethod.Get, null);
+
+        Assert.Equal(ServiceStatus.Down, result.Status);
+        Assert.Equal("HTTP 500", result.Error);
+        Assert.Equal(1, attempts); // a real HTTP response is never retried
     }
 }

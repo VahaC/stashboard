@@ -187,6 +187,9 @@ All settings can be overridden via env vars prefixed with `STASHBOARD_` (use `__
 | App base URL | `STASHBOARD_Email__AppBaseUrl` | `http://localhost:5173` | Used to build links inside emails |
 | Healthcheck interval | `STASHBOARD_HealthCheck__IntervalSeconds` | `60` | Seconds |
 | Healthcheck timeout | `STASHBOARD_HealthCheck__RequestTimeoutSeconds` | `10` | Per-request |
+| Healthcheck failure threshold | `STASHBOARD_HealthCheck__FailureThreshold` | `3` | Consecutive failed scans before a service is marked Down and an offline alert fires. Guards against false alerts from a single transient blip. Floor `1` = notify on first failure. |
+| Healthcheck retry count | `STASHBOARD_HealthCheck__RetryCount` | `2` | Extra retries within one probe on a connection-level failure (DNS, timeout, network, TLS). Real HTTP responses (incl. 5xx) are never retried. |
+| Healthcheck retry delay | `STASHBOARD_HealthCheck__RetryDelayMs` | `1000` | Milliseconds between in-probe retries. |
 | Docker update scan tick | `STASHBOARD_DockerUpdate__TickIntervalSeconds` | `300` | How often the schedule-driven Docker scan wakes up to look for due watches. Per-watch cadence (default 24 h) is set per service in the UI. Floor: 30 s. Between sweeps the loop also drains the webhook queue every ~5 s. |
 | Health verification attempts | `STASHBOARD_DockerUpdate__HealthVerificationMaxAttempts` | `10` | Polls after "Update now" recreate; set to `0` to disable and accept success on container start. |
 | Health verification interval | `STASHBOARD_DockerUpdate__HealthVerificationIntervalSeconds` | `3` | Seconds between health polls |
@@ -420,6 +423,10 @@ dotnet ef database update <PreviousMigrationName>    --project src/Stashboard.Ap
 ✅ **V5.2 — True Compose-aware recreate** _(shipped in 5.2.0)_ — when a local-socket connection has a bind-mounted **Compose project path**, "Update now" runs `docker compose pull` + `up -d <service>` (honouring `env_file`, `depends_on` ordering, and profiles) instead of the raw recreate. The image now ships the `docker compose` binary; falls back to the raw recreate when not configured. See the [CHANGELOG](./CHANGELOG.md) and [guide §5.1a](./DOCKER_UPDATE_MONITORING_GUIDE.md).
 
 ✅ **V5.3 — Host terminal (browser SSH shell to the Docker host)** _(shipped in 5.3.0)_ — a **Terminal** tab on the container modal opens an interactive `xterm.js` shell on the **host** of an SSH connection, bridged over a WebSocket with single-use ticket auth (the transport later shell phases reuse). Off by default and gated three ways (global flag + per-connection opt-in + SSH connection); every session is audited with per-user/host caps and an idle timeout. See the [CHANGELOG](./CHANGELOG.md).
+
+✅ **V5.3.1 — Tag-pattern filter correctness + version tags** _(shipped in 5.3.1)_ — fixes the per-watch tag-pattern filter so it resolves the genuinely newest matching tag (semver outranks non-semver, full-match regex, paginated registries fully scanned) instead of getting stuck on a phantom *Update available*, and the UI now shows the resolved version tag next to each `sha256` digest. See the [CHANGELOG](./CHANGELOG.md).
+
+✅ **V5.3.2 — Reliable offline alerts (no false positives)** _(shipped in 5.3.2)_ — health checks now retry connection-level failures within a probe and require N consecutive failed scans before marking a service Down, so a single transient blip (DNS hiccup, timeout, network/TLS glitch on the monitoring host) no longer fires a false "Service unavailable" Telegram alert. Tunable via `STASHBOARD_HealthCheck__FailureThreshold` / `RetryCount` / `RetryDelayMs`. See the [CHANGELOG](./CHANGELOG.md).
 
 These are the next items on the roadmap; they're ordered roughly simplest → most complex.
 

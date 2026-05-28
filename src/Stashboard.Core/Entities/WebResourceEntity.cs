@@ -51,9 +51,17 @@ public class WebResourceEntity : AuditableEntity
     public int? LastResponseTimeMs { get; set; }
     public string? LastError { get; set; }
 
+    /// <summary>Number of consecutive failed scans on the main URL. The status only flips to
+    /// Down (and an alert fires) once this reaches the configured failure threshold; a single
+    /// transient blip is absorbed and the counter resets on the next success.</summary>
+    public int MainUrlConsecutiveFailures { get; set; }
+
     public ServiceStatus AdditionalUrlStatus { get; set; } = ServiceStatus.Unknown;
     public int? AdditionalUrlLastResponseTimeMs { get; set; }
     public string? AdditionalUrlLastError { get; set; }
+
+    /// <summary>Consecutive-failure counter for the additional URL. See <see cref="MainUrlConsecutiveFailures"/>.</summary>
+    public int AdditionalUrlConsecutiveFailures { get; set; }
 
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 
