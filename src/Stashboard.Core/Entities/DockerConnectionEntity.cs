@@ -90,5 +90,38 @@ public class DockerConnectionEntity : AuditableEntity
     /// </summary>
     public bool AllowHostShell { get; set; }
 
+    /// <summary>
+    /// V5.7 — opt-in switch for the browser container-exec terminal (an
+    /// interactive shell <em>inside</em> a container via the Docker daemon's
+    /// <c>exec</c> API). Off by default: exec runs arbitrary commands in the
+    /// workload, so it has to be turned on deliberately per connection. Unlike
+    /// <see cref="AllowHostShell"/> (SSH-only, lands on the host), exec works
+    /// for every host type because it goes through the daemon rather than an
+    /// SSH login. The server also requires the global
+    /// <c>Stashboard:AllowContainerExec</c> switch before honouring it.
+    /// </summary>
+    public bool AllowExec { get; set; }
+
+    /// <summary>
+    /// V5.5 — per-connection opt-out for the background image-prune sweep.
+    /// Default <c>true</c>: pruning dangling images is safe and is the whole
+    /// point of the feature, so any newly added connection participates
+    /// unless the operator turns it off here.
+    /// </summary>
+    public bool AllowImagePrune { get; set; } = true;
+
+    /// <summary>
+    /// V5.5 — per-connection opt-in to also prune <em>unused</em> images
+    /// (anything not referenced by a running or stopped container). Off by
+    /// default — more aggressive, and can break "rollback to previous tag"
+    /// workflows by removing the previous version's image entirely.
+    /// </summary>
+    public bool PruneUnusedImages { get; set; }
+
+    /// <summary>V5.5 — UTC timestamp of the last successful prune run.
+    /// Used by the background sweep to space runs out per the configured
+    /// interval, and surfaced on the storage widget.</summary>
+    public DateTime? LastImagePruneUtc { get; set; }
+
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

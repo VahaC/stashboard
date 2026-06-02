@@ -81,6 +81,12 @@
   font-weight: 600;
 }
 
+.docker-instances-connection-meta-group {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end;
+}
+
 .docker-instances-connection-meta {
   color: var(--muted-foreground);
   font-size: 12px;
@@ -89,10 +95,18 @@
 
 .docker-instances-page .dashboard-group-button {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0.5rem;
   cursor: pointer;
+}
+
+.docker-instances-connection-actions {
+  display: flex;
+}
+
+.docker-instances-connection-actions button {
+  margin: 0 0.25rem;
 }
 
 .docker-instances-page .dashboard-group-title {
@@ -104,6 +118,11 @@
   padding: 0;
   text-align: left;
   cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
 }
 
 .docker-instances-page .docker-instances-connection-meta {
@@ -132,9 +151,215 @@
 }
 
 .docker-instances-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+/* V5.4 — compose project grouping on the instances page */
+.docker-instances-project-list {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.docker-instances-project {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--card) 75%, transparent);
+  width: fit-content;
+  max-width: 100%;
+}
+
+.docker-instances-project-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  /* Prevent the header from expanding the section beyond the cards' width.
+   * width:0 removes this element from the parent's max-content calculation;
+   * min-width:100% then stretches it to the section's actual (card-driven) width. */
+  width: 0;
+  min-width: 100%;
+}
+
+.docker-instances-project-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.docker-instances-project-badge {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.375rem;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.docker-instances-project-badge:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.docker-instances-project-counter {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.docker-instances-project-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* V5.4 — shared update modal (confirm → running → done/error) used by
+   both the per-watch "Update now" and the per-project "Update project"
+   buttons. */
+.update-progress-dialog {
+  max-width: 560px;
+}
+
+.update-progress-meta {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  margin: 0 0 0.25rem 0;
+}
+
+.update-progress-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 13px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  margin: 0;
+}
+
+.update-progress-banner-success {
+  background: color-mix(in srgb, hsl(var(--success, 142 76% 36%)) 12%, transparent);
+  color: hsl(var(--success, 142 76% 36%));
+}
+
+.update-progress-banner-failed {
+  background: color-mix(in srgb, hsl(var(--destructive)) 12%, transparent);
+  color: hsl(var(--destructive));
+}
+
+.update-progress-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.update-progress-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--card);
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+/* "Done" rows (success or failure) dim slightly to signal they're locked in. */
+.update-progress-row[data-state='success'],
+.update-progress-row[data-state='failed'] {
+  opacity: 0.75;
+}
+
+.update-progress-row[data-state='failed'] {
+  border-color: color-mix(in srgb, hsl(var(--destructive)) 50%, var(--border));
+}
+
+.update-progress-row[data-state='running'] {
+  background: color-mix(in srgb, hsl(var(--accent)) 20%, var(--card));
+}
+
+.update-progress-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.update-progress-row-name {
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.update-progress-row-secondary {
+  font-weight: 400;
+  color: hsl(var(--muted-foreground));
+}
+
+.update-progress-row-image {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.update-progress-row-untracked,
+.update-progress-row-error {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.update-progress-row-error {
+  color: hsl(var(--destructive));
+}
+
+.update-progress-row-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  padding-top: 0.125rem;
+}
+
+.update-progress-row-status-pending {
+  color: hsl(var(--muted-foreground));
+}
+
+.update-progress-row-status-running {
+  color: hsl(var(--foreground));
+}
+
+.update-progress-row-status-success {
+  color: hsl(var(--success, 142 76% 36%));
+}
+
+.update-progress-row-status-failed {
+  color: hsl(var(--destructive));
+}
+
+.update-progress-docs {
+  font-size: 12px;
+  margin: 0;
 }
 
 .docker-instances-card {
@@ -145,6 +370,8 @@
   border: 1px solid var(--border);
   border-radius: 0.375rem;
   background: var(--card);
+  flex: 0 0 280px;
+  max-width: 280px;
 }
 
 /* V5.0 — Disabled card style for terminal containers */
@@ -805,6 +1032,33 @@
   text-align: right;
 }
 
+/* V5.7 — per-session command input on the container-exec toolbar. */
+.container-exec-command {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 12px;
+}
+
+.container-exec-command-label {
+  color: var(--muted-foreground);
+}
+
+.container-exec-command-input {
+  width: 9rem;
+  padding: 0.15rem 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--foreground);
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.25rem;
+}
+
+.container-exec-command-input:disabled {
+  opacity: 0.6;
+}
+
 .host-terminal-viewport {
     background: #0b1020;
     border-radius: 0.375rem;
@@ -922,5 +1176,246 @@
   border-radius: 0.375rem;
   background: hsl(var(--destructive) / 0.08);
   color: hsl(var(--destructive));
+  font-size: 12px;
+}
+
+/* ── V5.5 — Storage widget on the connection section header ─────────── */
+
+.docker-storage-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  font-size: 13px;
+}
+
+.docker-storage-widget__header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.docker-storage-widget__title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.docker-storage-widget__refresh {
+  margin-left: auto;
+}
+
+.docker-storage-widget__refresh:hover {
+  color: var(--foreground);
+}
+
+.docker-storage-widget__refresh--spin {
+  animation: docker-storage-spin 0.8s linear infinite;
+}
+
+@keyframes docker-storage-spin {
+  to { transform: rotate(360deg); }
+}
+
+.docker-storage-widget__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.3rem 1rem;
+  margin: 0;
+}
+
+.docker-storage-widget__stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.docker-storage-widget__stats dt {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.docker-storage-widget__stats dd {
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.docker-storage-widget__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.docker-storage-widget__error {
+  font-size: 12px;
+  color: hsl(var(--destructive));
+}
+
+.docker-storage-widget__confirm,
+.docker-storage-widget__result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  font-size: 13px;
+}
+
+.docker-storage-widget__preview {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.375rem;
+  background: hsl(var(--muted) / 0.4);
+  font-variant-numeric: tabular-nums;
+}
+
+.docker-storage-widget__checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.docker-storage-widget__checkbox input {
+  margin-top: 0.2rem;
+}
+
+.docker-storage-widget__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+/* ── V5.5 — clickable stat buttons (drill-down) ────────────────────── */
+
+.docker-storage-widget__stat-button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.docker-storage-widget__stat-button:hover:not(:disabled) {
+  color: hsl(var(--primary));
+}
+
+.docker-storage-widget__stat-button:disabled {
+  cursor: default;
+  text-decoration: none;
+}
+
+.docker-storage-widget__detail-count {
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+/* ── V5.5 — shared image list (drill-down + prune dialog) ──────────── */
+
+.docker-image-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 18rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.docker-image-list__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.docker-image-list__row:last-child {
+  border-bottom: none;
+}
+
+.docker-image-list__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.docker-image-list__tag {
+  font-size: 13px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docker-image-list__meta {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.docker-image-list__right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.docker-image-list__size {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.docker-image-list__badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+
+.docker-image-list__badge--dangling {
+  border-color: hsl(var(--destructive) / 0.4);
+  background: hsl(var(--destructive) / 0.08);
+  color: hsl(var(--destructive));
+}
+
+.docker-image-list__badge--inuse {
+  border-color: hsl(var(--primary) / 0.4);
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+}
+
+.docker-image-list__empty {
+  margin: 0;
+  padding: 0.75rem;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  border: 1px dashed var(--border);
+  border-radius: 0.5rem;
+  text-align: center;
+}
+
+.docker-storage-widget__warn {
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.375rem;
+  border: 1px solid hsl(var(--primary) / 0.35);
+  background: hsl(var(--primary) / 0.06);
   font-size: 12px;
 }

@@ -47,3 +47,20 @@ export function getApiErrorMessage(err: unknown, fallback: string | null = null)
 
   return fallback
 }
+
+/**
+ * V5.5 — format a byte count for human display ("4.2 GiB", "812 MiB",
+ * "0 B"). Uses 1024-base ("KiB") to match the way Docker reports image
+ * sizes — keeps the UI numbers consistent with `docker system df`.
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
+  let value = bytes
+  let i = 0
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024
+    i++
+  }
+  return `${value >= 10 || i === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[i]}`
+}

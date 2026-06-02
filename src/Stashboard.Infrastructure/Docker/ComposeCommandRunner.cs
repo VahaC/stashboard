@@ -76,6 +76,40 @@ public sealed class ComposeCommandRunner(ILogger<ComposeCommandRunner> logger) :
         return new ComposeRunResult(ComposeRunnerStatus.Success, 0, up.Stdout, null);
     }
 
+    public async Task<ComposeRunResult> RecreateProjectAsync(
+        ComposeProjectRecreateRequest request, CancellationToken cancellationToken = default)
+    {
+        var invocation = await ResolveInvocationAsync(cancellationToken);
+        if (invocation is null)
+            return new ComposeRunResult(ComposeRunnerStatus.CliNotAvailable, null, null,
+                "The docker compose CLI is not available inside the Stashboard container.");
+
+        if (!DirectoryExists(request.ProjectPath))
+            return new ComposeRunResult(ComposeRunnerStatus.ProjectPathNotFound, null, null,
+                $"Compose project directory '{request.ProjectPath}' was not found inside the container.");
+
+        // V5.4 — bulk update: pull every image referenced by the file, then
+        // bring the whole project back up in one shot. No service argument is
+        // passed so Compose handles depends_on ordering itself.
+        var pull = await RunComposeAsync(invocation, request.ProjectPath,
+            new[] { "pull" }, cancellationToken);
+        if (!pull.Started)
+            return new ComposeRunResult(ComposeRunnerStatus.CliNotAvailable, null, pull.Stdout, pull.Stderr);
+        if (pull.ExitCode != 0)
+            return new ComposeRunResult(ComposeRunnerStatus.CommandFailed, pull.ExitCode, pull.Stdout,
+                $"docker compose pull failed: {Describe(pull)}");
+
+        var up = await RunComposeAsync(invocation, request.ProjectPath,
+            new[] { "up", "-d" }, cancellationToken);
+        if (!up.Started)
+            return new ComposeRunResult(ComposeRunnerStatus.CliNotAvailable, null, up.Stdout, up.Stderr);
+        if (up.ExitCode != 0)
+            return new ComposeRunResult(ComposeRunnerStatus.CommandFailed, up.ExitCode, up.Stdout,
+                $"docker compose up -d failed: {Describe(up)}");
+
+        return new ComposeRunResult(ComposeRunnerStatus.Success, 0, up.Stdout, null);
+    }
+
     // ── detection ──────────────────────────────────────────────────────────────
 
     private async Task<ComposeInvocation?> ResolveInvocationAsync(CancellationToken cancellationToken)

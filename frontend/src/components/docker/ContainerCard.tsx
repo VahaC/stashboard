@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity, AlertCircle, Bell, FileText, MoreHorizontal, Search, Trash2, SquareTerminal } from 'lucide-react'
+import { Activity, AlertCircle, Bell, FileText, MoreHorizontal, Search, Trash2, SquareChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { DockerContainerCard, DockerWatch } from '@/lib/types'
 import { ContainerStateBadge } from './atoms/ContainerStateBadge'
@@ -90,7 +90,32 @@ export function ContainerCard({
           </div>
         </div>
 
-        <div className="cc-image docker-instances-card-image">{card.image}</div>
+        {/*
+          Docker reports a container's `Image` as the tag (`mariadb:11`) only
+          while that tag still points to the same local image. As soon as
+          Stashboard pulls a newer image with the same tag, the tag migrates
+          to the new image and the running container's reported `Image`
+          becomes a bare `sha256:…` (the now-dangling old image). That's
+          actually a strong signal an update is available, but it's
+          unreadable on the card. When the container is tracked by a watch,
+          prefer the watch's stable `imageReference` (the user-configured
+          identity); the raw `card.image` stays available as the tooltip so
+          a debugger can still see what Docker is reporting.
+        */}
+        {(() => {
+          const isDangling = card.image.startsWith('sha256:')
+          const display = isDangling && linkedWatch?.imageReference
+            ? linkedWatch.imageReference
+            : card.image
+          return (
+            <div
+              className="cc-image docker-instances-card-image"
+              title={isDangling && linkedWatch?.imageReference ? card.image : undefined}
+            >
+              {display}
+            </div>
+          )
+        })()}
 
         <div className="cc-meta docker-instances-card-meta">
           Status: {card.status && <span>{card.status}</span>}
@@ -173,11 +198,11 @@ export function ContainerCard({
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => onOpen('terminal')}
-                title="Open terminal for this container"
+                onClick={() => onOpen('exec')}
+                title="Open a shell inside this container (exec)"
               >
-                <SquareTerminal className="h-3.5 w-3.5" />
-                {/* <span className="label-text">{linkedWatch ? 'Watch' : 'Track'}</span> */}
+                <SquareChevronRight className="h-3.5 w-3.5" />
+                {/* <span className="label-text">Exec</span> */}
               </Button>
             </>
           )}

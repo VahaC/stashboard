@@ -348,8 +348,14 @@ interface ConnectionFormState {
   sshRemoteSocketPath: string
   /** V5.3 — opt this SSH connection in to the browser host terminal. */
   allowHostShell: boolean
+  /** V5.7 — opt this connection in to the browser container-exec terminal (any host type). */
+  allowExec: boolean
   /** V5.2 — in-container Compose project directory (LocalSocket only). */
   composeProjectPath: string
+  /** V5.5 — participate in the background image-prune sweep. */
+  allowImagePrune: boolean
+  /** V5.5 — also remove non-dangling "unused" images. */
+  pruneUnusedImages: boolean
 }
 
 export function DockerConnectionForm({
@@ -381,7 +387,10 @@ export function DockerConnectionForm({
     sshUsername: existing?.sshUsername ?? '',
     sshRemoteSocketPath: existing?.sshRemoteSocketPath ?? '/var/run/docker.sock',
     allowHostShell: existing?.allowHostShell ?? false,
+    allowExec: existing?.allowExec ?? false,
     composeProjectPath: existing?.composeProjectPath ?? '',
+    allowImagePrune: existing?.allowImagePrune ?? true,
+    pruneUnusedImages: existing?.pruneUnusedImages ?? false,
   }))
   const [tlsCa, setTlsCa] = useState<SecretField>(() => existingSecret(existing?.hasTlsConfigured ?? false))
   const [tlsCert, setTlsCert] = useState<SecretField>(() => existingSecret(existing?.hasTlsConfigured ?? false))
@@ -418,7 +427,10 @@ export function DockerConnectionForm({
     sshPrivateKeyPassphrase: isSsh ? toUpsert(sshPassphrase) : null,
     sshRemoteSocketPath: isSsh ? (form.sshRemoteSocketPath.trim() || null) : null,
     allowHostShell: isSsh ? form.allowHostShell : false,
+    allowExec: form.allowExec,
     composeProjectPath: isLocalSocket ? (form.composeProjectPath.trim() || null) : null,
+    allowImagePrune: form.allowImagePrune,
+    pruneUnusedImages: form.pruneUnusedImages,
   })
 
   const save = async () => {
@@ -673,6 +685,54 @@ export function DockerConnectionForm({
             </div>
           </>
         )}
+
+        {/* V5.7 — container-exec opt-in. Applies to all host types (it goes
+            through the daemon, not SSH). */}
+        <div className="service-modal-field docker-section-field-full">
+          <label className="service-modal-checkbox-label service-modal-label">
+            <input
+              type="checkbox"
+              checked={form.allowExec}
+              onChange={(e) => setForm({ ...form, allowExec: e.target.checked })}
+            />
+            Allow container exec (interactive shell inside a container)
+          </label>
+          <p className="text-xs text-[var(--muted-foreground)] mt-1">
+            Opens a shell <strong>inside</strong> a running container from the container modal's <strong>Exec</strong> tab,
+            via the Docker daemon's <code>exec</code> API — works for any host type. Every session is audited. Off by
+            default; the server operator must also enable it globally (Settings → Container exec).
+          </p>
+        </div>
+
+        {/* V5.5 — image-prune participation. Applies to all host types. */}
+        <div className="service-modal-field docker-section-field-full">
+          <label className="service-modal-checkbox-label service-modal-label">
+            <input
+              type="checkbox"
+              checked={form.allowImagePrune}
+              onChange={(e) => setForm({ ...form, allowImagePrune: e.target.checked })}
+            />
+            Participate in scheduled image prune
+          </label>
+          <p className="text-xs text-[var(--muted-foreground)] mt-1">
+            On the configured interval, Stashboard runs <code>docker image prune</code> on this host to remove
+            dangling <code>&lt;none&gt;:&lt;none&gt;</code> images left behind by container updates. The manual
+            "Prune now" button on the Docker page always works regardless of this toggle.
+          </p>
+          <label className="service-modal-checkbox-label service-modal-label mt-2">
+            <input
+              type="checkbox"
+              checked={form.pruneUnusedImages}
+              onChange={(e) => setForm({ ...form, pruneUnusedImages: e.target.checked })}
+              disabled={!form.allowImagePrune}
+            />
+            Also prune unused images (aggressive)
+          </label>
+          <p className="text-xs text-[var(--muted-foreground)] mt-1">
+            Also removes any image not referenced by a running or stopped container. Off by default — can break
+            "rollback to previous tag" workflows.
+          </p>
+        </div>
 
         {pingResult && (
           <div className="service-modal-field docker-section-field-full">
@@ -1509,12 +1569,13 @@ function UpdateNowButton({ connectionId, watch }: { connectionId: string; watch:
   // the form handles re-enabling.
   if (!watch.enabled) return null
 
-  // Runs only after the user confirms in the dialog. On success the dialog
-  // closes; on failure it stays open and surfaces the error inline.
-  const confirmUpdate = async () => {
-    await update.mutateAsync(watch.id)
-    setConfirmOpen(false)
-  }
+  // V5.4 — runs after the user confirms in the unified UpdateProgressDialog.
+  // We return the full DockerWatchUpdateResponse so the dialog can render
+  // ✓ / ✗ on the per-watch row in its done phase. The backend returns 200
+  // even on RecreateFailed (the attempt.status carries the outcome), so the
+  // dialog's row picks up the failure from attempt.status without going
+  // through the error phase.
+  const confirmUpdate = () => update.mutateAsync(watch.id)
 
   return (
     <>
@@ -1538,7 +1599,7 @@ function UpdateNowButton({ connectionId, watch }: { connectionId: string; watch:
         containerName={watch.containerName}
         updateAvailable={highlight}
         onConfirm={confirmUpdate}
-        onCancel={() => setConfirmOpen(false)}
+        onClose={() => setConfirmOpen(false)}
       />
     </>
   )

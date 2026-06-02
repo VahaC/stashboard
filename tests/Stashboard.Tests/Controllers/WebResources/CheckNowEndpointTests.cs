@@ -23,7 +23,7 @@ public class CheckNowEndpointTests : WebResourcesControllerTestBase
     {
         var svc = await _dataFactory.ServiceAsync();
         _healthCheckerMock
-            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<CancellationToken>()))
+            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<Stashboard.Core.Abstractions.HealthCheckRetrySettings?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(MainOnly(ServiceStatus.Up, 120));
         var ctrl = BuildController();
 
@@ -46,7 +46,7 @@ public class CheckNowEndpointTests : WebResourcesControllerTestBase
     {
         var svc = await _dataFactory.ServiceAsync();
         _healthCheckerMock
-            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<CancellationToken>()))
+            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<Stashboard.Core.Abstractions.HealthCheckRetrySettings?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ServiceCheckResult(new HealthCheckResult(ServiceStatus.Down, null, "Connection refused"), null));
         var ctrl = BuildController();
 
@@ -64,7 +64,7 @@ public class CheckNowEndpointTests : WebResourcesControllerTestBase
         var svc = await _dataFactory.ServiceAsync();
         var before = DateTime.UtcNow.AddSeconds(-1);
         _healthCheckerMock
-            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<CancellationToken>()))
+            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<Stashboard.Core.Abstractions.HealthCheckRetrySettings?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(MainOnly(ServiceStatus.Up, 50));
         var ctrl = BuildController();
 
@@ -81,13 +81,13 @@ public class CheckNowEndpointTests : WebResourcesControllerTestBase
     {
         var svc = await _dataFactory.ServiceAsync();
         _healthCheckerMock
-            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<CancellationToken>()))
+            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<Stashboard.Core.Abstractions.HealthCheckRetrySettings?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ServiceCheckResult(new HealthCheckResult(ServiceStatus.Down, null, "timeout"), null));
         var ctrl = BuildController();
         await ctrl.CheckNow(svc.Id, CancellationToken.None);
 
         _healthCheckerMock
-            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<CancellationToken>()))
+            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<Stashboard.Core.Abstractions.HealthCheckRetrySettings?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(MainOnly(ServiceStatus.Up, 80));
         await ctrl.CheckNow(svc.Id, CancellationToken.None);
 
@@ -103,8 +103,8 @@ public class CheckNowEndpointTests : WebResourcesControllerTestBase
         var svc = await _dataFactory.ServiceAsync(mainUrl: "https://target.example.com");
         Core.Entities.WebResourceEntity? captured = null;
         _healthCheckerMock
-            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<CancellationToken>()))
-            .Callback<Core.Entities.WebResourceEntity, CancellationToken>((s, _) => captured = s)
+            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<Stashboard.Core.Abstractions.HealthCheckRetrySettings?>(), It.IsAny<CancellationToken>()))
+            .Callback<Core.Entities.WebResourceEntity, Stashboard.Core.Abstractions.HealthCheckRetrySettings?, CancellationToken>((s, _, __) => captured = s)
             .ReturnsAsync(MainOnly(ServiceStatus.Up, 100));
         var ctrl = BuildController();
 
@@ -150,7 +150,7 @@ public class CheckNowEndpointTests : WebResourcesControllerTestBase
         await ctrl.CheckNow(Guid.NewGuid(), CancellationToken.None);
 
         _healthCheckerMock.Verify(
-            h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<CancellationToken>()),
+            h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<Stashboard.Core.Abstractions.HealthCheckRetrySettings?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -164,7 +164,7 @@ public class CheckNowEndpointTests : WebResourcesControllerTestBase
         _dbContext.ChangeTracker.Clear();
 
         _healthCheckerMock
-            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<CancellationToken>()))
+            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<Stashboard.Core.Abstractions.HealthCheckRetrySettings?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(WithAdditional(ServiceStatus.Up, 100, ServiceStatus.Down, 200, "HTTP 503"));
         var ctrl = BuildController();
 
@@ -189,7 +189,7 @@ public class CheckNowEndpointTests : WebResourcesControllerTestBase
     {
         var svc = await _dataFactory.ServiceAsync();
         _healthCheckerMock
-            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<CancellationToken>()))
+            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<Stashboard.Core.Abstractions.HealthCheckRetrySettings?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(MainOnly(ServiceStatus.Up, 50));
         var ctrl = BuildController();
 
@@ -210,7 +210,7 @@ public class CheckNowEndpointTests : WebResourcesControllerTestBase
         _dbContext.ChangeTracker.Clear();
 
         _healthCheckerMock
-            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<CancellationToken>()))
+            .Setup(h => h.CheckAsync(It.IsAny<Core.Entities.WebResourceEntity>(), It.IsAny<Stashboard.Core.Abstractions.HealthCheckRetrySettings?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(WithAdditional(ServiceStatus.Up, 80, ServiceStatus.Up, 90, null));
         var ctrl = BuildController();
 

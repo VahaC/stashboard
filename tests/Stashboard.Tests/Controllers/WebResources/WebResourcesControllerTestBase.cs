@@ -65,8 +65,8 @@ public abstract class WebResourcesControllerTestBase : IAsyncLifetime
             .ReturnsAsync((string url, CancellationToken _) => $"data:image/png;base64,AAAA=={url}");
 
         _healthCheckerMock
-            .Setup(h => h.CheckAsync(It.IsAny<WebResourceEntity>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((WebResourceEntity service, CancellationToken _) => new ServiceCheckResult(
+            .Setup(h => h.CheckAsync(It.IsAny<WebResourceEntity>(), It.IsAny<HealthCheckRetrySettings?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((WebResourceEntity service, HealthCheckRetrySettings? _, CancellationToken __) => new ServiceCheckResult(
                 service.MainUrlHealthCheckEnabled
                     ? new HealthCheckResult(Stashboard.Core.Enums.ServiceStatus.Up, 100, null)
                     : new HealthCheckResult(Stashboard.Core.Enums.ServiceStatus.Unknown, null, null),
@@ -182,7 +182,11 @@ public abstract class WebResourcesControllerTestBase : IAsyncLifetime
             mapper,
             _statusNotificationsMock.Object,
             _envMock.Object,
-            _faviconMock.Object);
+            _faviconMock.Object,
+            new Stashboard.Api.Services.HealthCheckSettings.HealthCheckSettingsService(
+                _dbContext,
+                Options.Create(new Stashboard.Core.Options.HealthCheckOptions()),
+                new TestTimeProvider()));
 
         var identity = new ClaimsIdentity(
             new[] { new Claim(StashboardClaims.UserId, (userId ?? _userId).ToString()) }, "Test");

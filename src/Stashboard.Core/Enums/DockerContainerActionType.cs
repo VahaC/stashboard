@@ -24,4 +24,13 @@ public enum DockerContainerActionType
     /// <summary>V3.5 — <c>docker rm &lt;container&gt;</c>. Gated by the
     /// server-side <c>Stashboard.AllowContainerRemoval</c> feature flag.</summary>
     Remove = 4,
+
+    /// <summary>
+    /// V5.4 — aggregate row for a bulk "Update project" attempt. The row
+    /// itself is the parent; each per-service result is written as a child
+    /// row of the same kind through which we can reconstruct what happened
+    /// to each container in the stack. Always emitted alongside one
+    /// <see cref="Update"/> row per service participating in the bulk run.
+    /// </summary>
+    UpdateProject = 5,
 }

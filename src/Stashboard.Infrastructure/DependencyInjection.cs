@@ -95,6 +95,11 @@ public static class DependencyInjection
         // Stateless: each Connect() owns its own SshClient + ShellStream, torn
         // down when the returned channel is disposed.
         services.AddSingleton<IHostShellConnector, Docker.Ssh.SshHostShellConnector>();
+        // V5.7 — opens an interactive PTY *inside* a container via the daemon's
+        // exec API. Stateless: each ConnectAsync() owns its own Docker client +
+        // exec stream, torn down when the returned channel is disposed. Works
+        // for every host type because it routes through the daemon, not SSH.
+        services.AddSingleton<IContainerExecConnector, DockerContainerExecConnector>();
         // V5.2 — shells out to the host `docker compose` CLI for a true
         // Compose-aware recreate. Singleton so the CLI-availability probe is
         // cached for the process lifetime.
@@ -103,6 +108,15 @@ public static class DependencyInjection
         // container. Singleton: stateless, pulls the per-request transport
         // from the same factory the host client uses.
         services.AddSingleton<IDockerImageUpdater, DockerImageUpdater>();
+        // V5.4 — bulk "Update project" orchestrator that drives the
+        // compose-aware path (one `docker compose pull && up -d` against the
+        // project root) or falls back to per-service raw recreate ordered by
+        // the `com.docker.compose.depends_on` label.
+        services.AddSingleton<IDockerProjectUpdater, DockerProjectUpdater>();
+        // V5.5 — image-prune orchestrator. Stateless wrapper around the host
+        // client's prune call; the controller / background service own the
+        // audit-row persistence.
+        services.AddSingleton<IDockerPruneRunner, DockerPruneRunner>();
 
         // V2.6 — webhook receiver plumbing. The queue is a singleton process-
         // local buffer; the parser and token generator are pure stateless

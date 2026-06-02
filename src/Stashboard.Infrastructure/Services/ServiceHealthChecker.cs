@@ -15,32 +15,33 @@ public sealed class ServiceHealthChecker(
     IOptionsMonitor<HealthCheckOptions> options,
     ILogger<ServiceHealthChecker> logger) : IServiceHealthChecker
 {
-    public async Task<ServiceCheckResult> CheckAsync(WebResourceEntity service, CancellationToken cancellationToken = default)
+    public async Task<ServiceCheckResult> CheckAsync(WebResourceEntity service, HealthCheckRetrySettings? retry = null, CancellationToken cancellationToken = default)
     {
         var url = !string.IsNullOrWhiteSpace(service.HealthCheckUrl) ? service.HealthCheckUrl! : service.MainUrl;
         var mainResult = service.MainUrlHealthCheckEnabled
-            ? await CheckUrlAsync(url, service.HealthCheckMethod, service.ExpectedStatusRange, cancellationToken)
+            ? await CheckUrlAsync(url, service.HealthCheckMethod, service.ExpectedStatusRange, retry, cancellationToken)
             : new HealthCheckResult(ServiceStatus.Unknown, null, null);
 
         HealthCheckResult? additionalResult = null;
         if (!string.IsNullOrWhiteSpace(service.AdditionalUrl))
         {
             additionalResult = service.AdditionalUrlHealthCheckEnabled
-                ? await CheckUrlAsync(service.AdditionalUrl, service.HealthCheckMethod, service.ExpectedStatusRange, cancellationToken)
+                ? await CheckUrlAsync(service.AdditionalUrl, service.HealthCheckMethod, service.ExpectedStatusRange, retry, cancellationToken)
                 : new HealthCheckResult(ServiceStatus.Unknown, null, null);
         }
 
         return new ServiceCheckResult(mainResult, additionalResult);
     }
 
-    public async Task<HealthCheckResult> CheckUrlAsync(string url, HealthCheckMethod method, string? expectedStatusRange, CancellationToken cancellationToken = default)
+    public async Task<HealthCheckResult> CheckUrlAsync(string url, HealthCheckMethod method, string? expectedStatusRange, HealthCheckRetrySettings? retry = null, CancellationToken cancellationToken = default)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
             return new HealthCheckResult(ServiceStatus.Down, null, "Invalid URL");
 
+        // Caller-supplied (DB-backed) tuning wins; otherwise fall back to the bound config defaults.
         var opts = options.CurrentValue;
-        var maxAttempts = Math.Max(0, opts.RetryCount) + 1;
-        var retryDelay = TimeSpan.FromMilliseconds(Math.Max(0, opts.RetryDelayMs));
+        var maxAttempts = Math.Max(0, retry?.RetryCount ?? opts.RetryCount) + 1;
+        var retryDelay = TimeSpan.FromMilliseconds(Math.Max(0, retry?.RetryDelayMs ?? opts.RetryDelayMs));
 
         // Retry only connection-level failures (DNS, timeout, network, TLS handshake). A real
         // HTTP response — even a 5xx — is never retried: the target answered, so retrying just

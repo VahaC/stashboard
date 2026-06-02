@@ -6,7 +6,7 @@ import { useAuthStore } from '@/lib/auth-store'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import logo from '@/assets/logo.svg'
-import { LayoutGrid, Tags as TagsIcon, FolderTree, Database, LogOut, UserCog, Menu, X, Container, Bell, ChevronDown, Settings, TerminalSquare } from 'lucide-react'
+import { LayoutGrid, Tags as TagsIcon, FolderTree, Database, LogOut, UserCog, Menu, X, Container, Bell, ChevronDown, Settings, TerminalSquare, SquareChevronRight, HardDrive, Activity, ScrollText } from 'lucide-react'
 import '@/styles/app-layout.css'
 
 const mainNavItems = [
@@ -19,6 +19,10 @@ const mainNavItems = [
 const settingsNavItems = [
   { to: '/notifications', label: 'Notifications', icon: Bell, end: false },
   { to: '/host-terminal', label: 'Host terminal', icon: TerminalSquare, end: false },
+  { to: '/container-exec', label: 'Container exec', icon: SquareChevronRight, end: false },
+  { to: '/image-cleanup', label: 'Image cleanup', icon: HardDrive, end: false },
+  { to: '/health-checks', label: 'Health checks', icon: Activity, end: false },
+  { to: '/audit', label: 'Audit', icon: ScrollText, end: false },
   { to: '/backup', label: 'Backup / Restore', icon: Database, end: false },
   { to: '/account', label: 'Account', icon: UserCog, end: false },
 ]

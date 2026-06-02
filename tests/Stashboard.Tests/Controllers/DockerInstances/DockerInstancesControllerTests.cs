@@ -37,6 +37,9 @@ public class DockerInstancesControllerTests : IAsyncLifetime
     private readonly Mock<IDockerHostClient> _hostClientMock = new();
     private readonly Mock<IDockerLogStreamer> _logStreamerMock = new();
     private readonly Mock<IDockerStatsStreamer> _statsStreamerMock = new();
+    private readonly Mock<IDockerProjectUpdater> _projectUpdaterMock = new();
+    private readonly Mock<IDockerUpdateChecker> _updateCheckerMock = new();
+    private readonly Mock<IDockerPruneRunner> _pruneRunnerMock = new();
     private IDataFactory _dataFactory = default!;
 
     private static bool _schemaReady;
@@ -52,6 +55,17 @@ public class DockerInstancesControllerTests : IAsyncLifetime
         _encryptionMock.Setup(e => e.Encrypt(It.IsAny<string>())).Returns<string>(v => $"enc:{v}");
         _encryptionMock.Setup(e => e.Decrypt(It.IsAny<string>()))
             .Returns<string>(v => v.StartsWith("enc:") ? v[4..] : v);
+
+        // Default re-check: every watch is reported up-to-date so the per-test
+        // setups don't have to wire this when they only care about the bulk
+        // update flow. Individual tests can override.
+        _updateCheckerMock
+            .Setup(c => c.CheckAsync(It.IsAny<DockerWatchProfile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DockerCheckResult(
+                DockerUpdateStatus.UpToDate,
+                CurrentDigest: "sha256:new", LatestDigest: "sha256:new",
+                CurrentVersionTag: "v1", LatestVersionTag: "v1",
+                Error: null, CheckedAtUtc: DateTime.UtcNow));
     }
 
     public async Task InitializeAsync()
@@ -507,6 +521,438 @@ public class DockerInstancesControllerTests : IAsyncLifetime
         return (body, httpContext.Response);
     }
 
+    // ── V5.4 — Compose project bulk update ──────────────────────────────────
+
+    [Fact]
+    public async Task UpdateProject_HappyPath_WritesParentAndChildAuditRows()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        _hostClientMock
+            .Setup(h => h.ListContainerDetailsAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<DockerContainerDetail>
+            {
+                MakeDetail(id: "id-web", name: "myproject-web-1", image: "nginx:1.27", state: "running",
+                    composeProject: "myproject", composeService: "web"),
+                MakeDetail(id: "id-db", name: "myproject-db-1", image: "postgres:16", state: "running",
+                    composeProject: "myproject", composeService: "db"),
+                MakeDetail(id: "id-other", name: "redis", image: "redis:7", state: "running"),
+            });
+
+        _projectUpdaterMock
+            .Setup(u => u.UpdateProjectAsync(It.IsAny<DockerProjectUpdateProfile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DockerProjectUpdateProfile p, CancellationToken _) =>
+                new DockerProjectUpdateResult(
+                    DockerProjectUpdateMode.Compose,
+                    DockerUpdateAttemptStatus.Success,
+                    null,
+                    p.Services.Select(s => new DockerProjectServiceResult(
+                        s.ServiceName, s.ContainerName, s.WatchId, s.WebResourceId,
+                        s.UpdateProfile.ImageReference,
+                        DockerUpdateAttemptStatus.Success,
+                        "sha256:old", "sha256:new", null,
+                        HealthVerified: true, HealthVerifiedUtc: DateTime.UtcNow)).ToList()));
+
+        var ctrl = BuildController();
+        var result = await ctrl.UpdateProject(conn.Id, "myproject", CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var response = Assert.IsType<DockerProjectUpdateResponse>(ok.Value);
+        Assert.Equal("Compose", response.Mode);
+        Assert.Equal(DockerContainerActionType.UpdateProject, response.Parent.ActionType);
+        Assert.Equal(DockerUpdateAttemptStatus.Success, response.Parent.Status);
+        Assert.Equal(2, response.Services.Count);
+        Assert.All(response.Services, s => Assert.Equal(DockerContainerActionType.Update, s.ActionType));
+
+        // Persisted: one parent + two children.
+        var attempts = await _dbContext.DockerUpdateAttempts.AsNoTracking().ToListAsync();
+        Assert.Equal(3, attempts.Count);
+        var parent = attempts.Single(a => a.ActionType == DockerContainerActionType.UpdateProject);
+        Assert.Equal("myproject", parent.ComposeProject);
+        var children = attempts.Where(a => a.ActionType == DockerContainerActionType.Update).ToList();
+        Assert.Equal(2, children.Count);
+        Assert.All(children, c =>
+        {
+            Assert.Equal(parent.Id, c.ParentAttemptId);
+            Assert.Equal("myproject", c.ComposeProject);
+        });
+    }
+
+    [Fact]
+    public async Task UpdateProject_LinksTrackedWatchOnChildRow()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var svc = await _dataFactory.ServiceAsync();
+        var watch = await SeedWatchAsync(svc.Id, _userId, conn.Id, containerName: "myproject-web-1");
+
+        _hostClientMock
+            .Setup(h => h.ListContainerDetailsAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<DockerContainerDetail>
+            {
+                MakeDetail(id: "id-web", name: "myproject-web-1", image: "nginx:1.27", state: "running",
+                    composeProject: "myproject", composeService: "web"),
+            });
+
+        DockerProjectUpdateProfile? captured = null;
+        _projectUpdaterMock
+            .Setup(u => u.UpdateProjectAsync(It.IsAny<DockerProjectUpdateProfile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DockerProjectUpdateProfile p, CancellationToken _) =>
+            {
+                captured = p;
+                return new DockerProjectUpdateResult(
+                    DockerProjectUpdateMode.Compose,
+                    DockerUpdateAttemptStatus.Success, null,
+                    p.Services.Select(s => new DockerProjectServiceResult(
+                        s.ServiceName, s.ContainerName, s.WatchId, s.WebResourceId,
+                        s.UpdateProfile.ImageReference,
+                        DockerUpdateAttemptStatus.Success, null, "sha256:new", null,
+                        HealthVerified: true, HealthVerifiedUtc: DateTime.UtcNow)).ToList());
+            });
+
+        var ctrl = BuildController();
+        var result = await ctrl.UpdateProject(conn.Id, "myproject", CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+
+        // The watched service carried its watch + service link through to the
+        // updater, and the persisted child row picked them up.
+        Assert.NotNull(captured);
+        var target = Assert.Single(captured!.Services);
+        Assert.Equal(watch.Id, target.WatchId);
+        Assert.Equal(svc.Id, target.WebResourceId);
+
+        var child = await _dbContext.DockerUpdateAttempts.AsNoTracking()
+            .SingleAsync(a => a.ActionType == DockerContainerActionType.Update);
+        Assert.Equal(watch.Id, child.DockerWatchId);
+        Assert.Equal(svc.Id, child.WebResourceId);
+    }
+
+    [Fact]
+    public async Task UpdateProject_PartialFailure_Returns502WithParentAndChildren()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        _hostClientMock
+            .Setup(h => h.ListContainerDetailsAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<DockerContainerDetail>
+            {
+                MakeDetail(id: "id-web", name: "myproject-web-1", image: "nginx:1.27", state: "running",
+                    composeProject: "myproject", composeService: "web"),
+                MakeDetail(id: "id-db", name: "myproject-db-1", image: "postgres:16", state: "running",
+                    composeProject: "myproject", composeService: "db"),
+            });
+
+        _projectUpdaterMock
+            .Setup(u => u.UpdateProjectAsync(It.IsAny<DockerProjectUpdateProfile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DockerProjectUpdateProfile p, CancellationToken _) =>
+                new DockerProjectUpdateResult(
+                    DockerProjectUpdateMode.Recreate,
+                    DockerUpdateAttemptStatus.RecreateFailed,
+                    "1 of 2 services failed to update.",
+                    new[]
+                    {
+                        new DockerProjectServiceResult("web", "myproject-web-1", null, null, "nginx:1.27",
+                            DockerUpdateAttemptStatus.Success, "sha256:old", "sha256:new", null, true, DateTime.UtcNow),
+                        new DockerProjectServiceResult("db", "myproject-db-1", null, null, "postgres:16",
+                            DockerUpdateAttemptStatus.PullFailed, "sha256:old-db", null, "manifest unknown", false, null),
+                    }));
+
+        var ctrl = BuildController();
+        var result = await ctrl.UpdateProject(conn.Id, "myproject", CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status502BadGateway, obj.StatusCode);
+        var response = Assert.IsType<DockerProjectUpdateResponse>(obj.Value);
+        Assert.Equal("Recreate", response.Mode);
+        Assert.Equal(DockerUpdateAttemptStatus.RecreateFailed, response.Parent.Status);
+        Assert.Equal(2, response.Services.Count);
+        Assert.Equal(DockerUpdateAttemptStatus.PullFailed,
+            response.Services.Single(s => s.ContainerName == "myproject-db-1").Status);
+
+        // All three rows are persisted regardless of the 502.
+        Assert.Equal(3, await _dbContext.DockerUpdateAttempts.CountAsync());
+    }
+
+    [Fact]
+    public async Task UpdateProject_ReChecksTrackedWatchesOnSuccess_SoUpdateBadgeClears()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var svc = await _dataFactory.ServiceAsync();
+        // Seed the watch with UpdateAvailable so we can verify the re-check
+        // flips it back to UpToDate after the bulk update.
+        var watch = await SeedWatchAsync(svc.Id, _userId, conn.Id, containerName: "myproject-web-1");
+        await _dbContext.DockerWatches
+            .Where(w => w.Id == watch.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(w => w.UpdateStatus, DockerUpdateStatus.UpdateAvailable)
+                .SetProperty(w => w.CurrentDigest, "sha256:old")
+                .SetProperty(w => w.LatestDigest, "sha256:new"));
+
+        _hostClientMock
+            .Setup(h => h.ListContainerDetailsAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<DockerContainerDetail>
+            {
+                MakeDetail(id: "id-web", name: "myproject-web-1", image: "nginx:1.27", state: "running",
+                    composeProject: "myproject", composeService: "web"),
+            });
+
+        _projectUpdaterMock
+            .Setup(u => u.UpdateProjectAsync(It.IsAny<DockerProjectUpdateProfile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DockerProjectUpdateProfile p, CancellationToken _) =>
+                new DockerProjectUpdateResult(
+                    DockerProjectUpdateMode.Compose,
+                    DockerUpdateAttemptStatus.Success, null,
+                    p.Services.Select(s => new DockerProjectServiceResult(
+                        s.ServiceName, s.ContainerName, s.WatchId, s.WebResourceId,
+                        s.UpdateProfile.ImageReference,
+                        DockerUpdateAttemptStatus.Success, "sha256:old", "sha256:new", null,
+                        HealthVerified: true, HealthVerifiedUtc: DateTime.UtcNow)).ToList()));
+
+        var ctrl = BuildController();
+        var result = await ctrl.UpdateProject(conn.Id, "myproject", CancellationToken.None);
+        Assert.IsType<OkObjectResult>(result.Result);
+
+        // Default checker stub returns UpToDate → watch should flip.
+        _updateCheckerMock.Verify(c => c.CheckAsync(
+            It.Is<DockerWatchProfile>(p => p.ContainerName == "myproject-web-1"),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        var refreshed = await _dbContext.DockerWatches.AsNoTracking().SingleAsync(w => w.Id == watch.Id);
+        Assert.Equal(DockerUpdateStatus.UpToDate, refreshed.UpdateStatus);
+        Assert.Equal("sha256:new", refreshed.CurrentDigest);
+    }
+
+    [Fact]
+    public async Task UpdateProject_SkipsReCheckForFailedServicesAndUntrackedContainers()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var svc = await _dataFactory.ServiceAsync();
+        var watchOk = await SeedWatchAsync(svc.Id, _userId, conn.Id, containerName: "myproject-web-1");
+        var svc2 = await _dataFactory.ServiceAsync();
+        var watchFailed = await SeedWatchAsync(svc2.Id, _userId, conn.Id, containerName: "myproject-db-1");
+
+        _hostClientMock
+            .Setup(h => h.ListContainerDetailsAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<DockerContainerDetail>
+            {
+                MakeDetail(id: "id-web", name: "myproject-web-1", image: "nginx:1.27", state: "running",
+                    composeProject: "myproject", composeService: "web"),
+                MakeDetail(id: "id-db", name: "myproject-db-1", image: "postgres:16", state: "running",
+                    composeProject: "myproject", composeService: "db"),
+                MakeDetail(id: "id-cache", name: "myproject-cache-1", image: "redis:7", state: "running",
+                    composeProject: "myproject", composeService: "cache"),
+            });
+
+        _projectUpdaterMock
+            .Setup(u => u.UpdateProjectAsync(It.IsAny<DockerProjectUpdateProfile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DockerProjectUpdateProfile p, CancellationToken _) =>
+                new DockerProjectUpdateResult(
+                    DockerProjectUpdateMode.Compose,
+                    DockerUpdateAttemptStatus.RecreateFailed, "1 of 3 services failed",
+                    new[]
+                    {
+                        // web: tracked + succeeded → should re-check
+                        new DockerProjectServiceResult("web", "myproject-web-1", watchOk.Id, svc.Id,
+                            "nginx:1.27", DockerUpdateAttemptStatus.Success, "sha256:old", "sha256:new", null, true, DateTime.UtcNow),
+                        // db: tracked but FAILED → must NOT re-check
+                        new DockerProjectServiceResult("db", "myproject-db-1", watchFailed.Id, svc2.Id,
+                            "postgres:16", DockerUpdateAttemptStatus.PullFailed, "sha256:old-db", null, "manifest unknown", false, null),
+                        // cache: untracked → no watch FK, nothing to re-check
+                        new DockerProjectServiceResult("cache", "myproject-cache-1", null, null,
+                            "redis:7", DockerUpdateAttemptStatus.Success, "sha256:old-cache", "sha256:new-cache", null, true, DateTime.UtcNow),
+                    }));
+
+        var ctrl = BuildController();
+        await ctrl.UpdateProject(conn.Id, "myproject", CancellationToken.None);
+
+        // Only the watched + succeeded service triggers a re-check.
+        _updateCheckerMock.Verify(c => c.CheckAsync(
+            It.IsAny<DockerWatchProfile>(), It.IsAny<CancellationToken>()), Times.Once);
+        _updateCheckerMock.Verify(c => c.CheckAsync(
+            It.Is<DockerWatchProfile>(p => p.ContainerName == "myproject-web-1"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateProject_Returns404_WhenNoContainersMatchProject()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        _hostClientMock
+            .Setup(h => h.ListContainerDetailsAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<DockerContainerDetail>
+            {
+                MakeDetail(id: "id-web", name: "redis", image: "redis:7", state: "running"),
+            });
+
+        var ctrl = BuildController();
+        var result = await ctrl.UpdateProject(conn.Id, "myproject", CancellationToken.None);
+
+        Assert.IsType<NotFoundObjectResult>(result.Result);
+        _projectUpdaterMock.Verify(u => u.UpdateProjectAsync(
+            It.IsAny<DockerProjectUpdateProfile>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal(0, await _dbContext.DockerUpdateAttempts.CountAsync());
+    }
+
+    [Fact]
+    public async Task UpdateProject_Returns404_WhenConnectionBelongsToAnotherUser()
+    {
+        var conn = await SeedConnectionAsync(_otherUserId);
+        var ctrl = BuildController();
+
+        var result = await ctrl.UpdateProject(conn.Id, "myproject", CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        _hostClientMock.Verify(h => h.ListContainerDetailsAsync(
+            It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── V5.5 — storage + prune endpoints ────────────────────────────────────
+
+    [Fact]
+    public async Task GetImageStorage_ReturnsCountsAndRecentRuns()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        _hostClientMock
+            .Setup(h => h.GetImageStorageAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DockerImageStorageResult(
+                DockerHostStatus.Ok,
+                TotalImageCount: 42,
+                DanglingImageCount: 5,
+                DanglingImageBytes: 1_000_000,
+                UnusedImageCount: 7,
+                UnusedImageBytes: 2_000_000,
+                Images: new List<DockerImageSummary>
+                {
+                    new("sha256:aaaa", new[] { "nginx:1.27" }, 2_000_000, DateTime.UtcNow,
+                        IsDangling: false, IsUnused: true, UsedByContainers: Array.Empty<string>()),
+                    new("sha256:bbbb", Array.Empty<string>(), 1_000_000, DateTime.UtcNow,
+                        IsDangling: true, IsUnused: true, UsedByContainers: Array.Empty<string>()),
+                },
+                Error: null));
+
+        // Seed one prune run so the response carries it back.
+        _dbContext.DockerPruneRuns.Add(new DockerPruneRunEntity
+        {
+            Id = Guid.NewGuid(),
+            DockerConnectionId = conn.Id,
+            InitiatedByUserId = _userId,
+            Trigger = DockerPruneTrigger.Manual,
+            Status = DockerPruneStatus.Success,
+            ImagesDeleted = 2,
+            SpaceReclaimedBytes = 500_000,
+            StartedUtc = DateTime.UtcNow.AddMinutes(-5),
+            CompletedUtc = DateTime.UtcNow.AddMinutes(-4),
+            CreatedUtc = DateTime.UtcNow.AddMinutes(-5),
+        });
+        await _dbContext.SaveChangesAsync();
+        _dbContext.ChangeTracker.Clear();
+
+        var ctrl = BuildController();
+        var result = await ctrl.GetImageStorage(conn.Id, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var body = Assert.IsType<DockerImageStorageResponse>(ok.Value);
+        Assert.Equal(42, body.TotalImageCount);
+        Assert.Equal(5, body.DanglingImageCount);
+        Assert.Equal(1_000_000, body.DanglingImageBytes);
+        Assert.Equal(7, body.UnusedImageCount);
+        Assert.True(body.AllowImagePrune); // default for newly seeded connections
+        Assert.Single(body.RecentRuns);
+        Assert.Equal(2, body.RecentRuns[0].ImagesDeleted);
+
+        // V5.5 — the per-image drill-down list rides along.
+        Assert.Equal(2, body.Images.Count);
+        var dangling = Assert.Single(body.Images, i => i.IsDangling);
+        Assert.Empty(dangling.RepoTags);
+        Assert.Contains(body.Images, i => i.RepoTags.Contains("nginx:1.27"));
+    }
+
+    [Fact]
+    public async Task GetImageStorage_Returns404_WhenConnectionBelongsToAnotherUser()
+    {
+        var conn = await SeedConnectionAsync(_otherUserId);
+
+        var ctrl = BuildController();
+        var result = await ctrl.GetImageStorage(conn.Id, CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        _hostClientMock.Verify(h => h.GetImageStorageAsync(
+            It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task PruneImages_WritesAuditRow_AndAdvancesLastPruneOnSuccess()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var completedUtc = DateTime.UtcNow;
+        _pruneRunnerMock
+            .Setup(r => r.RunAsync(
+                It.Is<DockerPruneRequest>(req =>
+                    req.ConnectionId == conn.Id
+                    && req.Trigger == DockerPruneTrigger.Manual
+                    && req.IncludeUnused),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DockerPruneRunResult(
+                DockerPruneStatus.Success, 4, 4_000_000,
+                StartedUtc: completedUtc.AddSeconds(-2), CompletedUtc: completedUtc,
+                IncludedUnused: true, Error: null));
+
+        var ctrl = BuildController();
+        var result = await ctrl.PruneImages(conn.Id, new PruneImagesRequest(IncludeUnused: true), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var body = Assert.IsType<PruneImagesResponse>(ok.Value);
+        Assert.Equal(DockerPruneStatus.Success, body.Run.Status);
+        Assert.Equal(4, body.Run.ImagesDeleted);
+        Assert.True(body.Run.IncludedUnused);
+
+        var persisted = await _dbContext.DockerPruneRuns.AsNoTracking().SingleAsync();
+        Assert.Equal(conn.Id, persisted.DockerConnectionId);
+        Assert.Equal(_userId, persisted.InitiatedByUserId);
+        Assert.Equal(DockerPruneTrigger.Manual, persisted.Trigger);
+        Assert.Equal(DockerPruneStatus.Success, persisted.Status);
+
+        var refreshed = await _dbContext.DockerConnections.AsNoTracking().SingleAsync(c => c.Id == conn.Id);
+        Assert.Equal(completedUtc, refreshed.LastImagePruneUtc);
+    }
+
+    [Fact]
+    public async Task PruneImages_HostUnreachable_Returns502_AndStillPersistsAuditRow()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        _pruneRunnerMock
+            .Setup(r => r.RunAsync(It.IsAny<DockerPruneRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DockerPruneRunResult(
+                DockerPruneStatus.HostUnreachable, 0, 0,
+                StartedUtc: DateTime.UtcNow, CompletedUtc: DateTime.UtcNow,
+                IncludedUnused: false, Error: "ssh: connection refused"));
+
+        var ctrl = BuildController();
+        var result = await ctrl.PruneImages(conn.Id, new PruneImagesRequest(), CancellationToken.None);
+
+        var status = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status502BadGateway, status.StatusCode);
+
+        var row = await _dbContext.DockerPruneRuns.AsNoTracking().SingleAsync();
+        Assert.Equal(DockerPruneStatus.HostUnreachable, row.Status);
+        Assert.Equal("ssh: connection refused", row.Error);
+
+        // LastImagePruneUtc must NOT advance when the daemon was unreachable.
+        var refreshed = await _dbContext.DockerConnections.AsNoTracking().SingleAsync(c => c.Id == conn.Id);
+        Assert.Null(refreshed.LastImagePruneUtc);
+    }
+
+    [Fact]
+    public async Task PruneImages_Returns404_WhenConnectionBelongsToAnotherUser()
+    {
+        var conn = await SeedConnectionAsync(_otherUserId);
+
+        var ctrl = BuildController();
+        var result = await ctrl.PruneImages(conn.Id, new PruneImagesRequest(), CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        _pruneRunnerMock.Verify(
+            r => r.RunAsync(It.IsAny<DockerPruneRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private DockerInstancesController BuildController(Guid? userId = null, bool allowRemoval = false)
@@ -517,7 +963,9 @@ public class DockerInstancesControllerTests : IAsyncLifetime
 
         var controller = new DockerInstancesController(
             _dbContext, connectionMapper, watchMapper,
-            _hostClientMock.Object, _logStreamerMock.Object, _statsStreamerMock.Object, opts);
+            _hostClientMock.Object, _logStreamerMock.Object, _statsStreamerMock.Object,
+            _projectUpdaterMock.Object, _updateCheckerMock.Object,
+            _pruneRunnerMock.Object, opts);
 
         var identity = new ClaimsIdentity(
             new[] { new Claim(StashboardClaims.UserId, (userId ?? _userId).ToString()) }, "Test");
@@ -578,7 +1026,10 @@ public class DockerInstancesControllerTests : IAsyncLifetime
         return watch;
     }
 
-    private static DockerContainerDetail MakeDetail(string id, string name, string image, string state) =>
+    private static DockerContainerDetail MakeDetail(
+        string id, string name, string image, string state,
+        string? composeProject = null, string? composeService = null,
+        IReadOnlyDictionary<string, string>? labels = null) =>
         new(
             Id: id,
             Name: name,
@@ -588,9 +1039,9 @@ public class DockerInstancesControllerTests : IAsyncLifetime
             Status: $"Up 1 hour ({state})",
             CreatedUtc: DateTime.UtcNow.AddHours(-1),
             Ports: Array.Empty<DockerContainerPort>(),
-            ComposeProject: null,
-            ComposeService: null,
-            Labels: new Dictionary<string, string>());
+            ComposeProject: composeProject,
+            ComposeService: composeService,
+            Labels: labels ?? new Dictionary<string, string>());
 
     private async Task EnsureSchemaAsync()
     {
@@ -610,6 +1061,7 @@ public class DockerInstancesControllerTests : IAsyncLifetime
 
     private async Task ClearAllDataAsync()
     {
+        await _dbContext.DockerPruneRuns.ExecuteDeleteAsync();
         await _dbContext.DockerUpdateAttempts.ExecuteDeleteAsync();
         await _dbContext.DockerWatches.ExecuteDeleteAsync();
         await _dbContext.DockerConnections.ExecuteDeleteAsync();

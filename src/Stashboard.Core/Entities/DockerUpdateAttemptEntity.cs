@@ -115,4 +115,21 @@ public class DockerUpdateAttemptEntity : AuditableEntity
     /// waiting for the container to become healthy.
     /// </summary>
     public DateTime? HealthVerifiedUtc { get; set; }
+
+    /// <summary>
+    /// V5.4 — Compose project name this row belongs to. Populated on every
+    /// row that participates in a bulk project update (the aggregate parent
+    /// AND each per-service child). <c>null</c> for V2.7 / V3.5 rows that
+    /// pre-date this column or for single-service updates.
+    /// </summary>
+    [MaxLength(200)]
+    public string? ComposeProject { get; set; }
+
+    /// <summary>
+    /// V5.4 — when set, this row is a child of an aggregate "Update project"
+    /// attempt. The parent row carries the aggregate status; child rows
+    /// describe what happened to each individual service. <c>null</c> on
+    /// every existing row and on the parent itself.
+    /// </summary>
+    public Guid? ParentAttemptId { get; set; }
 }

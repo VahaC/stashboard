@@ -11,6 +11,9 @@ import type {
   DockerContainerCard,
   DockerContainerInfo,
   DockerContainerInspect,
+  DockerImageStorage,
+  DockerPruneRun,
+  DockerProjectUpdateResponse,
   DockerUpdateAttempt,
   DockerUpdateCommandResponse,
   DockerWatch,
@@ -48,6 +51,9 @@ export const qk = {
     ['docker', 'connections', connectionId, 'instance', 'containers'] as const,
   dockerInstanceInspect: (connectionId: string, containerName: string) =>
     ['docker', 'connections', connectionId, 'instance', 'containers', containerName, 'inspect'] as const,
+  /** V5.5 — storage / prune summary for the V3.5 Storage widget. */
+  dockerImageStorage: (connectionId: string) =>
+    ['docker', 'connections', connectionId, 'instance', 'images', 'storage'] as const,
   features: ['features'] as const,
   telegramSettings: ['account', 'telegram'] as const,
 }
@@ -479,6 +485,50 @@ export const useDockerInstanceInspect = (
     staleTime: 10_000,
   })
 
+// ── V5.5 — image storage + prune ───────────────────────────────────────────
+
+/** V5.5 — image storage summary used by the V3.5 Storage widget. Hits the
+ *  Docker daemon every time (no caching client-side beyond the React-Query
+ *  default) because dangling counts change on every recreate. */
+export const useDockerImageStorage = (connectionId: string | null) =>
+  useQuery({
+    queryKey: connectionId
+      ? qk.dockerImageStorage(connectionId)
+      : ['docker-image-storage-disabled'],
+    enabled: Boolean(connectionId),
+    queryFn: async (): Promise<DockerImageStorage> =>
+      (await api.get<DockerImageStorage>(
+        `/api/docker/connections/${connectionId}/instance/images/storage`)).data,
+    staleTime: 5_000,
+  })
+
+/** V5.5 — manual "Prune now" mutation. `includeUnused` overrides the
+ *  connection's persisted opt-in for a single run. */
+export const usePruneImages = (connectionId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: { includeUnused: boolean }): Promise<DockerPruneRun> => {
+      try {
+        const resp = await api.post<{ run: DockerPruneRun }>(
+          `/api/docker/connections/${connectionId}/instance/images/prune`,
+          { includeUnused: args.includeUnused },
+        )
+        return resp.data.run
+      } catch (err) {
+        // Backend returns the same response shape on 502 (host unreachable
+        // or daemon error). Surface the audit row so the dialog can render
+        // "Failed — Docker host unreachable" instead of a generic toast.
+        const data = (err as { response?: { data?: { run?: DockerPruneRun } } })?.response?.data
+        if (data?.run) return data.run
+        throw err
+      }
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.dockerImageStorage(connectionId) })
+    },
+  })
+}
+
 // ── V3.6 — connection-scoped Docker watches (containers as standalone) ─────
 
 /** Lists every tracked container (watch) on a connection. Powers the update
@@ -604,6 +654,46 @@ export const useConnectionWatchUpdates = (connectionId: string, watchId: string 
       (await api.get<DockerUpdateAttempt[]>(
         `/api/docker/connections/${connectionId}/watches/${watchId}/updates`)).data,
   })
+
+/** V5.4 — bulk "Update project" mutation. Pulls + recreates every service in
+ *  the Compose project in one shot (compose-aware when available, falling
+ *  back to per-service raw recreate ordered by depends_on).
+ *
+ *  The endpoint returns a structured `DockerProjectUpdateResponse` on **both**
+ *  full-success (200) and partial-failure (502) — the body carries the same
+ *  shape with per-service rows so the UI can render the real errors. Axios
+ *  throws on 5xx by default, so we unwrap the body here when the failure
+ *  carries the expected envelope and treat it as a normal mutation success.
+ *  A request that didn't even reach the server (404, network error, …)
+ *  still falls through to the mutation's onError. */
+export const useDockerProjectUpdate = (connectionId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (projectName: string) => {
+      const url = `/api/docker/connections/${connectionId}/instance/projects/${encodeURIComponent(projectName)}/update`
+      try {
+        const resp = await api.post<DockerProjectUpdateResponse>(url)
+        return resp.data
+      } catch (err) {
+        const body = (err as { response?: { data?: unknown } })?.response?.data
+        if (isProjectUpdateResponse(body)) return body
+        throw err
+      }
+    },
+    onSuccess: () => {
+      // The cards' digests / status badges all change after a bulk update.
+      void qc.invalidateQueries({ queryKey: qk.dockerInstanceContainers(connectionId) })
+      void qc.invalidateQueries({ queryKey: qk.connectionWatches(connectionId) })
+      // Service-aggregated update status feeds the dashboard cards.
+      void qc.invalidateQueries({ queryKey: qk.services })
+    },
+  })
+}
+
+const isProjectUpdateResponse = (value: unknown): value is DockerProjectUpdateResponse =>
+  typeof value === 'object' && value !== null
+    && 'parent' in value && 'services' in value && 'mode' in value
+    && Array.isArray((value as DockerProjectUpdateResponse).services)
 
 /** V3.5 — per-action lifecycle mutation. The same hook covers
  *  Start / Stop / Restart / Remove; the caller passes the verb. */

@@ -44,6 +44,16 @@ public sealed record DockerConnectionResponse(
     /// terminal. Only meaningful for SSH hosts; the server also requires the
     /// global <c>Stashboard:AllowHostShell</c> flag before honouring it.</summary>
     bool AllowHostShell,
+    /// <summary>V5.7 — whether this connection has opted in to the browser
+    /// container-exec terminal. Works for every host type; the server also
+    /// requires the global <c>Stashboard:AllowContainerExec</c> switch.</summary>
+    bool AllowExec,
+    /// <summary>V5.5 — whether this connection participates in the background
+    /// image-prune sweep. Default <c>true</c> on new + upgraded connections.</summary>
+    bool AllowImagePrune,
+    /// <summary>V5.5 — whether the sweep is allowed to remove non-dangling
+    /// "unused" images on top of dangling ones. Default <c>false</c>.</summary>
+    bool PruneUnusedImages,
     int UsageCount,
     DateTime CreatedUtc,
     DateTime UpdatedUtc);
@@ -84,7 +94,18 @@ public sealed record DockerConnectionUpsertRequest(
     /// <summary>V5.3 — opt this connection in to the browser host terminal.
     /// Only honoured for SSH hosts (and only when the global
     /// <c>Stashboard:AllowHostShell</c> flag is on). Defaults to <c>false</c>.</summary>
-    bool AllowHostShell = false);
+    bool AllowHostShell = false,
+    /// <summary>V5.7 — opt this connection in to the browser container-exec
+    /// terminal. Works for every host type (the global
+    /// <c>Stashboard:AllowContainerExec</c> switch is also required).
+    /// Defaults to <c>false</c>.</summary>
+    bool AllowExec = false,
+    /// <summary>V5.5 — whether this connection participates in the
+    /// background image-prune sweep. Defaults to <c>true</c>.</summary>
+    bool AllowImagePrune = true,
+    /// <summary>V5.5 — opt this connection in to pruning non-dangling
+    /// "unused" images on top of dangling ones. Defaults to <c>false</c>.</summary>
+    bool PruneUnusedImages = false);
 
 /// <summary>
 /// Test-connection request — same shape as the upsert but never persisted.
@@ -183,6 +204,21 @@ public sealed record DockerContainerPortMapping(
 public sealed record DockerContainerActionResponse(
     DockerUpdateAttemptResponse Attempt);
 
+// ── V5.4 — Compose project bulk update ─────────────────────────────────────
+
+/// <summary>
+/// V5.4 — response from the bulk "Update project" endpoint. Carries the
+/// aggregate parent audit row plus one child row per service so the
+/// frontend can render success / failure inline on each container card.
+/// </summary>
+public sealed record DockerProjectUpdateResponse(
+    DockerUpdateAttemptResponse Parent,
+    IReadOnlyList<DockerUpdateAttemptResponse> Services,
+    /// <summary>Which dispatch path the updater took ("Compose" =
+    /// <c>docker compose</c> shell-out; "Recreate" = per-service raw recreate
+    /// fallback). Surfaced so the UI can show the user which mode ran.</summary>
+    string Mode);
+
 /// <summary>V3.5 — exposes server feature flags the frontend needs to
 /// gate UI affordances (e.g. hiding the Remove button when the flag is
 /// off). Read-only — never carries secret material.</summary>
@@ -191,4 +227,8 @@ public sealed record StashboardFeaturesResponse(
     /// <summary>V5.3 — global master switch for the browser host terminal.
     /// The UI uses it to decide whether the Terminal tab can ever go live
     /// (a connection's own <c>AllowHostShell</c> opt-in is also required).</summary>
-    bool AllowHostShell);
+    bool AllowHostShell,
+    /// <summary>V5.7 — global master switch for the browser container-exec
+    /// terminal. The UI uses it to decide whether the Exec tab can go live
+    /// (a connection's own <c>AllowExec</c> opt-in is also required).</summary>
+    bool AllowContainerExec);

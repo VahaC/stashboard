@@ -61,6 +61,9 @@ public abstract class DatabaseTestBase : IAsyncLifetime
         await db.Users.ExecuteDeleteAsync();
         await db.EmailSettings.ExecuteDeleteAsync();
         await db.HostShellSettings.ExecuteDeleteAsync();
+        await db.ContainerExecSettings.ExecuteDeleteAsync();
+        await db.DockerExecSessions.ExecuteDeleteAsync();
+        await db.HealthCheckSettings.ExecuteDeleteAsync();
     }
 
     private static string BuildTestConnectionString()

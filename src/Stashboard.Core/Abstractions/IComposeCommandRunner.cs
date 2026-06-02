@@ -36,6 +36,15 @@ public enum ComposeRunnerStatus
 public sealed record ComposeRecreateRequest(string ProjectPath, string ServiceName);
 
 /// <summary>
+/// V5.4 — what the updater needs to bulk-update every service in a Compose
+/// project. The whole project is pulled then brought back up in one shot so
+/// Compose itself honours <c>depends_on</c> ordering across the stack.
+/// </summary>
+/// <param name="ProjectPath">Same in-container path as for the per-service
+/// recreate.</param>
+public sealed record ComposeProjectRecreateRequest(string ProjectPath);
+
+/// <summary>
 /// V5.2 — result of a <see cref="IComposeCommandRunner.RecreateServiceAsync"/>
 /// call. <see cref="Output"/> / <see cref="Error"/> carry the captured stdout /
 /// stderr so a failure can surface an actionable message on the audit row.
@@ -76,4 +85,14 @@ public interface IComposeCommandRunner
     /// </summary>
     Task<ComposeRunResult> RecreateServiceAsync(
         ComposeRecreateRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// V5.4 — runs <c>docker compose pull</c> then <c>docker compose up -d</c>
+    /// against the whole project at <see cref="ComposeProjectRecreateRequest.ProjectPath"/>.
+    /// No service argument is passed so Compose pulls and recreates every
+    /// service in the file in the correct <c>depends_on</c> order. Used by
+    /// the V5.4 bulk "Update project" button.
+    /// </summary>
+    Task<ComposeRunResult> RecreateProjectAsync(
+        ComposeProjectRecreateRequest request, CancellationToken cancellationToken = default);
 }

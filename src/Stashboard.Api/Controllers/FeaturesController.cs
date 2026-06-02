@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Stashboard.Api.Contracts;
+using Stashboard.Api.Services.ContainerExec;
 using Stashboard.Api.Services.HostShell;
 using Stashboard.Core.Options;
 
@@ -19,7 +20,8 @@ namespace Stashboard.Api.Controllers;
 [Route("api/features")]
 public class FeaturesController(
     IOptions<StashboardOptions> options,
-    IHostShellSettingsService hostShellSettings) : ControllerBase
+    IHostShellSettingsService hostShellSettings,
+    IContainerExecSettingsService containerExecSettings) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<StashboardFeaturesResponse>> Get(CancellationToken cancellationToken) =>
@@ -27,5 +29,7 @@ public class FeaturesController(
             options.Value.AllowContainerRemoval,
             // V5.3 — host-terminal master switch is DB-backed and managed from
             // the Settings page, not a static config flag.
-            await hostShellSettings.IsEnabledAsync(cancellationToken)));
+            await hostShellSettings.IsEnabledAsync(cancellationToken),
+            // V5.7 — container-exec master switch, same DB-backed pattern.
+            await containerExecSettings.IsEnabledAsync(cancellationToken)));
 }

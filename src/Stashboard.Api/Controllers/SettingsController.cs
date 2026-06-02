@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Stashboard.Api.Contracts;
+using Stashboard.Api.Services.ContainerExec;
+using Stashboard.Api.Services.HealthCheckSettings;
 using Stashboard.Api.Services.HostShell;
+using Stashboard.Api.Services.ImagePrune;
 
 namespace Stashboard.Api.Controllers;
 
@@ -18,7 +21,11 @@ namespace Stashboard.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/settings")]
-public class SettingsController(IHostShellSettingsService hostShell) : ControllerBase
+public class SettingsController(
+    IHostShellSettingsService hostShell,
+    IContainerExecSettingsService containerExec,
+    IImagePruneSettingsService imagePrune,
+    IHealthCheckSettingsService healthCheck) : ControllerBase
 {
     /// <summary>The host-terminal master switch (the global gate for V5.3).</summary>
     [HttpGet("host-shell")]
@@ -30,6 +37,47 @@ public class SettingsController(IHostShellSettingsService hostShell) : Controlle
         [FromBody] UpdateHostShellSettingsRequest request, CancellationToken cancellationToken)
     {
         await hostShell.UpdateAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V5.7 — the container-exec master switch (the global gate for V5.7).</summary>
+    [HttpGet("container-exec")]
+    public async Task<ActionResult<ContainerExecSettingsResponse>> GetContainerExec(CancellationToken cancellationToken)
+        => Ok(await containerExec.GetAsync(cancellationToken));
+
+    [HttpPut("container-exec")]
+    public async Task<IActionResult> UpdateContainerExec(
+        [FromBody] UpdateContainerExecSettingsRequest request, CancellationToken cancellationToken)
+    {
+        await containerExec.UpdateAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V5.5 — the image-prune master switch + sweep interval.</summary>
+    [HttpGet("image-prune")]
+    public async Task<ActionResult<ImagePruneSettingsResponse>> GetImagePrune(CancellationToken cancellationToken)
+        => Ok(await imagePrune.GetAsync(cancellationToken));
+
+    [HttpPut("image-prune")]
+    public async Task<IActionResult> UpdateImagePrune(
+        [FromBody] UpdateImagePruneSettingsRequest request, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid) return ValidationProblem(ModelState);
+        await imagePrune.UpdateAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V5.6 — the offline-alert tuning: failure threshold + in-probe retries.</summary>
+    [HttpGet("health-check")]
+    public async Task<ActionResult<HealthCheckSettingsResponse>> GetHealthCheck(CancellationToken cancellationToken)
+        => Ok(await healthCheck.GetAsync(cancellationToken));
+
+    [HttpPut("health-check")]
+    public async Task<IActionResult> UpdateHealthCheck(
+        [FromBody] UpdateHealthCheckSettingsRequest request, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid) return ValidationProblem(ModelState);
+        await healthCheck.UpdateAsync(request, cancellationToken);
         return NoContent();
     }
 }

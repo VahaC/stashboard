@@ -25,6 +25,42 @@ public class DockerHostClientTests
     private const string NginxDigest = "sha256:abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd";
     private const string OtherDigest = "sha256:99999999999999999999999999999999999999999999999999999999999999ff";
 
+    // ── V5.5 — GetImageStorageAsync ──────────────────────────────────────────
+
+    [Fact]
+    public async Task GetImageStorage_DanglingButInUse_IsNotUnused_AndNamesTheContainer()
+    {
+        var images = new List<ImagesListResponse>
+        {
+            // Dangling (no tags) but a container still references it → in use.
+            new() { ID = "sha256:dangling", RepoTags = new List<string>(), Size = 300, Created = DateTime.UtcNow },
+            // Tagged + running → in use, not unused.
+            new() { ID = "sha256:tagged", RepoTags = new List<string> { "nginx:1.27" }, Size = 100, Created = DateTime.UtcNow },
+            // Tagged but no container → unused (a prune -a target).
+            new() { ID = "sha256:orphan", RepoTags = new List<string> { "old:1" }, Size = 50, Created = DateTime.UtcNow },
+        };
+        var containers = new List<ContainerListResponse>
+        {
+            new() { ImageID = "sha256:dangling", Names = new List<string> { "/frigate" } },
+            new() { ImageID = "sha256:tagged", Names = new List<string> { "/web" } },
+        };
+
+        var harness = Harness.BuildStorage(images, containers);
+        var result = await harness.Client.GetImageStorageAsync(
+            new DockerHostTransport(DockerHostType.LocalSocket, null, null));
+
+        Assert.Equal(DockerHostStatus.Ok, result.Status);
+        Assert.Equal(3, result.TotalImageCount);
+        Assert.Equal(1, result.DanglingImageCount);
+        // Only the orphan is unused — the dangling image is in use, so a
+        // dangling prune can't remove it.
+        Assert.Equal(1, result.UnusedImageCount);
+
+        var dangling = Assert.Single(result.Images, i => i.IsDangling);
+        Assert.False(dangling.IsUnused);
+        Assert.Equal(new[] { "frigate" }, dangling.UsedByContainers);
+    }
+
     // ── GetCurrentImageDigestAsync ───────────────────────────────────────────
 
     [Fact]
@@ -455,6 +491,23 @@ public class DockerHostClientTests
                     return inner.Create(ht, hu, tls, ssh);
                 });
             return new Harness { Client = BuildClient(wrapping.Object) };
+        }
+
+        /// <summary>V5.5 — wires up <c>ListImagesAsync</c> + <c>ListContainersAsync</c>
+        /// so <see cref="DockerHostClient.GetImageStorageAsync"/> can be exercised.</summary>
+        public static Harness BuildStorage(
+            IList<ImagesListResponse> images, IList<ContainerListResponse> containers)
+        {
+            var (factory, _) = BuildMockFactory(daemon =>
+            {
+                daemon.Images.Setup(i => i.ListImagesAsync(
+                        It.IsAny<ImagesListParameters>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(images);
+                daemon.Containers.Setup(c => c.ListContainersAsync(
+                        It.IsAny<ContainersListParameters>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(containers);
+            });
+            return new Harness { Client = BuildClient(factory) };
         }
 
         private static DockerHostClient BuildClient(IDockerClientFactory factory) =>

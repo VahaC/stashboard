@@ -484,6 +484,177 @@ public sealed class DockerHostClient(
         }
     }
 
+    // ── V5.5 — image storage summary + prune ────────────────────────────────
+
+    public async Task<DockerImageStorageResult> GetImageStorageAsync(
+        DockerHostTransport transport,
+        CancellationToken cancellationToken = default)
+    {
+        IDockerClient client;
+        try
+        {
+            client = CreateClient(transport);
+        }
+        catch (NotSupportedException ex)
+        {
+            return new DockerImageStorageResult(DockerHostStatus.UnsupportedHostType, 0, 0, 0, 0, 0, [], ex.Message);
+        }
+        catch (Exception ex) when (IsSshConnectFailure(ex))
+        {
+            return new DockerImageStorageResult(DockerHostStatus.HostUnreachable, 0, 0, 0, 0, 0, [],
+                $"SSH connection failed: {ex.Message}");
+        }
+
+        using (client)
+        {
+            try
+            {
+                var images = await client.Images.ListImagesAsync(
+                    new ImagesListParameters { All = false }, cancellationToken);
+
+                // "Unused" needs the container list because the Engine's image
+                // listing alone can't tell us which images still have a
+                // container hanging off them. Includes stopped containers so we
+                // never delete a "rollback-to-previous-tag" target.
+                var containers = await client.Containers.ListContainersAsync(
+                    new ContainersListParameters { All = true }, cancellationToken);
+
+                // Map every image id to the names of the containers using it.
+                // Docker's prune never deletes an image referenced by a
+                // container (running OR stopped), so this both flags "unused"
+                // and tells the user which container to remove to free a
+                // dangling-but-in-use image.
+                var containersByImageId = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var c in containers)
+                {
+                    var imageId = c.ImageID ?? string.Empty;
+                    if (string.IsNullOrEmpty(imageId)) continue;
+                    if (!containersByImageId.TryGetValue(imageId, out var names))
+                        containersByImageId[imageId] = names = [];
+                    names.Add(NormalizeName(c.Names));
+                }
+
+                // Build one summary per image, flagged dangling / unused, then
+                // derive every count + byte total from that single pass so the
+                // numbers and the drill-down list can never disagree.
+                var summaries = images
+                    .Select(i =>
+                    {
+                        // "Dangling" follows the Docker definition: the only
+                        // RepoTags value the daemon writes is <none>:<none>.
+                        // Some daemons return a null RepoTags list for the same
+                        // case, so treat that as dangling too.
+                        var isDangling = IsDangling(i);
+                        var usedBy = (!string.IsNullOrEmpty(i.ID)
+                            && containersByImageId.TryGetValue(i.ID, out var names))
+                            ? names
+                            : [];
+                        var isUnused = usedBy.Count == 0 && !string.IsNullOrEmpty(i.ID);
+                        var tags = (i.RepoTags ?? [])
+                            .Where(t => !string.IsNullOrEmpty(t) && t != "<none>:<none>")
+                            .ToList();
+                        var createdUtc = i.Created == default
+                            ? (DateTime?)null
+                            : DateTime.SpecifyKind(i.Created.ToUniversalTime(), DateTimeKind.Utc);
+                        return new DockerImageSummary(
+                            Id: i.ID ?? string.Empty,
+                            RepoTags: tags,
+                            SizeBytes: i.Size,
+                            CreatedUtc: createdUtc,
+                            IsDangling: isDangling,
+                            IsUnused: isUnused,
+                            UsedByContainers: usedBy);
+                    })
+                    .OrderByDescending(s => s.SizeBytes)
+                    .ToList();
+
+                return new DockerImageStorageResult(
+                    DockerHostStatus.Ok,
+                    TotalImageCount: summaries.Count,
+                    DanglingImageCount: summaries.Count(s => s.IsDangling),
+                    DanglingImageBytes: summaries.Where(s => s.IsDangling).Sum(s => s.SizeBytes),
+                    UnusedImageCount: summaries.Count(s => s.IsUnused),
+                    UnusedImageBytes: summaries.Where(s => s.IsUnused).Sum(s => s.SizeBytes),
+                    Images: summaries,
+                    Error: null);
+            }
+            catch (HttpRequestException ex)
+            {
+                logger.LogWarning(ex, "Docker host unreachable: {Host}", DescribeHost(transport));
+                return new DockerImageStorageResult(DockerHostStatus.HostUnreachable, 0, 0, 0, 0, 0, [], DescribeError(ex));
+            }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return new DockerImageStorageResult(DockerHostStatus.HostUnreachable, 0, 0, 0, 0, 0, [],
+                    "Docker host request timed out.");
+            }
+        }
+    }
+
+    public async Task<DockerImagePruneResult> PruneImagesAsync(
+        DockerHostTransport transport,
+        bool includeUnused,
+        CancellationToken cancellationToken = default)
+    {
+        IDockerClient client;
+        try
+        {
+            client = CreateClient(transport);
+        }
+        catch (NotSupportedException ex)
+        {
+            return new DockerImagePruneResult(DockerHostStatus.UnsupportedHostType, 0, 0, ex.Message);
+        }
+        catch (Exception ex) when (IsSshConnectFailure(ex))
+        {
+            return new DockerImagePruneResult(DockerHostStatus.HostUnreachable, 0, 0,
+                $"SSH connection failed: {ex.Message}");
+        }
+
+        using (client)
+        {
+            try
+            {
+                // dangling=true → standard <none>:<none> images only.
+                // dangling=false → also remove any image not referenced by a
+                // container (the `docker image prune -a` equivalent). Docker
+                // applies the "unreferenced" filter implicitly server-side.
+                var filters = new Dictionary<string, IDictionary<string, bool>>
+                {
+                    ["dangling"] = new Dictionary<string, bool> { [includeUnused ? "false" : "true"] = true },
+                };
+                var parameters = new ImagesPruneParameters { Filters = filters };
+                var response = await client.Images.PruneImagesAsync(parameters, cancellationToken);
+
+                var deletedCount = response.ImagesDeleted?.Count ?? 0;
+                var reclaimed = response.SpaceReclaimed;
+                return new DockerImagePruneResult(DockerHostStatus.Ok, deletedCount, (long)reclaimed, null);
+            }
+            catch (DockerApiException ex)
+            {
+                logger.LogWarning(ex, "Docker daemon rejected prune");
+                return new DockerImagePruneResult(DockerHostStatus.HostUnreachable, 0, 0,
+                    $"Docker daemon error: {ex.Message}");
+            }
+            catch (HttpRequestException ex)
+            {
+                logger.LogWarning(ex, "Docker host unreachable: {Host}", DescribeHost(transport));
+                return new DockerImagePruneResult(DockerHostStatus.HostUnreachable, 0, 0, DescribeError(ex));
+            }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return new DockerImagePruneResult(DockerHostStatus.HostUnreachable, 0, 0,
+                    "Docker host request timed out.");
+            }
+        }
+    }
+
+    private static bool IsDangling(ImagesListResponse image)
+    {
+        if (image.RepoTags is null || image.RepoTags.Count == 0) return true;
+        return image.RepoTags.All(t => string.IsNullOrEmpty(t) || t == "<none>:<none>");
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private IDockerClient CreateClient(DockerHostTransport transport) =>

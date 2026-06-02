@@ -12,6 +12,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<RefreshTokenEntity> RefreshTokens => Set<RefreshTokenEntity>();
     public DbSet<EmailSettingsEntity> EmailSettings => Set<EmailSettingsEntity>();
     public DbSet<HostShellSettingsEntity> HostShellSettings => Set<HostShellSettingsEntity>();
+    public DbSet<ContainerExecSettingsEntity> ContainerExecSettings => Set<ContainerExecSettingsEntity>();
+    public DbSet<HealthCheckSettingsEntity> HealthCheckSettings => Set<HealthCheckSettingsEntity>();
 
     public DbSet<WebResourceEntity> WebResources => Set<WebResourceEntity>();
     public DbSet<CredentialEntity> Credentials => Set<CredentialEntity>();
@@ -22,6 +24,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<DockerWatchEntity> DockerWatches => Set<DockerWatchEntity>();
     public DbSet<DockerUpdateAttemptEntity> DockerUpdateAttempts => Set<DockerUpdateAttemptEntity>();
     public DbSet<HostShellSessionEntity> HostShellSessions => Set<HostShellSessionEntity>();
+    public DbSet<DockerExecSessionEntity> DockerExecSessions => Set<DockerExecSessionEntity>();
+    public DbSet<ImagePruneSettingsEntity> ImagePruneSettings => Set<ImagePruneSettingsEntity>();
+    public DbSet<DockerPruneRunEntity> DockerPruneRuns => Set<DockerPruneRunEntity>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -38,6 +43,15 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         // Single-row, app-wide host-terminal master switch (see HostShellSettingsEntity.SingletonId).
         builder.Entity<HostShellSettingsEntity>();
+
+        // V5.7 — single-row, app-wide container-exec master switch (see ContainerExecSettingsEntity.SingletonId).
+        builder.Entity<ContainerExecSettingsEntity>();
+
+        // V5.5 — single-row, app-wide image-prune settings (see ImagePruneSettingsEntity.SingletonId).
+        builder.Entity<ImagePruneSettingsEntity>();
+
+        // V5.6 — single-row, app-wide health-check tuning (see HealthCheckSettingsEntity.SingletonId).
+        builder.Entity<HealthCheckSettingsEntity>();
 
         builder.Entity<RefreshTokenEntity>(e =>
         {
@@ -194,6 +208,33 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .WithMany()
                 .HasForeignKey(a => a.DockerConnectionId)
                 .OnDelete(DeleteBehavior.SetNull);
+            // V5.4 — aggregate "Update project" rows reference their child
+            // service rows via ParentAttemptId. Cascade so removing the
+            // parent (e.g. when the connection is deleted) also drops the
+            // children — a child row is never useful in isolation.
+            e.HasIndex(a => a.ParentAttemptId);
+            e.HasOne<DockerUpdateAttemptEntity>()
+                .WithMany()
+                .HasForeignKey(a => a.ParentAttemptId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<DockerPruneRunEntity>(e =>
+        {
+            // V5.5 — audit log for image-prune runs. The storage widget reads
+            // the most recent N rows per connection, newest first, so a single
+            // composite index covers both queries.
+            e.HasIndex(p => new { p.DockerConnectionId, p.StartedUtc });
+            // SetNull mirrors the DockerUpdateAttempt convention: the audit row
+            // outlives the connection so the user can still see the history.
+            e.HasOne<DockerConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(p => p.DockerConnectionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(p => p.InitiatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         builder.Entity<HostShellSessionEntity>(e =>
@@ -211,6 +252,26 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .HasForeignKey(s => s.DockerConnectionId)
                 .OnDelete(DeleteBehavior.SetNull);
             // Owner cascade — deleting a user removes their shell history.
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.InitiatedByUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<DockerExecSessionEntity>(e =>
+        {
+            // V5.7 — audit log for browser container-exec sessions. Same shape
+            // and conventions as the V5.3 host-shell audit table.
+            e.HasIndex(s => new { s.InitiatedByUserId, s.StartedUtc });
+            e.HasIndex(s => new { s.DockerConnectionId, s.StartedUtc });
+            // Keep the audit row when the connection is deleted — the container
+            // details are denormalised onto the row precisely so the history
+            // survives. SetNull mirrors the host-shell convention.
+            e.HasOne<DockerConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.DockerConnectionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            // Owner cascade — deleting a user removes their exec history.
             e.HasOne<UserEntity>()
                 .WithMany()
                 .HasForeignKey(s => s.InitiatedByUserId)

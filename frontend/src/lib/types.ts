@@ -416,6 +416,16 @@ export interface DockerConnection {
    *  Only meaningful for SSH hosts; the server also requires the global
    *  AllowHostShell flag before honouring it. */
   allowHostShell: boolean
+  /** V5.7 — whether this connection has opted in to the browser container-exec
+   *  terminal. Works for every host type; the server also requires the global
+   *  AllowContainerExec switch before honouring it. */
+  allowExec: boolean
+  /** V5.5 — whether this connection participates in the background
+   *  image-prune sweep. Default `true` on new + upgraded connections. */
+  allowImagePrune: boolean
+  /** V5.5 — opt this connection in to pruning non-dangling "unused"
+   *  images on top of dangling ones. Default `false`. */
+  pruneUnusedImages: boolean
   /** Number of services currently assigned to this connection — drives
    *  the delete-blocked warning. */
   usageCount: number
@@ -447,6 +457,12 @@ export interface DockerConnectionUpsert {
   composeProjectPath: string | null
   /** V5.3 — opt this connection in to the browser host terminal (SSH only). */
   allowHostShell: boolean
+  /** V5.7 — opt this connection in to the browser container-exec terminal (any host type). */
+  allowExec: boolean
+  /** V5.5 — whether this connection participates in the background image-prune sweep. */
+  allowImagePrune: boolean
+  /** V5.5 — opt this connection in to pruning non-dangling unused images. */
+  pruneUnusedImages: boolean
 }
 
 export interface DockerConnectionPingRequest {
@@ -656,7 +672,14 @@ export interface DockerLogStreamOptions {
 /** Discriminator for a row in the Docker activity log. V2.7 rows arrive
  *  as `Update`; V3.5 instance-page actions tag themselves with the matching
  *  value. */
-export type DockerContainerActionType = 'Update' | 'Start' | 'Stop' | 'Restart' | 'Remove'
+export type DockerContainerActionType =
+  | 'Update'
+  | 'Start'
+  | 'Stop'
+  | 'Restart'
+  | 'Remove'
+  /** V5.4 — aggregate parent row for a bulk "Update project" attempt. */
+  | 'UpdateProject'
 
 export interface DockerContainerPortMapping {
   privatePort: number
@@ -687,6 +710,9 @@ export interface StashboardFeatures {
   /** V5.3 — global master switch for the browser host terminal. A connection's
    *  own `allowHostShell` opt-in is also required for the Terminal tab to go live. */
   allowHostShell: boolean
+  /** V5.7 — global master switch for the browser container-exec terminal. A
+   *  connection's own `allowExec` opt-in is also required for the Exec tab. */
+  allowContainerExec: boolean
 }
 
 /** V5.3 — app-wide host-terminal master switch, managed from Settings → Host terminal. */
@@ -694,8 +720,91 @@ export interface HostShellSettings {
   enabled: boolean
 }
 
+/** V5.7 — app-wide container-exec master switch, managed from Settings → Container exec. */
+export interface ContainerExecSettings {
+  enabled: boolean
+}
+
+/** V5.5 — app-wide image-prune settings, managed from Settings → Image cleanup. */
+export interface ImagePruneSettings {
+  enabled: boolean
+  intervalHours: number
+}
+
+/** V5.6 — app-wide health-check tuning (offline-alert reliability), managed from Settings → Health checks. */
+export interface HealthCheckSettings {
+  intervalSeconds: number
+  failureThreshold: number
+  retryCount: number
+  retryDelayMs: number
+}
+
+/** V5.5 — trigger that kicked off a prune run. Mirrors the backend enum. */
+export type DockerPruneTrigger = 'Scheduled' | 'Manual'
+
+/** V5.5 — terminal outcome of a single prune run. Mirrors the backend enum. */
+export type DockerPruneStatus =
+  | 'Success'
+  | 'NothingToPrune'
+  | 'HostUnreachable'
+  | 'Failed'
+  | 'Skipped'
+
+/** V5.5 — wire shape of a single `DockerPruneRunEntity` row. */
+export interface DockerPruneRun {
+  id: string
+  trigger: DockerPruneTrigger
+  status: DockerPruneStatus
+  includedUnused: boolean
+  imagesDeleted: number
+  spaceReclaimedBytes: number
+  startedUtc: string
+  completedUtc: string | null
+  error: string | null
+}
+
+/** V5.5 — one image on the host, for the Storage drill-down. */
+export interface DockerImageInfo {
+  id: string
+  /** Repo tags (e.g. `nginx:1.27`); empty for a dangling image. */
+  repoTags: string[]
+  sizeBytes: number
+  createdUtc: string | null
+  isDangling: boolean
+  isUnused: boolean
+  /** Containers (running or stopped) using this image. Non-empty means a
+   *  prune can't remove it until those containers are gone. */
+  usedByContainers: string[]
+}
+
+/** V5.5 — storage summary for the V3.5 Storage widget. */
+export interface DockerImageStorage {
+  totalImageCount: number
+  danglingImageCount: number
+  danglingImageBytes: number
+  unusedImageCount: number
+  unusedImageBytes: number
+  allowImagePrune: boolean
+  pruneUnusedImages: boolean
+  lastPruneUtc: string | null
+  recentRuns: DockerPruneRun[]
+  /** Every image on the host, largest first, each flagged dangling / unused. */
+  images: DockerImageInfo[]
+}
+
 export interface DockerContainerActionResponse {
   attempt: DockerUpdateAttempt
+}
+
+/** V5.4 — response from the bulk "Update project" endpoint. */
+export interface DockerProjectUpdateResponse {
+  parent: DockerUpdateAttempt
+  services: DockerUpdateAttempt[]
+  /** Dispatch path the backend took: `Compose` for the one-shot
+   *  `docker compose pull && up -d`, `Recreate` for the per-service
+   *  fallback. Surfaced so the UI can hint at why the update was slow or
+   *  why a particular service is the one that failed. */
+  mode: 'Compose' | 'Recreate'
 }
 
 // ── V3.4 — Live container stats ──────────────────────────────────────────

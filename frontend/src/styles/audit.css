@@ -1,0 +1,98 @@
+/* V5.8 — Session audit viewer. Tabbed read-only tables of shell / exec / update
+   / prune history. Styling follows the muted, table-dense look of the other
+   settings pages. */
+
+.audit-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+
+.audit-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.audit-tab:hover {
+  color: var(--foreground);
+}
+
+.audit-tab-active {
+  color: var(--foreground);
+  border-bottom-color: var(--primary);
+}
+
+.audit-table-wrap {
+  overflow-x: auto;
+}
+
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.audit-table th,
+.audit-table td {
+  text-align: left;
+  padding: 0.5rem 0.625rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.audit-table th {
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+.audit-table code {
+  font-size: 0.75rem;
+  background: var(--secondary);
+  padding: 0.0625rem 0.25rem;
+  border-radius: 0.25rem;
+}
+
+.audit-sub {
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+}
+
+.audit-error {
+  color: var(--destructive);
+  font-size: 0.6875rem;
+  white-space: normal;
+  max-width: 28rem;
+}
+
+.audit-state {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  padding: 1rem 0;
+}
+
+.audit-filter {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+  margin-bottom: 0.75rem;
+}
+
+.audit-link-button {
+  appearance: none;
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+}

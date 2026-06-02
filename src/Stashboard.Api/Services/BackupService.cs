@@ -60,7 +60,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 Dec(c.TlsCaCertEncrypted), Dec(c.TlsClientCertEncrypted), Dec(c.TlsClientKeyEncrypted),
                 c.SshHost, c.SshPort, c.SshUsername,
                 Dec(c.SshPrivateKeyEncrypted), Dec(c.SshPrivateKeyPassphraseEncrypted), c.SshRemoteSocketPath,
-                c.ComposeProjectPath)).ToList(),
+                c.ComposeProjectPath, c.AllowImagePrune, c.PruneUnusedImages)).ToList(),
             Services: services.Select(s => new ServiceDto(
                 s.Id, s.Name, s.MainUrl, s.MainUrlHealthCheckEnabled, s.AdditionalUrl, s.AdditionalUrlHealthCheckEnabled,
                 s.OfflineNotificationsEnabled, s.HealthCheckUrl, s.HealthCheckMethod, s.ExpectedStatusRange,
@@ -148,6 +148,8 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                     SshPrivateKeyPassphraseEncrypted = Enc(dc.SshPrivateKeyPassphrase),
                     SshRemoteSocketPath = dc.SshRemoteSocketPath,
                     ComposeProjectPath = dc.ComposeProjectPath,
+                    AllowImagePrune = dc.AllowImagePrune,
+                    PruneUnusedImages = dc.PruneUnusedImages,
                 };
                 db.DockerConnections.Add(fresh);
                 idMap[dc.Id] = fresh.Id;
@@ -279,7 +281,9 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         string? TlsCaCert, string? TlsClientCert, string? TlsClientKey,
         string? SshHost, int? SshPort, string? SshUsername,
         string? SshPrivateKey, string? SshPrivateKeyPassphrase, string? SshRemoteSocketPath,
-        string? ComposeProjectPath = null);
+        string? ComposeProjectPath = null,
+        bool AllowImagePrune = true,
+        bool PruneUnusedImages = false);
 
     private sealed record ServiceDto(
         Guid Id, string Name, string MainUrl, bool MainUrlHealthCheckEnabled, string? AdditionalUrl,

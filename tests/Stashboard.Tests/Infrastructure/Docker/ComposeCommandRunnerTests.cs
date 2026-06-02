@@ -194,6 +194,72 @@ public class ComposeCommandRunnerTests
         Assert.Equal(ComposeRunnerStatus.CliNotAvailable, result.Status);
     }
 
+    // ── V5.4 — project-wide recreate ──────────────────────────────────────
+
+    [Fact]
+    public async Task RecreateProject_PluginForm_RunsPullThenUpWithoutServiceArgument()
+    {
+        var calls = new List<ProcessRunSpec>();
+        var runner = BuildPluginRunner(calls, pullExit: 0, upExit: 0);
+
+        var result = await runner.RecreateProjectAsync(new ComposeProjectRecreateRequest(ProjectPath));
+
+        Assert.Equal(ComposeRunnerStatus.Success, result.Status);
+
+        // calls[0] = version probe, [1] = pull, [2] = up.
+        var pull = calls[1];
+        Assert.Equal("docker", pull.FileName);
+        Assert.Equal(new[] { "compose", "pull" }, pull.Arguments);
+        Assert.Equal(ProjectPath, pull.WorkingDirectory);
+
+        var up = calls[2];
+        Assert.Equal(new[] { "compose", "up", "-d" }, up.Arguments);
+        Assert.Equal(ProjectPath, up.WorkingDirectory);
+    }
+
+    [Fact]
+    public async Task RecreateProject_PullFails_ReturnsCommandFailedAndSkipsUp()
+    {
+        var calls = new List<ProcessRunSpec>();
+        var runner = BuildPluginRunner(calls, pullExit: 1, upExit: 0, pullStderr: "manifest unknown");
+
+        var result = await runner.RecreateProjectAsync(new ComposeProjectRecreateRequest(ProjectPath));
+
+        Assert.Equal(ComposeRunnerStatus.CommandFailed, result.Status);
+        Assert.DoesNotContain(calls, c => c.Arguments.Contains("up"));
+    }
+
+    [Fact]
+    public async Task RecreateProject_MissingProjectDir_ShortCircuits()
+    {
+        var calls = new List<ProcessRunSpec>();
+        var runner = NewRunner();
+        runner.DirectoryExists = _ => false;
+        runner.RunProcessAsync = (spec, _) =>
+        {
+            calls.Add(spec);
+            return Task.FromResult(new ProcessRunOutcome(true, 0, "", ""));
+        };
+
+        var result = await runner.RecreateProjectAsync(new ComposeProjectRecreateRequest(ProjectPath));
+
+        Assert.Equal(ComposeRunnerStatus.ProjectPathNotFound, result.Status);
+        Assert.DoesNotContain(calls, c => c.Arguments.Contains("pull") || c.Arguments.Contains("up"));
+    }
+
+    [Fact]
+    public async Task RecreateProject_CliMissing_ReturnsCliNotAvailable()
+    {
+        var runner = NewRunner();
+        runner.DirectoryExists = _ => true;
+        runner.RunProcessAsync = (_, _) =>
+            Task.FromException<ProcessRunOutcome>(new System.ComponentModel.Win32Exception("not found"));
+
+        var result = await runner.RecreateProjectAsync(new ComposeProjectRecreateRequest(ProjectPath));
+
+        Assert.Equal(ComposeRunnerStatus.CliNotAvailable, result.Status);
+    }
+
     // ── fixtures ──────────────────────────────────────────────────────────
 
     private static ComposeCommandRunner BuildPluginRunner(

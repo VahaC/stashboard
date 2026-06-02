@@ -815,6 +815,114 @@ commented-out examples — uncomment and adjust the host path.
   it does **not** fall back to a destructive raw recreate. A missing CLI (only
   possible on a custom image) *does* fall back to the raw recreate.
 
+### 5.1b Compose project bulk update (V5.4)
+
+V5.2 fixes the "update one service correctly" case. V5.4 fixes the next
+class of mistake: *"I just updated Postgres but forgot to also kick the
+API that depends on it."* Real Docker hosts run stacks, not isolated
+containers — the project bulk update treats a Compose project as the
+unit of work so the user clicks once, not seven times.
+
+**On the Docker instances page (`/docker`),** every container with a
+`com.docker.compose.project` label collapses into a project group with a
+header card that shows:
+
+- the project name (click to filter the page to just this project);
+- a *"N of M tracked services have updates available"* counter, computed
+  against the watches you've configured for the project's containers —
+  untracked containers contribute to the M but the N only counts what
+  Stashboard has actually checked for an update;
+- an **Update project** button that drives the bulk update.
+
+Standalone containers (no Compose project label) keep their previous
+ungrouped layout, so nothing about the non-Compose workflow changes.
+
+> **Single-service projects are not wrapped.** Compose stamps the
+> `com.docker.compose.project` label on every container it creates,
+> even on a one-liner stack with a single service — pre-V5.4 polish
+> wrapped these under a "0 of 1 tracked services have updates available"
+> header whose *Update project* button did exactly what the container's
+> own *Update now* does. A compose group with only one container is
+> demoted to a standalone card (the compose-project badge on the card
+> itself still tells you the container is Compose-managed); the group
+> shell + *Update project* button only appears once ≥2 services share a
+> project name.
+
+**Dispatch path — same gate as V5.2, applied to the whole project:**
+
+| Condition | Update project does |
+|---|---|
+| **Local socket** + **Compose project path** set + `docker compose` available | One `docker compose pull` + `docker compose up -d` against the project root — Compose handles `depends_on` ordering itself. |
+| Anything else (remote host, no project path, no CLI) | Per-service raw recreate, ordered by a topological sort of the `com.docker.compose.depends_on` labels Compose v2 writes on every container. Each service goes through the same V2.7 pull + stop + remove + create + start + V3.2 health verification the per-watch "Update now" uses. |
+
+The response carries a `mode` field (`"Compose"` or `"Recreate"`) so the
+UI can hint at which path ran. Setting up the Compose-aware path is the
+same one-liner as V5.2 — see [§5.1a](#51a-compose-aware-recreate-v52).
+
+**UX — the same confirm/progress modal as per-watch *Update now*.**
+Clicking *Update project* (or, since V5.4, clicking *Update now* on a
+single container — both buttons share one component) opens a three-phase
+dialog:
+
+1. **Confirm** — lists every service in scope with its image, flags
+   untracked containers as "anonymous pull only", and shows the
+   raw-vs-Compose dispatch warning so the user knows whether the bulk
+   run will go through `docker compose` or per-service raw recreate.
+2. **Running** — each service row spins while the recreate is in
+   flight; no other Stashboard work is blocked.
+3. **Done** — each row shows ✓ Updated or ✗ Failed inline; on a partial
+   failure the failing service's real error (e.g. *"Container started
+   but did not become healthy within 30 s."*) is shown directly on its
+   row, not flattened to a generic *"An error occurred."*. Finished
+   rows dim and lock; a single *Close* footer button ends the
+   interaction.
+
+**Auto re-check after a successful bulk update.** Mirrors the per-watch
+*Update now* behaviour: every service that succeeded *and* is tracked
+by a watch is immediately re-checked against its registry, so the
+dashboard's *Update available* badge clears without forcing the user
+to click *Check now* on each container. Re-check failures are recorded
+on the watch's `LastError` but never undo the recreate.
+
+**Audit log treats the whole operation as one unit.** A bulk update
+writes:
+
+- one **aggregate parent** row (`ActionType = UpdateProject`) carrying
+  the overall status and any aggregate error;
+- one **child** row per service (`ActionType = Update`, linked via
+  `ParentAttemptId`) carrying that service's before/after digest,
+  health-verification flag, and per-service error.
+
+The per-watch *Update history* panel surfaces the child rows alongside
+the existing one-off Update Now rows so nothing about the per-watch
+audit story changes — you just gain an aggregate ancestor for the bulk
+runs.
+
+**API:**
+
+```
+POST /api/docker/connections/{connectionId}/instance/projects/{projectName}/update
+```
+
+Returns `200` with `{ parent, services: […], mode }` on full success, or
+`502` with the same envelope when at least one service failed (the
+parent + child rows are still persisted regardless of HTTP status).
+
+**Edge cases worth knowing about:**
+
+- Untracked containers are still updated. The fallback path attempts an
+  anonymous pull only — if the image is private, the per-service result
+  will be `PullFailed` with the registry's `unauthorized` message. Track
+  the container with a watch to give the updater credentials.
+- A partial failure downgrades the aggregate to `RecreateFailed` but
+  every service is attempted and every service gets its own audit row.
+  Find the failed service in its watch's *Update history* panel.
+- On the compose path, the post-state of each service is inspected after
+  `up -d` returns. A container that reports `unhealthy` (or that simply
+  isn't running after the recreate) is recorded as `RecreateFailed`
+  even though `docker compose` itself succeeded — the aggregate row is
+  downgraded too.
+
 ### 5.2 Diagnostics inside the watch modal (V3.1 – V3.4)
 
 The watch modal carries four collapsible panels for diagnosing a
@@ -913,11 +1021,14 @@ The button shows up automatically — no rebuild required.
 
 ### 5.4 Host terminal (V5.3)
 
-The container modal has a **Terminal** tab that opens an interactive shell **on
-the Docker host itself** — handy when you need to poke at the box (`df -h`,
-`journalctl`, edit a compose file) without leaving Stashboard and `ssh`-ing in
-manually. It complements the diagnostics tabs: Logs/Stats/Inspect look *inside*
-a container; the terminal drops you onto the *host* running it.
+Each connection on the Docker page has a **Host terminal** button in its header
+that opens an interactive shell **on the Docker host itself** — handy when you
+need to poke at the box (`df -h`, `journalctl`, edit a compose file) without
+leaving Stashboard and `ssh`-ing in manually. It's host-scoped (a shell on the
+host, not inside any one container), so it lives at the connection level rather
+than on a per-container tab. It complements the in-container views: a container's
+Logs/Stats/Inspect/Exec look *inside* a container; this drops you onto the *host*
+running it.
 
 This is the most dangerous feature in Stashboard — it is full, interactive,
 host-level shell access. It is therefore **off by default and SSH-only**, and
@@ -934,9 +1045,9 @@ must be enabled in **two** places before the live terminal appears:
    `TCP+TLS` connections show *"Available only for SSH tunnel connections"* on
    the Terminal tab because they have no host shell to offer.
 
-Once both are on, open any container on that host, switch to **Terminal**, and
-click **Connect**. The shell uses the same SSH key you configured for the
-connection in [§2.3](#23-ssh-tunnel-v25--easiest-for-vps-hosts).
+Once both are on, click **Host terminal** in that connection's header on the
+Docker page, then **Connect**. The shell uses the same SSH key you configured for
+the connection in [§2.3](#23-ssh-tunnel-v25--easiest-for-vps-hosts).
 
 **Guardrails (all enforced server-side):**
 
@@ -972,6 +1083,44 @@ location /api/ {
 Traefik forwards WebSockets automatically; Cloudflare proxied (orange-cloud)
 hosts do too. The single-container deployment (no external proxy) needs no extra
 config.
+
+### 5.5 Container exec (V5.7)
+
+The container modal has an **Exec** tab — and each container card has a shell
+button that opens it — for an interactive shell **inside the container**, the
+counterpart to the host terminal. Use it for the
+"I just need to run one command in here" case: `cat` a config, check a process,
+run a CLI the image ships. Where the host terminal lands you on the box, exec
+drops you *inside* the workload.
+
+Exec goes through the Docker daemon's `exec` API rather than SSH, so — unlike the
+host terminal — it works for **every** connection type (local socket, TCP+TLS,
+SSH tunnel). It runs arbitrary commands inside your containers, so it is **off by
+default** and must be enabled in **two** places before the live terminal appears:
+
+1. **Globally**, by the operator — go to **Settings → Container exec** in the UI
+   and turn on **Enable container exec server-wide**. That page lays out every
+   condition and the risks. (No env var / restart needed — the switch is stored
+   in the database. The optional `Stashboard:AllowContainerExec` config flag only
+   *seeds* the toggle on first run.)
+
+2. **Per connection** — edit the connection and tick **Allow container exec**.
+   This applies to any host type.
+
+Once both are on, open a **running** container, switch to **Exec**, optionally
+change the **Command** (defaults to `/bin/sh` — try `/bin/bash` if the image has
+it), and click **Connect**. Live terminal resize works (resize the window and the
+shell reflows), unlike the host terminal.
+
+**Guardrails (all enforced server-side):** identical to the host terminal —
+every session is audited (who, when, which container, which command, duration,
+bytes, why it ended); per-user / per-host concurrency caps and a server-side idle
+timeout apply (tune via `STASHBOARD_Stashboard__ContainerExec__MaxSessionsPerUser`
+(default 3), `__MaxSessionsPerHost` (5), `__IdleTimeoutSeconds` (600; `0`
+disables), `__TicketTtlSeconds` (30) and `__DefaultCommand` (`/bin/sh`)); and the
+WebSocket is authorised by a single-use ticket, never a token on the query
+string. The same reverse-proxy WebSocket note above applies — the endpoint is
+`/api/docker/connections/{id}/containers/{name}/exec/ws`.
 
 ---
 
@@ -1352,3 +1501,22 @@ notify you on the usual cadence. You'll never silently miss an update.
 | Inbound flood / DoS | Bounded process-local queue (capacity 1024) with duplicate collapsing — repeat hits for the same watch coalesce into one check. Beyond capacity the endpoint still returns 202 and the scheduled scan picks up the work. |
 | Payload-based attack | Body is capped at 64 KB and parsed read-only; malformed JSON is silently tolerated. The orchestrator never sees the payload. |
 | Public exposure required | The webhook URL must be reachable from the registry. If Stashboard is behind a VPN, the receiver won't work — use the schedule instead. |
+
+## Audit (V5.8)
+
+The **Audit** page (sidebar → **Settings → Audit**) is a read-only view of the
+activity Stashboard records. Four tabs:
+
+- **Host terminal** — every browser SSH shell opened to a Docker host (V5.3):
+  connection / host, user, start / end, duration, bytes in / out, and how it
+  ended.
+- **Container exec** — every shell opened inside a container (V5.7), plus the
+  command that was run.
+- **Update attempts** — the per-container "Update now" history (V2.7).
+- **Image prune** — scheduled and manual prune runs and how much was reclaimed
+  (V5.5).
+
+Sessions still open show an **Active** badge. The page is read-only — audit rows
+cannot be edited or deleted from the UI. The host-terminal dialog and the
+container **Exec** panel each link straight to this page, pre-filtered to the
+connection you opened them from.

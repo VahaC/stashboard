@@ -348,6 +348,58 @@ public class DockerConnectionMapperTests
         Assert.True(response.AllowHostShell);
     }
 
+    // ── V5.7 — container-exec opt-in ─────────────────────────────────────────
+
+    [Theory]
+    [InlineData(DockerHostType.LocalSocket)]
+    [InlineData(DockerHostType.Ssh)]
+    public void ApplyUpsert_AllowExec_PersistsForEveryHostType(DockerHostType hostType)
+    {
+        // Unlike the SSH-only host terminal, container exec is available for any
+        // host type, so the opt-in must persist regardless of transport.
+        var entity = new DockerConnectionEntity { Name = "x" };
+        var request = hostType == DockerHostType.Ssh
+            ? SshUpsert(host: "vps", port: 22, username: "docker", socketPath: null,
+                keyAction: SecretValueAction.Set, keyValue: "PEM", allowExec: true)
+            : new DockerConnectionUpsertRequest(
+                Name: "local",
+                HostType: DockerHostType.LocalSocket,
+                HostUrl: null,
+                TlsCaCert: null, TlsClientCert: null, TlsClientKey: null,
+                AllowExec: true);
+
+        _mapper.ApplyUpsert(entity, request);
+
+        Assert.True(entity.AllowExec);
+    }
+
+    [Fact]
+    public void ApplyUpsert_AllowExecOff_PersistsFalse()
+    {
+        var entity = new DockerConnectionEntity { Name = "x", AllowExec = true };
+        var request = new DockerConnectionUpsertRequest(
+            Name: "x",
+            HostType: DockerHostType.LocalSocket,
+            HostUrl: null,
+            TlsCaCert: null, TlsClientCert: null, TlsClientKey: null,
+            AllowExec: false);
+
+        _mapper.ApplyUpsert(entity, request);
+
+        Assert.False(entity.AllowExec);
+    }
+
+    [Fact]
+    public void ToResponse_SurfacesAllowExec()
+    {
+        var entity = SshEntity(withPassphrase: false);
+        entity.AllowExec = true;
+
+        var response = _mapper.ToResponse(entity, usageCount: 0);
+
+        Assert.True(response.AllowExec);
+    }
+
     [Fact]
     public void ToResponse_SurfacesComposeProjectPath()
     {
@@ -384,7 +436,7 @@ public class DockerConnectionMapperTests
         string host, int? port, string username, string? socketPath,
         SecretValueAction keyAction, string? keyValue,
         SecretValueAction passphraseAction = SecretValueAction.Keep, string? passphraseValue = null,
-        bool allowHostShell = false) =>
+        bool allowHostShell = false, bool allowExec = false) =>
         new(
             Name: "vps-prod",
             HostType: DockerHostType.Ssh,
@@ -396,5 +448,6 @@ public class DockerConnectionMapperTests
             SshPrivateKey: new SecretValueUpsert(keyAction, keyValue),
             SshPrivateKeyPassphrase: new SecretValueUpsert(passphraseAction, passphraseValue),
             SshRemoteSocketPath: socketPath,
-            AllowHostShell: allowHostShell);
+            AllowHostShell: allowHostShell,
+            AllowExec: allowExec);
 }

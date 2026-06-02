@@ -33,4 +33,18 @@ public sealed class StashboardOptions
     /// opt-in (<c>DockerConnection.AllowHostShell</c>) and an SSH connection.
     /// </summary>
     public bool AllowHostShell { get; set; } = false;
+
+    /// <summary>
+    /// V5.7 — <strong>first-run seed</strong> for the container-exec master
+    /// switch. The live value is DB-backed and managed from the Settings page
+    /// (<c>ContainerExecSettingsEntity</c> / <c>/api/settings/container-exec</c>);
+    /// this config flag only seeds the row the first time it's read, so an
+    /// operator who set it on first boot keeps that value until they change it
+    /// in the UI. Default <c>false</c> — opening a shell inside a container is
+    /// sensitive (it runs arbitrary commands in the workload), so it also
+    /// requires a per-connection opt-in (<c>DockerConnection.AllowExec</c>).
+    /// Unlike the host terminal, exec runs through the Docker daemon, so it
+    /// works for every host type (local socket, TCP+TLS, SSH tunnel).
+    /// </summary>
+    public bool AllowContainerExec { get; set; } = false;
 }

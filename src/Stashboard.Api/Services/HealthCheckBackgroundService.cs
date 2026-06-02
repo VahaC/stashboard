@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Stashboard.Api.Auth;
 using Stashboard.Api.Data;
 using Stashboard.Api.Notifications;
+using Stashboard.Api.Services.HealthCheckSettings;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Options;
 
@@ -21,22 +22,34 @@ public sealed class HealthCheckBackgroundService(
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            try { await ScanOnceAsync(stoppingToken); }
+            // V5.6 — the scan interval is DB-backed (Settings → Health checks); the scan
+            // returns the value it read so UI edits take effect on the next cycle. Fall
+            // back to the config default if the scan itself threw before reading it.
+            var intervalSeconds = options.CurrentValue.IntervalSeconds;
+            try { intervalSeconds = await ScanOnceAsync(stoppingToken); }
             catch (Exception ex) { logger.LogError(ex, "Healthcheck scan failed"); }
 
-            var delay = TimeSpan.FromSeconds(Math.Max(10, options.CurrentValue.IntervalSeconds));
+            var delay = TimeSpan.FromSeconds(Math.Max(10, intervalSeconds));
             try { await Task.Delay(delay, stoppingToken); }
             catch (TaskCanceledException) { return; }
         }
     }
 
-    private async Task ScanOnceAsync(CancellationToken cancellationToken)
+    /// <summary>Runs a single scan and returns the DB-backed interval (in seconds)
+    /// it read, so the loop schedules the next sweep on the live value. Public so the
+    /// behaviour can be unit-tested without driving the timing loop.</summary>
+    public async Task<int> ScanOnceAsync(CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var checker = scope.ServiceProvider.GetRequiredService<IServiceHealthChecker>();
         var userService = scope.ServiceProvider.GetRequiredService<IUserService>();
         var statusNotifications = scope.ServiceProvider.GetRequiredService<IServiceStatusNotificationService>();
+        var healthSettingsService = scope.ServiceProvider.GetRequiredService<IHealthCheckSettingsService>();
+
+        // V5.6 — read the DB-backed tuning once per scan so UI edits apply on the next sweep.
+        var healthSettings = await healthSettingsService.GetAsync(cancellationToken);
+        var retry = new HealthCheckRetrySettings(healthSettings.RetryCount, healthSettings.RetryDelayMs);
 
         var services = await db.WebResources.AsTracking().ToListAsync(cancellationToken);
         var userIds = services.Select(service => service.UserId).Distinct().ToList();
@@ -56,8 +69,8 @@ public sealed class HealthCheckBackgroundService(
 
             var previousMainStatus = service.CurrentStatus;
             var previousAdditionalStatus = service.AdditionalUrlStatus;
-            var result = await checker.CheckAsync(service, cancellationToken);
-            HealthCheckStatusEvaluator.Apply(service, result, options.CurrentValue.FailureThreshold, DateTime.UtcNow);
+            var result = await checker.CheckAsync(service, retry, cancellationToken);
+            HealthCheckStatusEvaluator.Apply(service, result, healthSettings.FailureThreshold, DateTime.UtcNow);
 
             if (userIds.Contains(service.UserId))
             {
@@ -67,6 +80,7 @@ public sealed class HealthCheckBackgroundService(
             }
         }
         await db.SaveChangesAsync(cancellationToken);
+        return healthSettings.IntervalSeconds;
     }
 
     private static bool ShouldRunAnyHealthCheck(Stashboard.Core.Entities.WebResourceEntity service)

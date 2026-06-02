@@ -59,6 +59,9 @@ public sealed class DockerConnectionMapper(IEncryptionService encryption) : IDoc
             SshRemoteSocketPath: entity.SshRemoteSocketPath,
             ComposeProjectPath: entity.ComposeProjectPath,
             AllowHostShell: entity.AllowHostShell,
+            AllowExec: entity.AllowExec,
+            AllowImagePrune: entity.AllowImagePrune,
+            PruneUnusedImages: entity.PruneUnusedImages,
             UsageCount: usageCount,
             entity.CreatedUtc,
             entity.UpdatedUtc);
@@ -109,6 +112,14 @@ public sealed class DockerConnectionMapper(IEncryptionService encryption) : IDoc
         entity.ComposeProjectPath = request.HostType == DockerHostType.LocalSocket
             ? NormalizeNullableString(request.ComposeProjectPath)
             : null;
+
+        // V5.7 — container exec runs through the daemon, so it's available for
+        // every host type (unlike the SSH-only host terminal above).
+        entity.AllowExec = request.AllowExec;
+
+        // V5.5 — image-prune participation is independent of host type.
+        entity.AllowImagePrune = request.AllowImagePrune;
+        entity.PruneUnusedImages = request.PruneUnusedImages;
 
         entity.UpdatedUtc = DateTime.UtcNow;
     }

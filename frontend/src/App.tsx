@@ -19,6 +19,10 @@ const ConfirmEmailChange = lazy(() => import('./pages/ConfirmEmailChange').then(
 const Account = lazy(() => import('./pages/Account').then((m) => ({ default: m.Account })))
 const NotificationSettings = lazy(() => import('./pages/NotificationSettings').then((m) => ({ default: m.NotificationSettings })))
 const HostTerminalSettings = lazy(() => import('./pages/HostTerminalSettings').then((m) => ({ default: m.HostTerminalSettings })))
+const ContainerExecSettings = lazy(() => import('./pages/ContainerExecSettings').then((m) => ({ default: m.ContainerExecSettings })))
+const ImageCleanupSettings = lazy(() => import('./pages/ImageCleanupSettings').then((m) => ({ default: m.ImageCleanupSettings })))
+const HealthCheckSettings = lazy(() => import('./pages/HealthCheckSettings').then((m) => ({ default: m.HealthCheckSettings })))
+const AuditLog = lazy(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })))
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -52,6 +56,10 @@ export default function App() {
                 <Route path="/backup" element={<Backup />} />
                 <Route path="/notifications" element={<NotificationSettings />} />
                 <Route path="/host-terminal" element={<HostTerminalSettings />} />
+                <Route path="/container-exec" element={<ContainerExecSettings />} />
+                <Route path="/image-cleanup" element={<ImageCleanupSettings />} />
+                <Route path="/health-checks" element={<HealthCheckSettings />} />
+                <Route path="/audit" element={<AuditLog />} />
                 <Route path="/account" element={<Account />} />
               </Route>
             </Route>

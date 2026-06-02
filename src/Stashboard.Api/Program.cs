@@ -10,7 +10,10 @@ using Stashboard.Api.Data;
 using Stashboard.Api.Mapping;
 using Stashboard.Api.Notifications;
 using Stashboard.Api.Services;
+using Stashboard.Api.Services.ContainerExec;
+using Stashboard.Api.Services.HealthCheckSettings;
 using Stashboard.Api.Services.HostShell;
+using Stashboard.Api.Services.ImagePrune;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Options;
 using Stashboard.Infrastructure;
@@ -147,8 +150,27 @@ public class Program
         // DB-backed master switch (managed from the Settings page), seeded from
         // the optional Stashboard:AllowHostShell config flag on first run.
         builder.Services.AddScoped<IHostShellSettingsService, HostShellSettingsService>();
+        // V5.7 — container-exec terminal: shells *inside* a container via the
+        // daemon's exec API. Reuses the V5.3 WebSocket bridge + byte pump. The
+        // connector itself (DockerContainerExecConnector) is registered in
+        // Infrastructure; here we wire the ticket store, concurrency tally, the
+        // tunables, and the DB-backed master switch (seeded from
+        // Stashboard:AllowContainerExec on first run).
+        builder.Services.Configure<ContainerExecOptions>(builder.Configuration.GetSection(ContainerExecOptions.SectionName));
+        builder.Services.AddSingleton<IContainerExecTicketService, ContainerExecTicketService>();
+        builder.Services.AddSingleton<IContainerExecSessionRegistry, ContainerExecSessionRegistry>();
+        builder.Services.AddScoped<IContainerExecSettingsService, ContainerExecSettingsService>();
+        // V5.5 — image-prune background sweep + on-demand "Prune now" button.
+        // The runner itself is registered in Infrastructure/DependencyInjection.cs.
+        builder.Services.Configure<ImagePruneOptions>(builder.Configuration.GetSection(ImagePruneOptions.SectionName));
+        builder.Services.AddScoped<IImagePruneSettingsService, ImagePruneSettingsService>();
+        // V5.6 — DB-backed health-check tuning (failure threshold + in-probe retries),
+        // managed from the Settings → Health checks page. Seeded from the HealthCheck
+        // config block (bound in Infrastructure) on first read.
+        builder.Services.AddScoped<IHealthCheckSettingsService, HealthCheckSettingsService>();
         builder.Services.AddHostedService<HealthCheckBackgroundService>();
         builder.Services.AddHostedService<DockerUpdateBackgroundService>();
+        builder.Services.AddHostedService<DockerImagePruneBackgroundService>();
 
         // CORS — allow the Vite dev server (5173) in development.
         builder.Services.AddCors(o => o.AddDefaultPolicy(p => p

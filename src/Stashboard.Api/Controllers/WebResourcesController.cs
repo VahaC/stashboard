@@ -6,6 +6,7 @@ using Stashboard.Api.Contracts;
 using Stashboard.Api.Data;
 using Stashboard.Api.Mapping;
 using Stashboard.Api.Notifications;
+using Stashboard.Api.Services.HealthCheckSettings;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
 using Stashboard.Core.Enums;
@@ -23,7 +24,8 @@ public class WebResourcesController(
     IWebResourceMapper mapper,
     IServiceStatusNotificationService statusNotifications,
     IWebHostEnvironment env,
-    IFaviconService faviconService) : ControllerBase
+    IFaviconService faviconService,
+    IHealthCheckSettingsService healthCheckSettings) : ControllerBase
 {
     private Guid UserId => User.GetUserId();
 
@@ -127,7 +129,9 @@ public class WebResourcesController(
 
         var previousMainStatus = entity.CurrentStatus;
         var previousAdditionalStatus = entity.AdditionalUrlStatus;
-        var checkResult = await healthChecker.CheckAsync(entity, cancellationToken);
+        var hcSettings = await healthCheckSettings.GetAsync(cancellationToken);
+        var checkResult = await healthChecker.CheckAsync(
+            entity, new HealthCheckRetrySettings(hcSettings.RetryCount, hcSettings.RetryDelayMs), cancellationToken);
         entity.CurrentStatus = checkResult.Main.Status;
         entity.LastResponseTimeMs = checkResult.Main.ResponseTimeMs;
         entity.LastError = checkResult.Main.Error;

@@ -372,4 +372,90 @@ public interface IDockerHostClient
         string containerName,
         bool force = false,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// V5.5 — summary of the image storage on a Docker host. Drives the
+    /// "Storage" widget on the V3.5 instances page: how many images live
+    /// on the host, how many are dangling (<c>&lt;none&gt;:&lt;none&gt;</c>
+    /// after a recreate), how much disk those dangling images occupy, and
+    /// the same numbers for "unused" images (anything not referenced by a
+    /// running or stopped container). Read-only — never mutates the host.
+    /// </summary>
+    Task<DockerImageStorageResult> GetImageStorageAsync(
+        DockerHostTransport transport,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// V5.5 — runs <c>docker image prune</c> on the host. Dangling-only by
+    /// default; with <paramref name="includeUnused"/> = <c>true</c> the
+    /// daemon also removes any image not referenced by a running or stopped
+    /// container (the equivalent of <c>docker image prune -a</c>).
+    /// Returns the count of images deleted and bytes reclaimed so the UI
+    /// can show "freed 4.2 GiB" without re-querying the storage summary.
+    /// </summary>
+    Task<DockerImagePruneResult> PruneImagesAsync(
+        DockerHostTransport transport,
+        bool includeUnused,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>V5.5 — outcome of <see cref="IDockerHostClient.GetImageStorageAsync"/>.</summary>
+public sealed record DockerImageStorageResult(
+    DockerHostStatus Status,
+    /// <summary>Total number of images on the host (all states).</summary>
+    int TotalImageCount,
+    /// <summary>Subset of <see cref="TotalImageCount"/> whose only
+    /// <c>RepoTag</c> is <c>&lt;none&gt;:&lt;none&gt;</c> — the orphaned
+    /// previous-version images recreate leaves behind.</summary>
+    int DanglingImageCount,
+    /// <summary>Total bytes occupied by dangling images, as reported by
+    /// the daemon's <c>Size</c> field. Sum, not deduped by shared layers,
+    /// so the actual reclaim may be lower.</summary>
+    long DanglingImageBytes,
+    /// <summary>Number of images not referenced by any running or stopped
+    /// container (a superset of dangling). Powers the opt-in "also prune
+    /// unused images" preview.</summary>
+    int UnusedImageCount,
+    /// <summary>Total bytes occupied by unused images.</summary>
+    long UnusedImageBytes,
+    /// <summary>V5.5 — every image on the host, each flagged dangling /
+    /// unused, so the UI can show exactly <em>which</em> images make up the
+    /// counts above (and which would be removed by a prune) instead of just
+    /// a number.</summary>
+    IReadOnlyList<DockerImageSummary> Images,
+    string? Error)
+{
+    public bool IsSuccess => Status == DockerHostStatus.Ok;
+}
+
+/// <summary>
+/// V5.5 — one image on a Docker host, with the bits the Storage widget's
+/// drill-down needs: the repo tags (so the user sees <c>nginx:1.27</c>
+/// rather than an opaque digest), on-disk size, creation time, and whether
+/// the image is dangling / unused. <c>RepoTags</c> is empty for a dangling
+/// image (the daemon reports <c>&lt;none&gt;:&lt;none&gt;</c>).
+/// </summary>
+public sealed record DockerImageSummary(
+    string Id,
+    IReadOnlyList<string> RepoTags,
+    long SizeBytes,
+    DateTime? CreatedUtc,
+    bool IsDangling,
+    bool IsUnused,
+    /// <summary>Names of the containers (running or stopped) referencing this
+    /// image. Empty when <see cref="IsUnused"/> is <c>true</c>. Docker's prune
+    /// refuses to delete an in-use image, so this tells the user which
+    /// container to remove to reclaim a dangling-but-in-use image.</summary>
+    IReadOnlyList<string> UsedByContainers);
+
+/// <summary>V5.5 — outcome of <see cref="IDockerHostClient.PruneImagesAsync"/>.</summary>
+public sealed record DockerImagePruneResult(
+    DockerHostStatus Status,
+    /// <summary>Number of images the daemon deleted (deleted + untagged combined).</summary>
+    int ImagesDeleted,
+    /// <summary>Bytes the daemon reports reclaimed.</summary>
+    long SpaceReclaimedBytes,
+    string? Error)
+{
+    public bool IsSuccess => Status == DockerHostStatus.Ok;
 }

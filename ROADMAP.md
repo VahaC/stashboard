@@ -9,14 +9,14 @@
 > in HISTORY.md; §14 remains in this file at its original heading number
 > to avoid breaking external references from PRs and commit messages.
 >
-> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2). All shipped V5.x phases keep their detail in §14 below; V1–V4 historical detail is in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
+> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2) · ✅ V5.4 (Compose project grouping & bulk update, image 5.4.0) · ✅ V5.5 (image cleanup / prune, image 5.5.0) · ✅ V5.6 (health-check tuning page, image 5.6.0) · ✅ V5.7 (container exec, image 5.7.0) · ✅ V5.8 (session audit viewer, image 5.8.0). All shipped V5.x phases keep their detail in §14 below; V1–V4 historical detail is in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
 
 ## 14. Post-V4 backlog (V5+) — deferred Docker features
 
 > The Docker items here were previously catalogued as **V3.6 – V3.11**. They are
 > sequenced **after the V4 SQLite migration** and renumbered **V5.2 – V5.8**.
 > The interactive-shell phases — **V5.3** host terminal, **V5.7** container-exec
-> and **V5.8** Proxmox-LXC SSH — share one xterm.js + WebSocket + ticket
+> and **V6.1** Proxmox-LXC SSH — share one xterm.js + WebSocket + ticket
 > transport, which **V5.3 introduces**. **V5.0–V5.1** are
 > shipped cross-cutting work that landed in the same window: V5.0/V5.0.x are the
 > instances-page + notifications refinements, and **V5.1** is secure key
@@ -365,7 +365,7 @@ attempt is audited — verified by
 
 ### ✅ Phase V5.3 — Host terminal (browser SSH shell to the Docker host) 
 
-**Complexity:** High (pulled ahead of the medium-complexity V5.4–V5.6 phases by
+**Complexity:** High (pulled ahead of the medium-complexity V5.4–V5.7 phases by
 priority — see the §14 note above).
 **Value:** The "I need a shell on the box itself, not inside a container" case —
 today the user has to leave Stashboard and SSH to the host manually. Complements
@@ -384,7 +384,7 @@ exercise rather than new plumbing.
   instead of the tunnel's `docker system dial-stdio` exec channel. `LocalSocket`
   / `TcpTls` have no host-shell channel by construction.
 - ✓ **Transport.** First interactive-shell phase — introduces the `xterm.js` +
-  WebSocket bridge later shell phases (V5.7 / V5.8) will reuse. `Program.cs` now
+  WebSocket bridge later shell phases (V5.7 / V6.1) will reuse. `Program.cs` now
   enables `UseWebSockets()` (the first WebSocket in the app). The browser can't
   send the JWT header on a `WebSocket`, so an authenticated
   `POST .../host-shell/ticket` mints a **short-lived, single-use ticket** bound to
@@ -513,7 +513,7 @@ both counters. ✅
 
 ---
 
-### Phase V5.4 — Compose project grouping & bulk update
+### ✅ Phase V5.4 — Compose project grouping & bulk update
 
 **Complexity:** Medium
 **Value:** Real-world Docker hosts run *stacks*, not isolated containers.
@@ -522,72 +522,368 @@ class of mistake V5.2 is designed to prevent — but even with V5.2, the user
 still has to click "Update now" once per service. Grouping makes this one
 operation.
 
-**Proposed approach:**
+**Shipped (5.4.0):**
 
-- Group containers on the V3.5 page by the `com.docker.compose.project`
-  label. A project header card aggregates a counter such as "3 of 7 services
-  have updates available".
-- **Update project** button:
-  - With V5.2 available + `ComposeProjectPath` set → shells out
-    `docker compose pull && docker compose up -d` on the project root.
-  - Without V5.2 → falls back to recreating each stale container in
-    `depends_on` order, inferred from the labels Compose writes.
-- One aggregate `DockerUpdateAttemptEntity` row with child rows per service,
-  so the audit log treats the bulk operation as a single auditable unit.
+- ✓ **Project grouping on the V3.5 instances page.** Containers carrying the
+  `com.docker.compose.project` label collapse into a project group with a
+  header card showing the project name (clickable to filter the page to just
+  that project) and a *"N of M tracked services have updates available"*
+  counter, where N is computed against the user's `DockerWatch`es. Standalone
+  containers (no Compose project label) keep their previous ungrouped layout.
+- ✓ **Update project button.** New `IDockerProjectUpdater` orchestrator
+  dispatches one of two paths:
+  - Local socket + `ComposeProjectPath` set + Compose CLI available → shells
+    out a single `docker compose pull` + `docker compose up -d` against the
+    project root via the new `IComposeCommandRunner.RecreateProjectAsync`
+    (Compose handles `depends_on` ordering itself); per-service post-state is
+    harvested by re-inspecting each container.
+  - Everything else (remote host, no project path, no CLI) → per-service raw
+    recreate, ordered by a best-effort topological sort of the
+    `com.docker.compose.depends_on` labels Compose v2 writes on every
+    container. Each service goes through the existing `IDockerImageUpdater`
+    so the V2.7 pull + recreate + V3.2 health-verification contract is
+    preserved.
+- ✓ **Audit log treats the bulk operation as one unit.** Pure-additive
+  migration `AddDockerUpdateAttemptComposeProject` adds two nullable columns
+  to `DockerUpdateAttempts` (`ComposeProject`, `ParentAttemptId`) + a
+  self-FK + index. A bulk update writes one aggregate parent row
+  (`ActionType = UpdateProject`) plus one child row per service
+  (`ActionType = Update`, linked via `ParentAttemptId`). The per-watch
+  *Update history* panel keeps surfacing child rows so the per-watch audit
+  story is unchanged.
+- ✓ **New endpoint** `POST /api/docker/connections/{connectionId}/instance/projects/{projectName}/update`
+  returns `{ parent, services: […], mode }` with `mode = "Compose" |
+  "Recreate"` so the UI can show which path ran. Failures land on `502` but
+  still carry the parent + child rows so the UI can render exactly what
+  happened.
+- ✓ **Untracked containers** participate in the bulk update too — the
+  fallback path attempts an anonymous pull; private images need a watch to
+  supply credentials.
+- ✓ **Auto re-check tracked watches after a successful bulk update.** Mirrors
+  the per-watch *Update now* behaviour: for each service that succeeded and is
+  tracked by a watch, the controller runs `IDockerUpdateChecker.CheckAsync` +
+  `DockerWatchStatusWriter` so the dashboard's *Update available* badge clears
+  without forcing the user to click *Check now* per container. Re-check
+  failures land on `Watch.LastError` but never undo the recreate.
+- ✓ **Confirmation + 3-phase progress dialog.** Clicking *Update project* opens
+  a modal that transitions Confirm → Running → Done/Error. Confirm lists every
+  service in the project with its image, an "untracked — anonymous pull only"
+  hint where relevant, the V5.2 raw-vs-Compose dispatch warning, and a
+  brief-downtime caveat. Running spins each service row. Done shows ✓ Updated /
+  ✗ Failed per service with the real per-service error inline; finished rows
+  dim and lock.
+- ✓ **Unified per-container and per-project update dialogs.** The per-watch
+  *Update now* button reuses the same `UpdateProgressDialog` with a single
+  target, so the confirm → progress → outcome flow is identical for one
+  container or many. The per-watch endpoint always returns `200` with
+  `attempt.status` carrying the outcome; the dialog renders a failed recreate
+  as a ✗ row instead of the error phase.
+- ✓ **Real per-service errors surfaced on `502`.** The bulk endpoint returns
+  the same structured `DockerProjectUpdateResponse` body on both `200` (full
+  success) and `502` (any service failed). The mutation hook now catches the
+  Axios error, returns the body when it matches the response shape, and the
+  dialog flows into the *done* phase as if it were a normal response — each
+  row shows Updated / Failed with its actual error instead of a generic
+  "An error occurred." and frozen "Aborted" rows.
+- ✓ **Single-service Compose projects are not wrapped in a group header.**
+  Compose stamps `com.docker.compose.project` on every container, even on
+  one-liner stacks. The grouping logic now demotes a compose group with
+  exactly one container back to a standalone card (the compose-project badge
+  on the card itself still flags it as Compose-managed). The group shell +
+  *Update project* button only appears once ≥2 services share a project name.
+- ✓ **Docker instances page layout polish.** Tightened container-card layout
+  and surfaced the resolved image tag on the card even when the container
+  hasn't been redeployed since the watch resolved a newer tag (previously
+  only the digest was shown for un-redeployed containers).
+- ✓ Tests: 4 new project-mode `ComposeCommandRunnerTests` (pull + up arg
+  shape, pull-fail short-circuit, missing project dir, CLI absent), 9
+  `DockerProjectUpdaterTests` (compose-aware happy path / aggregate failure /
+  health downgrade; raw fallback dispatch + depends-on ordering + partial
+  failure; empty-services short-circuit; topological sort + cycle guard
+  units), 7 `DockerInstancesControllerTests` (happy path with parent + child
+  rows, watch + service linkage, partial failure → 502 with rows persisted,
+  404 for unknown project, 404 for foreign connection, plus 2 covering the
+  post-success re-check firing for tracked services and being skipped for
+  failed / untracked ones). Full suite green (916).
+
+**DoD met:** clicking **Update project** on a Compose project grouping runs
+one bulk update — `docker compose pull` + `docker compose up -d` on the
+local-socket / Compose-configured path, per-service raw recreate ordered by
+`depends_on` otherwise — and the per-watch audit history shows one parent +
+N child rows for the operation. ✅ Remote Compose shell-out remains deferred.
 
 ---
 
-### Phase V5.5 — Image cleanup / prune
+### ✅ Phase V5.5 — Image cleanup / prune
 
 **Complexity:** Medium
 **Value:** Auto-update without cleanup is the fastest way to fill a disk.
 The V2.7 recreate leaves the previous image tagged `<none>:<none>` once the
 new one is in use; over months these dangling images can grow to many GB.
 
-**Proposed approach:**
+**Shipped (5.5.0):**
 
-- Background task (configurable schedule, defaults to weekly) that calls
-  `ImagesPruneAsync(filters: { "dangling": ["true"] })` per host and records
-  freed bytes into a `DockerPruneRunEntity`.
-- "Storage" widget on the V3.5 page showing total image count, dangling
-  count, and a manual **Prune now** button (admin only, dry-run preview
-  before commit).
-- Opt-in setting: also prune **unused** images (anything not referenced by a
-  running or stopped container). Off by default because it is more aggressive
-  and can break "rollback to previous tag" workflows.
-- Never touches volumes — volume cleanup is too easy to get wrong and is
-  explicitly out of scope.
+- ✓ **Scheduled image-prune sweep.** New
+  `DockerImagePruneBackgroundService` ticks every 30 min; for each enabled
+  connection where the master switch is on, `AllowImagePrune = true` and
+  the configured interval has elapsed since the last successful run, it
+  invokes the orchestrator and persists a `DockerPruneRunEntity` audit
+  row. Default interval 168 h (weekly), minimum 1 h.
+- ✓ **Settings → Image cleanup page** (DB-backed
+  `ImagePruneSettingsEntity` singleton; seeded from the
+  `Stashboard:ImagePrune` config block on first run, then managed in the
+  UI). Two fields only: master enable + interval in hours.
+- ✓ **Per-connection participation flags.** Two new columns on
+  `DockerConnections`: `AllowImagePrune` (default `true`; opt-out) and
+  `PruneUnusedImages` (default `false`; opt-in to the aggressive scope
+  that also removes images not referenced by any running or stopped
+  container). The connection form exposes both. `LastImagePruneUtc`
+  spaces scheduled runs out per host.
+- ✓ **Orchestrator (`IDockerPruneRunner` / `DockerPruneRunner`).**
+  Stateless wrapper around the host client; maps daemon outcomes onto a
+  small `DockerPruneStatus` enum (`Success` / `NothingToPrune` /
+  `HostUnreachable` / `Failed`). Persistence is the caller's job — the
+  controller and background service each own their own audit-row write.
+- ✓ **Host client methods.** `IDockerHostClient.GetImageStorageAsync`
+  returns total image count, dangling count + bytes, and unused count +
+  bytes for the storage widget. `PruneImagesAsync(includeUnused)` calls
+  `ImagesPruneAsync` with the correct `dangling=true/false` filter and
+  surfaces images deleted + bytes reclaimed.
+- ✓ **Storage widget on the V3.5 instances page.** Renders the four
+  counts plus the last prune timestamp, refreshable on demand. **Prune
+  now** opens a dialog that previews how many images / how many bytes
+  will be removed in the chosen scope, with a one-off *"also prune
+  unused"* checkbox (defaults from the connection's persisted opt-in).
+- ✓ **API endpoints.**
+  - `GET /api/docker/connections/{id}/instance/images/storage` — counts
+    + recent prune-run rows.
+  - `POST /api/docker/connections/{id}/instance/images/prune` — manual
+    run; ignores `AllowImagePrune` for the owner, returns the persisted
+    audit row on both 200 and 502 (host unreachable / daemon error).
+  - `GET|PUT /api/settings/image-prune` — master toggle + interval.
+- ✓ **Audit log + UI history.** Every scheduled and manual run writes a
+  `DockerPruneRunEntity` row (trigger, scope, deleted count, reclaimed
+  bytes, error). `LastImagePruneUtc` only advances on a successful run
+  so a host-unreachable doesn't push the next attempt out by the full
+  interval. The storage widget surfaces the 5 most recent rows for the
+  connection.
+- ✓ **Backup round-trip** carries the two new connection fields
+  (`AllowImagePrune` / `PruneUnusedImages`) so export/import stays
+  lossless.
+- ✓ **Never touches volumes** — volume cleanup is intentionally out of
+  scope.
+- ✓ Pure-additive migration `AddImagePrune` (new `ImagePruneSettings`
+  table + new `DockerPruneRuns` audit table + three columns on
+  `DockerConnections`).
+- ✓ Tests: 5 `DockerPruneRunnerTests` (success / nothing-to-prune /
+  host-unreachable / include-unused passthrough / crash mapping), 4 new
+  `DockerInstancesControllerTests` (storage shape + recent runs,
+  cross-user 404, prune happy path + LastImagePruneUtc advancement,
+  502 with audit row on failure, cross-user 404), 5
+  `DockerImagePruneBackgroundServiceTests` (master switch off, opt-out
+  skip, interval-not-elapsed skip, due-connection happy path with
+  LastImagePruneUtc advancement, host-unreachable does *not* advance
+  LastImagePruneUtc, PruneUnusedImages flag forwarded to the runner).
+  Full suite green (932).
+
+**DoD met:** dangling images left behind by auto-updates are reclaimed on
+a configurable schedule without operator intervention; an operator can
+run an ad-hoc prune from the Docker page with a dry-run preview; every
+run lands in the audit log. ✅ Per-connection opt-out and the aggressive
+"unused" scope are independently configurable. Volume cleanup remains
+intentionally deferred.
 
 ---
 
-### Phase V5.6 — Container exec (browser terminal into a Docker container)
+### ✅ Phase V5.6 — Health-check tuning page
+
+**Complexity:** Low (UI + DB-backed settings on top of the V5.3.2 reliability fix).
+**Value:** V5.3.2 killed the false-positive **🔴 Service unavailable** alerts by
+adding in-probe retries (`RetryCount` / `RetryDelayMs`) and a consecutive-failure
+threshold (`FailureThreshold`) — but those three knobs lived only in
+`appsettings.json` / `STASHBOARD_HealthCheck__*` env vars, so changing how
+forgiving the offline detection is meant editing config and restarting the
+container. Different homelabs want different trade-offs (a flaky Wi-Fi bridge
+needs more retries; a critical service wants to alert on the first failure).
+This phase moves the three knobs into the database — the same DB-backed,
+UI-editable mechanism used for the editable SMTP settings, the host-terminal
+switch (V5.3) and the image-prune settings (V5.5) — so an operator can tune them
+from a dedicated **Settings → Health checks** page, with an inline explanation of
+what each one does, and the change applies on the next scan without a redeploy.
+
+**Shipped (5.6.0):**
+
+- ✓ New single-row entity `HealthCheckSettingsEntity` (fixed `SingletonId`)
+  holding `IntervalSeconds` / `FailureThreshold` / `RetryCount` / `RetryDelayMs`.
+  Pure-additive EF migrations `AddHealthCheckSettings` (new table) +
+  `AddHealthCheckInterval` (the interval column). The row is created lazily
+  on first access, seeded from the bound `HealthCheckOptions` config block, so an
+  existing deployment that set the env vars keeps those values until an operator
+  edits them.
+- ✓ `IHealthCheckSettingsService` + `HealthCheckSettingsService` (scoped) read /
+  write the row, flooring `FailureThreshold` at 1 and the retry knobs at 0 the
+  same way the runtime logic does. Two owner endpoints on the existing
+  `SettingsController`: `GET /api/settings/health-check` →
+  `HealthCheckSettingsResponse` and `PUT /api/settings/health-check`
+  (`UpdateHealthCheckSettingsRequest`, `[Range]`-validated).
+- ✓ The live values now flow from the DB, not config: the
+  `HealthCheckBackgroundService` reads the settings once per scan and passes the
+  retry knobs into `IServiceHealthChecker.CheckAsync` (new optional
+  `HealthCheckRetrySettings` parameter — it still falls back to the bound
+  `HealthCheckOptions` defaults when omitted) and the threshold into the
+  `HealthCheckStatusEvaluator`. The manual **Check now** path
+  (`WebResourcesController`) reads the same settings, so ad-hoc checks honour the
+  configured retries. The `STASHBOARD_HealthCheck__*` env vars now only seed the
+  row on first run. The **scan interval** (`IntervalSeconds`) is editable on the
+  page too — the background loop reads it each cycle, so a change applies on the
+  next sweep. `RequestTimeoutSeconds` stays config-bound (out of scope).
+- ✓ Frontend: `HealthCheckSettings` type, `getHealthCheckSettings` /
+  `updateHealthCheckSettings` API client, and a **Settings → Health checks** page
+  (sidebar entry + protected route `/health-checks`) with three labelled number
+  fields. Each field carries a description of what it controls and how it trades
+  alert latency for fewer false alarms, plus a "how they work together" write-up.
+- ✓ Tests: 4 new `HealthCheckSettingsServiceTests` (seed-from-config, persist,
+  persistence across instances, defensive flooring). The existing
+  `ServiceHealthCheckerTests` retry coverage is unchanged — the new parameter is
+  optional and defaults to the config-bound values. Full suite green (938).
+
+**DoD met:** an operator can change the scan interval, failure threshold,
+in-probe retry count and retry delay from the **Settings → Health checks** page
+and the next scan uses the new values without a restart; the values persist across restarts and seed
+from the existing env vars on first run — verified by
+`HealthCheckSettingsServiceTests.Update_PersistsAcrossNewServiceInstances`. ✅
+
+---
+
+### ✅ Phase V5.7 — Container exec (browser terminal into a Docker container)
+<!-- V5.5 / V5.6 / V5.7 above are shipped; V6+ remain backlog. -->
+
 
 **Complexity:** High
 **Value:** The "I just need to run one command in this container" use case
 that today forces the user to SSH to the Docker host first. Pairs naturally
 with V3.3 (logs) and V3.5 (instances page).
 
-**Proposed approach:**
+**Shipped (5.7.0):**
 
-- Docker API: `POST /containers/{id}/exec` creates an exec instance; `POST
-  /exec/{id}/start` upgrades the connection to a hijacked bidirectional
-  stream. `Docker.DotNet` exposes this via `ExecCreateContainerAsync` +
-  `StartAndAttachContainerExecAsync`.
-- Backend: reuse the WebSocket bridge + short-lived-ticket auth introduced by
-  V5.3 (host terminal), pumping bytes between the browser and the hijacked
-  Docker stream. Per-session params: command (defaults to `/bin/sh`), TTY
-  size, env.
-- Frontend: `xterm.js` terminal in a full-page tab or side drawer; window
-  resize calls `ResizeContainerExecTtyAsync` on the daemon.
-- **Security model — the most sensitive feature on the list:**
-  - Off by default; opt-in per `DockerConnection` (`AllowExec = false`).
-  - Admin role required; UI hidden for non-admins.
-  - Every exec session writes a start/stop row to a new
-    `DockerExecSessionEntity` (who, when, container, command, duration, byte
-    counts). Sessions also stream to the application log.
-  - Hard cap on concurrent sessions per user and per host.
-  - Server-side inactivity timeout (default 10 min) closes the connection
-    regardless of client state.
+- ✓ **Docker API exec.** A new `IContainerExecConnector`
+  (`DockerContainerExecConnector`) creates a TTY exec instance
+  (`ExecCreateContainerAsync`) and upgrades it to a hijacked bidirectional
+  stream (`StartAndAttachContainerExecAsync`), exposed as the same duplex
+  `IHostShellChannel` the host terminal uses. Resolved through the shared
+  `IDockerClientFactory`, so exec works for **every** host type
+  (`LocalSocket` / `TcpTls` / `Ssh`) — unlike the SSH-only host terminal, it
+  routes through the daemon rather than an SSH login.
+- ✓ **Transport reused from V5.3.** An authenticated
+  `POST .../containers/{name}/exec/ticket` mints a short-lived, single-use
+  ticket bound to `(user, connection, container, command)`; the socket opens
+  at `.../containers/{name}/exec/ws?ticket=…&cols=&rows=` (ticket-authenticated,
+  `AllowAnonymous`). The byte pump (`HostShellSession`) and WebSocket adapter
+  (`WebSocketShellClientTransport`) are shared verbatim with the host terminal.
+- ✓ **Per-session command.** Defaults to `/bin/sh`; the Exec panel exposes a
+  command field so the user can pick `/bin/bash` etc. The command is bound to
+  the ticket server-side, never on the query string.
+- ✓ **Live resize works** (the daemon exposes `ResizeContainerExecTtyAsync`),
+  so `IHostShellChannel.TryResize` is honoured rather than a no-op — the one
+  capability the SSH host terminal lacks.
+- ✓ **UX — the Exec tab is always present** on the container modal, and the
+  shell button on each container card opens it. It renders the live `xterm.js`
+  terminal when the global switch is on, the connection has opted in, and the
+  container is running; otherwise it shows the matching disabled explainer.
+- ✓ **Host terminal relocated to the connection level.** Since the host terminal
+  is host-scoped (a shell on the host, not inside any one container), the V5.3
+  per-container **Terminal** tab was removed and replaced by a **Host terminal**
+  button in the connection header on the Docker page (shown for SSH connections).
+  The host-shell API / gating / audit are unchanged — only the UI entry point
+  moved. The card's old terminal button now opens **Exec**.
+- ✓ **Security model — off by default, gated two ways** (both required): the
+  server-wide master switch at **Settings → Container exec** (DB-backed —
+  `ContainerExecSettingsEntity` / `GET|PUT /api/settings/container-exec` —
+  seeded from the optional `Stashboard:AllowContainerExec` config flag on first
+  run, surfaced via `FeaturesController`) and the per-connection `AllowExec`
+  opt-in. *(There is no role system in Stashboard — every connection is owned by
+  exactly one user — so the spec's "admin only" reduces to "the owner, with the
+  switch + opt-in on".)* Every session writes a start/stop row to the new
+  `DockerExecSessions` table (who, when, connection / container, command,
+  duration, bytes in / out, end reason) and streams to the application log.
+  Per-user / per-host concurrent caps + a server-side idle timeout
+  (`ContainerExecSessionRegistry` + `Stashboard:ContainerExec` options) close
+  idle / over-cap sessions regardless of client state.
+- ✓ Pure-additive migration `AddContainerExec` (the per-connection `AllowExec`
+  column, the `DockerExecSessions` audit table, the DB-backed master-switch
+  row). A dedicated **Settings → Container exec** page hosts the toggle plus a
+  full write-up of the conditions and risks. Tests: ticket service (single-use /
+  expiry / container+command binding), session registry caps, the byte-pump end
+  reasons (shared with V5.3), the settings service (seed / persist), the mapper
+  opt-in (every host type), and the controller's two-way gate.
+
+**DoD met:** an operator who turns on the **Settings → Container exec** toggle and
+enables **Allow container exec** for any connection can open an interactive shell
+inside a running container from the container modal's Exec tab; the session is
+audited start-to-finish; the gate is enforced server-side; the WebSocket refuses
+to open without a valid single-use ticket; and live resize works. ✅
+
+---
+
+### Phase V5.8 — Session audit viewer (surface the shell / exec audit trail)
+
+**Complexity:** Low–Medium (read-only UI + list endpoints on top of audit tables
+that already exist).
+**Value:** V5.3 (host terminal) and V5.7 (container exec) each write a complete
+start/stop audit row per session to `HostShellSessions` / `DockerExecSessions`
+(who, when, which connection / host / container, command, duration, bytes in /
+out, end reason, error) — but those tables are currently **write-only**: the rows
+are persisted and streamed to the application log, yet there is no API endpoint
+or UI to read them back. The most dangerous surfaces in the product (a root shell
+on the host, arbitrary commands inside a workload) leave a trail that an operator
+can only inspect with direct SQL against `app.db`. This phase closes that gap by
+surfacing the existing audit data in the frontend — no new auditing, just a read
+path over what V5.3 / V5.7 already record.
+
+**Scope:**
+
+- **List endpoints (read-only, owner-scoped).** Two paginated `GET` endpoints
+  returning the audit rows newest-first, scoped to connections the caller owns:
+  - `GET /api/docker/host-shell/sessions` → host-terminal sessions
+    (`HostShellSessionEntity`).
+  - `GET /api/docker/container-exec/sessions` → container-exec sessions
+    (`DockerExecSessionEntity`).
+  Each supports simple paging (`?skip=&take=`, capped page size) and optional
+  `?connectionId=` filtering. Responses are flat DTOs — denormalised connection
+  name / host / container are already captured on the row, so deleting a
+  connection doesn't orphan the history. No write/delete verbs (audit rows are
+  immutable from the UI).
+- **Audit page in the SPA.** A new **Settings → Audit** (or **Activity**) page
+  with two tabbed tables — *Host terminal* and *Container exec* — showing per
+  row: user, connection / host (or container + command), started / ended,
+  duration, bytes in / out, and end reason (with the error inline when the
+  reason is `Error`). An *Active* badge for rows whose `EndedUtc` is still null.
+  Sidebar entry + protected route, consistent with the other settings pages.
+- **Cross-link from the existing surfaces.** The connection header (host
+  terminal) and the container modal's Exec tab gain a small "View session
+  history" link that opens the audit page pre-filtered to that connection.
+- **Stretch (optional, same page):** fold the existing
+  `DockerUpdateAttempts` history (already exposed per-watch) and the
+  `DockerPruneRuns` history (V5.5, already surfaced on the storage widget) into
+  the same Audit page as additional tabs, so all four audit trails live in one
+  place. Kept as a stretch goal because both already have a read path elsewhere
+  — the genuine gap this phase must close is the shell / exec one.
+
+**Tests:**
+
+- Backend: the two list endpoints return rows newest-first, page correctly, are
+  scoped to the owner (a foreign connection's sessions are not returned), and
+  surface a session that is still open (`EndedUtc == null`) as well as a
+  finalised one. Regression: opening + closing a host-shell / exec session
+  produces exactly one row that the endpoint then returns.
+- Frontend: the audit page renders both tables, shows the Active badge only for
+  open sessions, formats duration / bytes / end reason correctly, and the
+  per-connection "View session history" link applies the connection filter.
+
+**DoD:** an operator can open the **Audit** page and see every host-terminal and
+container-exec session that has been recorded — who ran it, against what, for how
+long, how it ended — without touching the database directly; the data is the same
+rows V5.3 / V5.7 already persist, now read back over an owner-scoped API.
 
 ---
 
@@ -625,7 +921,7 @@ exposes a stable REST API.
 **Out of scope for the first cut:**
 
 - Triggering the actual `apt upgrade` inside the LXC from Stashboard — this
-  is V5.8-adjacent and should land separately, after the shell story exists.
+  is V6.1-adjacent and should land separately, after the shell story exists.
 - Non-Debian LXC templates (Alpine `apk`, Rocky `dnf`) — add as follow-ups
   once the Debian path is stable.
 
@@ -634,7 +930,7 @@ exposes a stable REST API.
 ### Phase V6.1 — Browser-based SSH client for Proxmox LXC
 
 **Complexity:** High
-**Value:** Closes the loop on V5.6: once the user sees "LXC `pihole` has 7
+**Value:** Closes the loop on V6.0: once the user sees "LXC `pihole` has 7
 package updates pending", they can `apt upgrade` it without leaving the
 browser. Also useful for any non-Docker host Stashboard is asked to monitor.
 

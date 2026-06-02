@@ -32,7 +32,7 @@ export default defineConfig({
     // 404 or go stale after a release. One index-<hash>.js + one index-<hash>.css.
     cssCodeSplit: false,
     rollupOptions: {
-      output: { inlineDynamicImports: true },
+      output: { inlineDynamicImports: false },
     },
   },
 })

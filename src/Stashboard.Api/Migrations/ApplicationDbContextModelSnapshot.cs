@@ -17,6 +17,26 @@ namespace Stashboard.Api.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
 
+            modelBuilder.Entity("Stashboard.Api.Data.ContainerExecSettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ContainerExecSettings");
+                });
+
             modelBuilder.Entity("Stashboard.Api.Data.EmailSettingsEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -73,6 +93,35 @@ namespace Stashboard.Api.Migrations
                     b.ToTable("EmailSettings");
                 });
 
+            modelBuilder.Entity("Stashboard.Api.Data.HealthCheckSettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FailureThreshold")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("IntervalSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RetryCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RetryDelayMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("HealthCheckSettings");
+                });
+
             modelBuilder.Entity("Stashboard.Api.Data.HostShellSettingsEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -91,6 +140,29 @@ namespace Stashboard.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("HostShellSettings");
+                });
+
+            modelBuilder.Entity("Stashboard.Api.Data.ImagePruneSettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("IntervalHours")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ImagePruneSettings");
                 });
 
             modelBuilder.Entity("Stashboard.Api.Data.RefreshTokenEntity", b =>
@@ -302,7 +374,13 @@ namespace Stashboard.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("AllowExec")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("AllowHostShell")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AllowImagePrune")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("ComposeProjectPath")
@@ -319,10 +397,16 @@ namespace Stashboard.Api.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("LastImagePruneUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("PruneUnusedImages")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("SshHost")
                         .HasMaxLength(200)
@@ -368,6 +452,108 @@ namespace Stashboard.Api.Migrations
                     b.ToTable("DockerConnections");
                 });
 
+            modelBuilder.Entity("Stashboard.Core.Entities.DockerExecSessionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("BytesFromClient")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("BytesToClient")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Command")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConnectionName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContainerName")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("DockerConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EndReason")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("EndedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("InitiatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("StartedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DockerConnectionId", "StartedUtc");
+
+                    b.HasIndex("InitiatedByUserId", "StartedUtc");
+
+                    b.ToTable("DockerExecSessions");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.DockerPruneRunEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("DockerConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ImagesDeleted")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IncludedUnused")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("InitiatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SpaceReclaimedBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("StartedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Trigger")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InitiatedByUserId");
+
+                    b.HasIndex("DockerConnectionId", "StartedUtc");
+
+                    b.ToTable("DockerPruneRuns");
+                });
+
             modelBuilder.Entity("Stashboard.Core.Entities.DockerUpdateAttemptEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -378,6 +564,10 @@ namespace Stashboard.Api.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("CompletedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ComposeProject")
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ContainerId")
@@ -419,6 +609,9 @@ namespace Stashboard.Api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("ParentAttemptId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PreviousDigest")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
@@ -430,6 +623,8 @@ namespace Stashboard.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ParentAttemptId");
 
                     b.HasIndex("WebResourceId");
 
@@ -846,6 +1041,33 @@ namespace Stashboard.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Stashboard.Core.Entities.DockerExecSessionEntity", b =>
+                {
+                    b.HasOne("Stashboard.Core.Entities.DockerConnectionEntity", null)
+                        .WithMany()
+                        .HasForeignKey("DockerConnectionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Stashboard.Api.Data.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("InitiatedByUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.DockerPruneRunEntity", b =>
+                {
+                    b.HasOne("Stashboard.Core.Entities.DockerConnectionEntity", null)
+                        .WithMany()
+                        .HasForeignKey("DockerConnectionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Stashboard.Api.Data.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("InitiatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("Stashboard.Core.Entities.DockerUpdateAttemptEntity", b =>
                 {
                     b.HasOne("Stashboard.Core.Entities.DockerConnectionEntity", null)
@@ -856,6 +1078,11 @@ namespace Stashboard.Api.Migrations
                     b.HasOne("Stashboard.Core.Entities.DockerWatchEntity", null)
                         .WithMany()
                         .HasForeignKey("DockerWatchId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Stashboard.Core.Entities.DockerUpdateAttemptEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ParentAttemptId")
                         .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("Stashboard.Core.Entities.WebResourceEntity", null)
