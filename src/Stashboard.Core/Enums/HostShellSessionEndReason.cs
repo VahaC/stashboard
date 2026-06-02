@@ -26,4 +26,9 @@ public enum HostShellSessionEndReason
 
     /// <summary>The session ended on a transport / SSH error. <c>Error</c> carries detail.</summary>
     Error = 5,
+
+    /// <summary>The application process stopped (crash / restart / redeploy) while the
+    /// session was still open, so it never finalised cleanly. Applied by the startup
+    /// reconciliation sweep to any row left <see cref="Active"/> from a previous run.</summary>
+    Interrupted = 6,
 }

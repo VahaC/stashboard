@@ -221,7 +221,7 @@ export function AuditLog() {
   }
 
   return (
-    <div className="account-page account-stack">
+    <div className="audit-page">
       <h1 className="text-2xl font-semibold">Audit</h1>
 
       <Card>

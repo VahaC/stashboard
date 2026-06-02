@@ -5,6 +5,48 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [5.9.0] — 2026-05-30
+
+### Changed
+- **Docker instances page redesign (V5.9).** The `/docker` page moves from
+  the vertical, one-section-per-host layout to a **connection-switcher**
+  layout:
+  - A page-level **summary strip** (Containers · Running · Stopped · Updates)
+    aggregates every host so the overall state of your fleet is the first
+    thing you see.
+  - A horizontal **connection switcher** picks one host as the context
+    instead of scrolling through nested sections — *All connections* keeps
+    the cross-host view available. Each pill shows the host's
+    running-/-total count and an amber **updates** badge when any tracked
+    watch on that host has a pending update.
+  - Each host renders a compact **summary card** (status dot · transport ·
+    endpoint · count · Terminal/Edit actions) with the **Storage** widget
+    folded inline as a collapsible row (inline summary always visible;
+    expand to see the 4-metric grid).
+  - **Compose project groups** are now packed: each group is sized to
+    exactly fit the cards it contains, so several small projects can sit
+    side-by-side on one row instead of every group claiming a full page
+    width. Column count recomputes on resize.
+  - The **container card** itself gets a refresh: the `(healthy)` segment
+    of the status line is colored green, the divider sits at the bottom so
+    action rows align across cards in a row, the *service:* compose chip
+    gets a small external-link affordance, and the diagnostics row
+    (Inspect / Logs / Stats / Notifications / Exec) can be toggled off via
+    the new **Diagnostics** display preference.
+  - **Display preferences** live on the page (density: *comfortable* /
+    *compact*; storage: *collapsed* / *panel*; diagnostics on/off),
+    persisted per device in `localStorage`.
+- The shared `StorageWidget` gained a `variant="collapsed"` mode used by
+  the new layout; the V5.5–V5.8 always-expanded panel remains available
+  via `variant="panel"`.
+
+### Notes
+- **No backend changes.** The redesign is frontend-only; the same
+  `/api/docker/connections/*` endpoints from V3.5–V5.8 drive every value
+  on the page. The container cards still drive the existing
+  start / stop / restart / remove handlers, so the per-watch audit trail
+  is unchanged.
+
 ## [5.8.0] — 2026-05-30
 
 ### Added

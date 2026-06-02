@@ -42,7 +42,7 @@ export type ContainerCardProps = {
  * - Inspect / Remove live behind the `⋯` overflow menu.
  */
 export function ContainerCard({
-  card, linkedWatch = null, variant, allowRemoval, busy, error, onOpen, onAction, onComposeClick,
+  card, linkedWatch = null, variant, allowRemoval, busy, error, onOpen, onAction, 
 }: ContainerCardProps) {
   const stateLower = card.state.toLowerCase()
   const running = stateLower === 'running'
@@ -117,35 +117,23 @@ export function ContainerCard({
           )
         })()}
 
-        <div className="cc-meta docker-instances-card-meta">
-          Status: {card.status && <span>{card.status}</span>}
-        </div>
-        <div className="cc-meta docker-instances-card-meta docker-instances-card-ports">
-          {card.ports.length > 0 ? card.ports.length === 1 ? `Port: ` : `Ports: ` : ''}
-          {card.ports.map((p, idx) => (
-            <span key={idx} className="cc-chip docker-instances-card-port">
-              {p.publicPort ? `${p.publicPort}→` : ''}{p.privatePort}/{p.type}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="cc-meta docker-instances-card-meta compose-service-row">
-        {card.composeProject && (
-          <button
-            type="button"
-            className="cc-chip-link docker-instances-card-watch-link"
-            onClick={(e) => {
-              e.stopPropagation()
-              onComposeClick?.(card.composeProject!)
-            }}
-            title="Filter to this compose service"
-          >
-            service: {card.composeProject}
-            {card.composeService && ` / ${card.composeService}`}
-          </button>
+        {card.status && (
+          <div className="cc-meta docker-instances-card-meta">
+            {renderStatusWithHealth(card.status)}
+          </div>
+        )}
+        {card.ports.length > 0 && (
+          <div className="cc-meta docker-instances-card-meta docker-instances-card-ports">
+            {card.ports.map((p, idx) => (
+              <span key={idx} className="cc-chip docker-instances-card-port">
+                {p.publicPort ? `${p.publicPort}→` : ''}{p.privatePort}/{p.type}
+              </span>
+            ))}
+          </div>
         )}
       </div>
+      
+      <div className="cc-rule" aria-hidden />
       <div
         // className="cc-actions cc-actions-split docker-instances-card-actions"
         className="cc-actions docker-instances-card-actions"
@@ -223,7 +211,7 @@ export function ContainerCard({
               type="button"
               variant="outline"
               size="sm"
-              className="cc-remove-inline"
+              className="ui-button-danger"
               disabled={busy}
               onClick={requestRemove}
             >
@@ -258,6 +246,17 @@ export function ContainerCard({
       />
     </div>
   )
+}
+
+// Color the trailing "(healthy)" / "(unhealthy)" / "(starting)" segment of
+// a Docker status string so the most-glance-worthy bit (the health) stands
+// out without changing the muted treatment of the rest.
+function renderStatusWithHealth(status: string) {
+  const m = status.match(/^(.*?)(\(healthy\)|\(unhealthy\)|\(health: starting\)|\(starting\))(.*)$/)
+  if (!m) return status
+  const [, before, tag, after] = m
+  const cls = tag === '(healthy)' ? 'healthy' : tag === '(unhealthy)' ? 'unhealthy' : 'starting'
+  return <>{before}<span className={cls}>{tag}</span>{after}</>
 }
 
 interface CardOverflowProps {

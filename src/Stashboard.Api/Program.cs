@@ -15,6 +15,7 @@ using Stashboard.Api.Services.HealthCheckSettings;
 using Stashboard.Api.Services.HostShell;
 using Stashboard.Api.Services.ImagePrune;
 using Stashboard.Core.Abstractions;
+using Stashboard.Core.Enums;
 using Stashboard.Core.Options;
 using Stashboard.Infrastructure;
 
@@ -191,6 +192,7 @@ public class Program
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             RecoverStaleSqliteMigrationLock(db, logger);
             db.Database.Migrate();
+            FinaliseOrphanedSessions(db, logger);
         }
 
         if (app.Environment.IsDevelopment())
@@ -249,6 +251,41 @@ public class Program
         app.MapFallbackToFile("index.html", staticFileOptions);
 
         app.Run();
+    }
+
+    /// <summary>
+    /// A freshly started process cannot own any live terminal / exec session, so any
+    /// audit row still marked <see cref="HostShellSessionEndReason.Active"/> is an
+    /// orphan left by a crash / restart / redeploy that never reached its finalise
+    /// step. Close them as <see cref="HostShellSessionEndReason.Interrupted"/> so the
+    /// Audit viewer stops showing phantom "Active" sessions. EndedUtc is set to
+    /// StartedUtc (the real end time is unknowable) — the Interrupted reason tells
+    /// the story. The graceful-shutdown link in the terminal/exec controllers handles
+    /// clean stops; this sweep is the backstop for everything else.
+    /// </summary>
+    private static void FinaliseOrphanedSessions(ApplicationDbContext db, ILogger logger)
+    {
+        try
+        {
+            var active = (int)HostShellSessionEndReason.Active;
+            var interrupted = (int)HostShellSessionEndReason.Interrupted;
+
+            var closed =
+                db.Database.ExecuteSqlRaw(
+                    $"UPDATE \"HostShellSessions\" SET \"EndedUtc\" = \"StartedUtc\", \"EndReason\" = {interrupted} WHERE \"EndReason\" = {active};") +
+                db.Database.ExecuteSqlRaw(
+                    $"UPDATE \"DockerExecSessions\" SET \"EndedUtc\" = \"StartedUtc\", \"EndReason\" = {interrupted} WHERE \"EndReason\" = {active};");
+
+            if (closed > 0)
+                logger.LogWarning(
+                    "Closed {Count} orphaned terminal/exec session(s) left Active by a previous run (marked Interrupted).",
+                    closed);
+        }
+        catch (Exception ex)
+        {
+            // Best-effort housekeeping — never block startup over it.
+            logger.LogError(ex, "Failed to finalise orphaned terminal/exec audit rows on startup.");
+        }
     }
 
     private static void RecoverStaleSqliteMigrationLock(ApplicationDbContext db, ILogger logger)

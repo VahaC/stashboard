@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -201,6 +202,7 @@ public class ContainerExecControllerTests : IAsyncLifetime
             Mock.Of<IContainerExecConnector>(),
             settingsService,
             Mock.Of<IServiceScopeFactory>(),
+            Mock.Of<IHostApplicationLifetime>(),
             Options.Create(new ContainerExecOptions()),
             NullLogger<ContainerExecController>.Instance);
 

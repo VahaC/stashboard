@@ -50,6 +50,7 @@ public class ContainerExecController(
     IContainerExecConnector connector,
     IContainerExecSettingsService execSettings,
     IServiceScopeFactory scopeFactory,
+    IHostApplicationLifetime appLifetime,
     IOptions<ContainerExecOptions> execOptions,
     ILogger<ContainerExecController> logger) : ControllerBase
 {
@@ -161,7 +162,12 @@ public class ContainerExecController(
                 ? TimeSpan.FromSeconds(execOptions.Value.IdleTimeoutSeconds)
                 : Timeout.InfiniteTimeSpan;
 
-            result = await HostShellSession.RunAsync(channel, client, idleTimeout, logger, cancellationToken);
+            // Link app shutdown into the session token so a graceful stop finalises
+            // the row as ClosedByServer (within the host's shutdown window) rather
+            // than orphaning it as Active for the startup sweep to reap.
+            using var sessionCts = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, appLifetime.ApplicationStopping);
+            result = await HostShellSession.RunAsync(channel, client, idleTimeout, logger, sessionCts.Token);
         }
         finally
         {

@@ -39,6 +39,7 @@
   font-size: 0.875rem;
   font-weight: 500;
   transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, opacity 160ms ease;
+  cursor: pointer;
 }
 
 .ui-button:focus-visible {
@@ -123,6 +124,16 @@
 .ui-button-size-icon {
   height: 2rem;
   width: 2rem;
+}
+
+.ui-button-danger {
+  border-color: transparent;
+  background: transparent;
+  color: var(--destructive);
+}
+.ui-button-danger:hover {
+  color: var(--destructive);
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
 }
 
 .ui-card {

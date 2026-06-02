@@ -1,7 +1,9 @@
 /* V5.8 — Session audit viewer. Tabbed read-only tables of shell / exec / update
    / prune history. Styling follows the muted, table-dense look of the other
    settings pages. */
-
+.audit-page h1{
+  margin-bottom: 1rem;
+}
 .audit-tabs {
   display: flex;
   flex-wrap: wrap;

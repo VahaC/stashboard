@@ -17,6 +17,7 @@ export type SessionEndReason =
   | 'IdleTimeout'
   | 'ClosedByServer'
   | 'Error'
+  | 'Interrupted'
 
 export interface HostShellSession {
   id: string
@@ -108,6 +109,7 @@ const END_REASON_LABELS: Record<string, string> = {
   IdleTimeout: 'Idle timeout',
   ClosedByServer: 'Closed by server',
   Error: 'Error',
+  Interrupted: 'Interrupted (server restart)',
 }
 
 export function endReasonLabel(reason: string): string {

@@ -1,228 +1,629 @@
-/* V3.5 — Docker instances page (/docker).
- * Cards list every container across the user's Docker connections with
- * inline Start / Stop / Restart / Remove actions plus a deep link into
- * the watch modal when one tracks the container.
+/* V5.9 — Docker instances page (/docker) — "Connection switcher" layout.
+ *
+ * Top-down structure (single centered column, max 1320px):
+ *   header → prefs bar → summary tiles → connection switcher → toolbar →
+ *   per-host: host-card (with Storage) + packed project groups + "Other".
+ *
+ * Tokens come straight from index.css. Borders do the heavy lifting; no
+ * gradients / glow / hover-lift per house style. The legacy V3.5+
+ * docker-instances-* class block lives below for the parts shared with the
+ * ServiceModal → Docker tab (the card itself) and the container modal.
  */
 
-.docker-instances-page {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+.dock {
+  --gap: 14px;
+  --card-pad: 13px;
+  --card-gap: 8px;
+  /* max-width: 1320px; */
+  margin: 0 auto;
+  padding: 28px 28px 80px;
 }
-
-.docker-instances-header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.docker-instances-header-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.docker-instances-header h1 {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin: 0;
-}
-
-.docker-instances-header-sub {
-  color: var(--muted-foreground);
+.dock[data-density='compact'] {
+  --gap: 10px;
+  --card-pad: 10px;
+  --card-gap: 6px;
   font-size: 13px;
 }
+@media (max-width: 640px) { .dock { padding: 18px 14px 64px; } }
+@media (max-width: 380px) { .dock { padding: 16px 12px 56px; --gap: 10px; } }
 
-.docker-instances-toolbar {
+/* ── Page header ─────────────────────────────────────────────────────── */
+.dock-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.dock-header-text { min-width: 0; flex: 1 1 320px; }
+.dock-title {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.dock-sub {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  color: var(--muted-foreground);
+  max-width: 62ch;
+}
+@media (max-width: 640px) {
+  .dock-title { font-size: 21px; }
+  .dock-header-add { width: 100%; justify-content: center; order: 3; }
+}
+@media (max-width: 380px) {
+  .dock-title { font-size: 20px; }
+  .dock-sub { font-size: 12.5px; }
+}
+
+/* ── Prefs bar ───────────────────────────────────────────────────────── */
+.dock-prefs {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 0.375rem;
-  background: var(--muted);
-}
-
-.docker-instances-toolbar-search {
-  flex: 1 1 200px;
-  min-width: 0;
-}
-
-.docker-instances-toolbar-filter {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
+  gap: 14px;
+  margin-top: 14px;
   font-size: 12px;
   color: var(--muted-foreground);
-  font-family: var(--font-mono);
 }
-
-.docker-instances-connection {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.docker-instances-connection-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-
-.docker-instances-connection-edit {
-  margin-left: auto;
-}
-
-.docker-instances-connection-name {
-  font-size: 1.05rem;
+.dock-prefs-group { display: inline-flex; align-items: center; gap: 8px; }
+.dock-prefs-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--subtle-foreground);
   font-weight: 600;
 }
-
-.docker-instances-connection-meta-group {
-    display: flex;
-    flex-direction: row;
-    justify-content: flex-end;
-}
-
-.docker-instances-connection-meta {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-family: var(--font-mono);
-}
-
-.docker-instances-page .dashboard-group-button {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+.dock-prefs-check {
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 6px;
   cursor: pointer;
+  color: var(--foreground);
 }
+.dock-prefs-check input { accent-color: var(--primary); }
 
-.docker-instances-connection-actions {
+/* ── Summary strip ───────────────────────────────────────────────────── */
+.dock-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--gap);
+  margin-top: 18px;
+}
+@media (max-width: 560px) { .dock-summary { grid-template-columns: repeat(2, 1fr); } }
+.sumtile {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.sumtile-k {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--subtle-foreground);
+  font-weight: 600;
   display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sumtile-v {
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin-top: 5px;
+  line-height: 1;
+}
+.sumtile-v small {
+  font-size: 12px;
+  color: var(--subtle-foreground);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.sumtile.is-accent .sumtile-v { color: var(--status-up); }
+.sumtile.is-warn   .sumtile-v { color: var(--status-update-available); }
+.sumtile.is-down   .sumtile-v { color: var(--status-down); }
+@media (max-width: 380px) {
+  .sumtile { padding: 9px 11px; }
+  .sumtile-k { font-size: 10px; }
+  .sumtile-v { font-size: 18px; }
 }
 
-.docker-instances-connection-actions button {
-  margin: 0 0.25rem;
+/* ── Connection switcher ─────────────────────────────────────────────── */
+.switcher {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.switcher::-webkit-scrollbar { display: none; }
+.conn {
+  appearance: none;
+  cursor: pointer;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-strong);
+  background: var(--card);
+  color: var(--foreground);
+  border-radius: var(--radius);
+  padding: 9px 14px;
+  font: inherit;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  transition: border-color 0.12s, background 0.12s;
+}
+.conn:hover { border-color: var(--primary); }
+.conn[aria-pressed='true'] {
+  border-color: var(--primary);
+  background: color-mix(in oklab, var(--primary) 8%, var(--card));
+}
+.conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-up);
+}
+.conn-dot[data-off='true'] { background: var(--status-unknown); }
+.conn-name { font-weight: 600; font-size: 13px; letter-spacing: -0.01em; }
+.conn-count {
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.conn-updates {
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--status-update-available);
+  border-radius: var(--radius-pill);
+  padding: 1px 6px;
 }
 
-.docker-instances-page .dashboard-group-title {
-  min-width: 0;
+/* ── Toolbar ─────────────────────────────────────────────────────────── */
+.dock-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+.dock .searchbox {
+  position: relative;
+  flex: 1 1 240px;
+  min-width: 180px;
+}
+.dock .searchbox .ic {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--subtle-foreground);
+  width: 15px;
+  height: 15px;
+  pointer-events: none;
+}
+.dock .input {
+  width: 100%;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px 8px 32px;
+}
+.dock .input::placeholder { color: var(--subtle-foreground); }
+.dock .input:focus { outline: 2px solid var(--ring); outline-offset: -1px; }
+
+.dock .segmented {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  padding: 2px;
+  gap: 2px;
+}
+.dock .segmented button {
+  appearance: none;
   border: 0;
   background: transparent;
-  color: inherit;
-  font: inherit;
-  padding: 0;
-  text-align: left;
   cursor: pointer;
-
-  display: flex;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  padding: 5px 12px;
+  border-radius: 3px;
+  line-height: 1.3;
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 6px;
+}
+.dock .segmented button[aria-pressed='true'] {
+  background: var(--secondary);
+  color: var(--foreground);
   font-weight: 500;
 }
+.dark .dock .segmented button[aria-pressed='true'] { background: var(--accent); }
 
-.docker-instances-page .docker-instances-connection-meta {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0 .5rem 0 0;
-}
-
-.docker-instances-page .docker-instances-connection-edit {
-  justify-self: end;
-}
-
-.docker-instances-toolbar-compose-filter {
-  border: 1px solid var(--border-strong);
-}
-
-.docker-instances-error {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid hsl(var(--destructive) / 0.4);
-  border-radius: 0.375rem;
-  background: hsl(var(--destructive) / 0.08);
-  color: hsl(var(--destructive));
-  font-size: 12px;
-}
-
-.docker-instances-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-/* V5.4 — compose project grouping on the instances page */
-.docker-instances-project-list {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 0.75rem;
-}
-
-.docker-instances-project {
+/* ── Host summary card ───────────────────────────────────────────────── */
+.host-section { margin-top: 18px; }
+.host-card {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: var(--radius-xl);
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: color-mix(in srgb, var(--card) 75%, transparent);
-  width: fit-content;
-  max-width: 100%;
+  gap: 14px;
 }
-
-.docker-instances-project-header {
+.host-card-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  gap: 12px;
   flex-wrap: wrap;
-  /* Prevent the header from expanding the section beyond the cards' width.
-   * width:0 removes this element from the parent's max-content calculation;
-   * min-width:100% then stretches it to the section's actual (card-driven) width. */
-  width: 0;
-  min-width: 100%;
+}
+.host-name {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.host-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-up);
+  flex: 0 0 auto;
+}
+.host-dot[data-off='true'] { background: var(--status-unknown); }
+.host-endpoint {
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.host-endpoint .tp {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--subtle-foreground);
+}
+.host-count {
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
+}
+.host-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 6px;
+}
+@media (max-width: 560px) {
+  .host-card-top { row-gap: 6px; }
+  .host-endpoint { flex-basis: 100%; }
+  .host-actions { margin-left: 0; width: 100%; }
 }
 
-.docker-instances-project-header-meta {
+/* ── Storage box (collapsed style, the new default) ──────────────────── */
+.storage-box {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: var(--radius);
+  transition: border-color 0.12s;
+}
+.storage-box:hover { border-color: var(--border-strong); }
+.storage-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 10px;
   flex-wrap: wrap;
-}
-
-.docker-instances-project-badge {
-  font-family: var(--font-mono, monospace);
-  font-size: 12px;
-  padding: 0.125rem 0.5rem;
-  border-radius: 0.375rem;
-  background: hsl(var(--muted));
-  color: hsl(var(--muted-foreground));
-  border: 1px solid var(--border);
+  padding: 9px 14px;
   cursor: pointer;
 }
-
-.docker-instances-project-badge:hover {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
+.storage-box.open .storage-row { border-bottom: 1px solid var(--border); }
+.storage-row .chev {
+  color: var(--subtle-foreground);
+  transition: transform 0.15s;
+  flex: 0 0 auto;
 }
-
-.docker-instances-project-counter {
+.storage-box.open .storage-row .chev { transform: rotate(90deg); }
+.storage-row-label {
   font-size: 12px;
-  color: hsl(var(--muted-foreground));
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.storage-row-label svg { color: var(--subtle-foreground); }
+.storage-row-inline {
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+  display: flex;
+  gap: 6px 12px;
+  flex-wrap: wrap;
+}
+.storage-row-inline .warn { color: var(--status-attention); }
+.storage-row-acts {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 6px;
+}
+.storage-box-body { padding: 14px; }
+
+.storage-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
 }
 
-.docker-instances-project-header-actions {
+.metric-k {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--subtle-foreground);
+  font-weight: 600;
+}
+.metric-v {
+    margin-top: 4px;
+    font-size: 14px;
+    font-weight: 500;
+}
+.metric-v.link button{
+  color: var(--primary);
+  cursor: pointer;
+}
+.metric-v.is-warn button {
+    color: var(--status-attention);
+}
+
+/* ── Project groups (packed: each group is exactly its cards wide) ───── */
+.cgroups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  align-items: flex-start;
+  margin-top: 14px;
+}
+.cgroup { box-sizing: border-box; }
+.cgroup-head {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 9px;
+  flex-wrap: wrap;
+  cursor: pointer;
+  padding: 5px 0 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px dashed var(--border);
+  transition: border-color 0.12s;
+  min-height: 3rem;
 }
+.cgroup-head:hover { border-bottom-color: var(--border-strong); }
+.cgroup-head .chev {
+  color: var(--subtle-foreground);
+  transition: transform 0.15s;
+}
+.cgroup.open .cgroup-head .chev { transform: rotate(90deg); }
+.cgroup-name {
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+.cgroup-name.is-other { color: var(--subtle-foreground); font-weight: 500; }
+.cgroup-count {
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--subtle-foreground);
+  background: var(--secondary);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+}
+.dark .cgroup-count { background: var(--accent); }
+.cgroup-meta { font-size: 11px; color: var(--muted-foreground); }
+.cgroup-meta .updates { color: var(--status-update-available); font-weight: 600; }
+.cgroup-acts { margin-left: auto; }
+.cgroup-grid { display: grid; }
+
+/* ── Page-level empty / error placeholders ───────────────────────────── */
+.dock-empty {
+  padding: 1rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  text-align: center;
+  margin-top: 12px;
+}
+.dock-error {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid color-mix(in oklab, var(--destructive) 40%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in oklab, var(--destructive) 8%, transparent);
+  color: var(--destructive);
+  font-size: 12px;
+  margin-top: 12px;
+}
+
+/* ── Container card — overrides for the /docker page context ─────────── */
+/* The card itself is shared with the ServiceModal → Docker tab; in that
+ * shared usage `.docker-instances-card` still owns the `flex: 0 0 280px`
+ * sizing. Inside `.dock` the parent `.cgroup-grid` decides the width, so
+ * we strip the fixed flex sizing and let the grid template drive layout. */
+.dock .docker-instances-card {
+  flex: initial;
+  max-width: none;
+  width: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-gap);
+  padding: var(--card-pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.dock .docker-instances-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+.dock .docker-instances-card[data-container-state='exited'],
+.dock .docker-instances-card[data-container-state='dead'],
+.dock .docker-instances-card[data-container-state='removing'] {
+  border-style: solid;
+  opacity: 0.92;
+}
+/* Bottom-aligned divider so action rows of every card in a row line up. */
+.cc-rule {
+  height: 1px;
+  background: var(--border);
+  margin: 1.5rem 0 0;
+}
+/* Status meta colour the trailing "(healthy)" — green; "(unhealthy)" red. */
+.cc-meta .healthy { color: var(--status-up); }
+.cc-meta .unhealthy { color: var(--status-down); }
+.cc-meta .starting { color: var(--status-attention); }
+
+/* Container state badge — design tokens (color-mix on the status colour
+ * @ 12–16% transparent for the tint; mono 9.5px/600 uppercase with a
+ * leading dot from `::before`). The shared `.docker-instances-card-state`
+ * keeps its V3.5 look for ServiceModal usage; `.dock` overrides here. */
+.dock .docker-instances-card-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  line-height: 1.7;
+}
+.dark .dock .docker-instances-card-state { background: var(--accent); }
+.dock .docker-instances-card-state::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.dock .docker-instances-card-state[data-state='running'] {
+  background: color-mix(in oklab, var(--status-up) 14%, transparent);
+  color: var(--status-up);
+}
+.dock .docker-instances-card-state[data-state='exited'],
+.dock .docker-instances-card-state[data-state='dead'],
+.dock .docker-instances-card-state[data-state='removing'] {
+  background: color-mix(in oklab, var(--status-down) 12%, transparent);
+  color: var(--status-down);
+}
+.dock .docker-instances-card-state[data-state='restarting'],
+.dock .docker-instances-card-state[data-state='created'],
+.dock .docker-instances-card-state[data-state='paused'] {
+  background: color-mix(in oklab, var(--status-attention) 16%, transparent);
+  color: var(--status-attention);
+}
+.dock .docker-instances-card-state[data-state='not found'] {
+  background: color-mix(in oklab, var(--status-unknown) 16%, transparent);
+  color: var(--status-unknown);
+}
+
+/* "Update available" badge — solid amber with white text per the design. */
+.dock .cc-update-badge,
+.dock .docker-section-badge[data-status='UpdateAvailable'] {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--status-update-available);
+}
+
+/* Service link in the card. */
+.dock .cc-service .cc-chip-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--primary);
+}
+.dock .cc-service .cc-chip-link:hover { text-decoration: underline; }
+
+/* Hide diagnostics row when the prefs toggle is off. */
+.dock[data-diag='off'] .cc-actions-secondary { display: none; }
+.dock[data-diag='off'] .cc-actions { justify-content: flex-end; }
+
+/* Diagnostics + lifecycle rows: diagnostics on the left, lifecycle pushed
+ * to the right edge. Lay them out as a single row instead of the legacy
+ * `display: block` (which is what made the old card lay them vertically). */
+.dock .docker-instances-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-top: 0;
+  padding-top: 0;
+}
+.dock .cc-actions-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.dock .cc-actions-secondary .ui-button-ghost {
+  padding: 0;
+  width: 28px;
+  height: 28px;
+}
+.dock .cc-actions-right {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.dock .cc-actions-right .cc-lifecycle { gap: 5px; }
+
+/* Port chips. Tighten the variant inside .dock so they match the design
+ * scale (10.5px mono). The shared base style stays at 11px for the
+ * service-modal usage. */
+.dock .docker-instances-card-port {
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+  color: var(--muted-foreground);
+}
+.dark .dock .docker-instances-card-port { background: var(--accent); }
+
+@media (max-width: 380px) {
+  .dock .cc-actions-secondary .ui-button-ghost { width: 26px; height: 26px; }
+  .dock .cc-lifecycle .ui-button { padding: 4px 7px; }
+}
+
+/* ── Legacy aliases kept for the ServiceModal → Docker tab ───────────── */
+/* The container card itself is shared with the service modal, so we keep
+ * the V3.5–V5.8 .docker-instances-card-* classes (cards layout, badges,
+ * watch chip, etc.) below. The /docker page overrides the parts it needs
+ * via the `.dock .docker-instances-card` scope above. */
 
 /* V5.4 — shared update modal (confirm → running → done/error) used by
    both the per-watch "Update now" and the per-project "Update project"
@@ -547,34 +948,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
-}
-
-@media (max-width: 639px) {
-  .docker-instances-header-top {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .docker-instances-header-top > button {
-    width: 100%;
-  }
-
-  .docker-instances-page .dashboard-group-button {
-    grid-template-columns: 1fr;
-    align-items: start;
-  }
-
-  .docker-instances-page .docker-instances-connection-meta {
-    white-space: normal;
-    overflow: visible;
-    text-overflow: unset;
-    overflow-wrap: anywhere;
-  }
-
-  .docker-instances-connection-edit {
-    margin-left: 0;
-    width: 100%;
-  }
 }
 
 /* V5.0 — One-click removal button for exited/dead containers */

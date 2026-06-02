@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -158,6 +159,7 @@ public class HostTerminalControllerTests : IAsyncLifetime
             Mock.Of<IHostShellConnector>(),
             settingsService,
             Mock.Of<IServiceScopeFactory>(),
+            Mock.Of<IHostApplicationLifetime>(),
             Options.Create(new HostShellOptions()),
             NullLogger<HostTerminalController>.Instance);
 

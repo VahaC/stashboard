@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Trash2, HardDrive, RefreshCw } from 'lucide-react'
+import { ChevronRight, Database, Trash2, HardDrive, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -18,6 +18,10 @@ interface StorageWidgetProps {
   /** Whether this connection has opted in to the aggressive "also prune
    *  unused images" scope. Defaults the dialog's checkbox. */
   defaultPruneUnused: boolean
+  /** V5.9 — visual style. `'collapsed'` (default) is a single-row bar with
+   *  an inline summary that expands into the 4-metric grid; `'panel'` is the
+   *  always-expanded card layout the page used in V5.5–V5.8. */
+  variant?: 'collapsed' | 'panel'
 }
 
 /** Which subset of images the drill-down modal is showing. */
@@ -48,7 +52,7 @@ function scopeImages(images: DockerImageInfo[], scope: DetailScope): DockerImage
  * Each stat (Total / Dangling / Unused) is clickable and opens a modal
  * listing those images so the user can see what's actually on the host.
  */
-export function StorageWidget({ connectionId, defaultPruneUnused }: StorageWidgetProps) {
+export function StorageWidget({ connectionId, defaultPruneUnused, variant = 'panel' }: StorageWidgetProps) {
   const storage = useDockerImageStorage(connectionId)
   const prune = usePruneImages(connectionId)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -56,11 +60,13 @@ export function StorageWidget({ connectionId, defaultPruneUnused }: StorageWidge
   const [lastRun, setLastRun] = useState<DockerPruneRun | null>(null)
   const [pruneError, setPruneError] = useState<string | null>(null)
   const [detailScope, setDetailScope] = useState<DetailScope | null>(null)
+  const [open, setOpen] = useState(false)
 
   const data = storage.data
   const danglingLine = data
     ? `${data.danglingImageCount} dangling (${formatBytes(data.danglingImageBytes)})`
     : '…'
+  const isDanglingExists = data ? data.danglingImageCount > 0 : false
   const unusedLine = data
     ? `${data.unusedImageCount} unused (${formatBytes(data.unusedImageBytes)})`
     : '…'
@@ -91,84 +97,187 @@ export function StorageWidget({ connectionId, defaultPruneUnused }: StorageWidge
     setIncludeUnused(defaultPruneUnused)
   }
 
-  return (
-    <div className="docker-storage-widget">
-      <div className="docker-storage-widget__header">
-        <HardDrive className="h-4 w-4" />
-        <span className="docker-storage-widget__title">Storage</span>
-        <button
-          type="button"
-          className="docker-storage-widget__refresh ui-button ui-button-outline ui-button-size-sm"
-          onClick={() => void storage.refetch()}
-          aria-label="Refresh storage summary"
-          disabled={storage.isFetching}
-        >
-          <RefreshCw className={`h-3.5 w-3.5${storage.isFetching ? ' docker-storage-widget__refresh--spin' : ''}`} />
-          Refresh
-        </button>
-        <div className="docker-storage-widget__actions">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setConfirmOpen(true)}
-            disabled={!data || storage.isLoading}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Prune
-          </Button>
+  const stats = (
+    storage.isError ? (
+      <div className="docker-storage-widget__error">
+        {getApiErrorMessage(storage.error, 'Could not load image storage.')}
+      </div>
+    ) : (
+      // <dl className="docker-storage-widget__stats">
+      //   <div>
+      //     <dt>Total</dt>
+      //     <dd>
+      //       <button
+      //         type="button"
+      //         className="docker-storage-widget__stat-button"
+      //         disabled={!data}
+      //         onClick={() => setDetailScope('all')}
+      //       >
+      //         {data ? `${data.totalImageCount} images` : '…'}
+      //       </button>
+      //     </dd>
+      //   </div>
+      //   <div>
+      //     <dt>Dangling</dt>
+      //     <dd>
+      //       <button
+      //         type="button"
+      //         className="docker-storage-widget__stat-button"
+      //         disabled={!data}
+      //         onClick={() => setDetailScope('dangling')}
+      //       >
+      //         {danglingLine}
+      //       </button>
+      //     </dd>
+      //   </div>
+      //   <div>
+      //     <dt>Unused</dt>
+      //     <dd>
+      //       <button
+      //         type="button"
+      //         className="docker-storage-widget__stat-button"
+      //         disabled={!data}
+      //         onClick={() => setDetailScope('unused')}
+      //       >
+      //         {unusedLine}
+      //       </button>
+      //     </dd>
+      //   </div>
+      //   <div>
+      //     <dt>Last prune</dt>
+      //     <dd>{data?.lastPruneUtc ? new Date(data.lastPruneUtc).toLocaleString() : 'Never'}</dd>
+      //   </div>
+      // </dl>
+      <div className="storage-metrics">
+        <div>
+          <div className="metric-k">Total</div>
+          <div className="metric-v link">
+            <button
+              type="button"
+              className="docker-storage-widget__stat-button"
+              disabled={!data}
+              onClick={() => setDetailScope('all')}
+            >
+              {data ? `${data.totalImageCount} images` : '…'}
+            </button>
+          </div>
+        </div>
+        <div>
+          <div className="metric-k">Dangling</div>
+          <div className={`metric-v ${isDanglingExists ? 'is-warn' : ''} link`}>
+            <button
+              type="button"
+              className="docker-storage-widget__stat-button"
+              disabled={!data}
+              onClick={() => setDetailScope('dangling')}
+            >
+              {danglingLine}
+            </button>
+          </div>
+        </div>
+        <div>
+          <div className="metric-k">Unused</div>
+          <div className="metric-v link">
+            <button
+              type="button"
+              className="docker-storage-widget__stat-button"
+              disabled={!data}
+              onClick={() => setDetailScope('unused')}
+            >
+              {unusedLine}
+            </button>
+          </div>
+        </div>
+        <div>
+          <div className="metric-k">Last prune</div>
+          <div className="metric-v"><span className="mono">
+            {data?.lastPruneUtc ? new Date(data.lastPruneUtc).toLocaleString() : 'Never'}</span>
+          </div>
         </div>
       </div>
-      {storage.isError ? (
-        <div className="docker-storage-widget__error">
-          {getApiErrorMessage(storage.error, 'Could not load image storage.')}
-        </div>
+    )
+  )
+
+  const refreshButton = (
+    <button
+      type="button"
+      className="docker-storage-widget__refresh ui-button ui-button-outline ui-button-size-sm"
+      onClick={(e) => { e.stopPropagation(); void storage.refetch() }}
+      aria-label="Refresh storage summary"
+      disabled={storage.isFetching}
+    >
+      <RefreshCw className={`h-3.5 w-3.5${storage.isFetching ? ' docker-storage-widget__refresh--spin' : ''}`} />
+      Refresh
+    </button>
+  )
+  const pruneButton = (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={(e) => { e.stopPropagation(); setConfirmOpen(true) }}
+      disabled={!data || storage.isLoading}
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+      Prune
+    </Button>
+  )
+
+  // V5.9 — collapsed style: one continuous panel, header + (when open)
+  // divider + metrics, used by the Docker instances page.
+  const collapsed = variant === 'collapsed'
+  const dangling = data?.danglingImageCount ?? 0
+  const inlineSummary = data ? (
+    <span className="storage-row-inline">
+      <span>{data.totalImageCount} images</span>
+      <span className={dangling > 0 ? 'warn' : undefined}>
+        · {dangling} dangling ({formatBytes(data.danglingImageBytes)})
+      </span>
+      <span>· {data.unusedImageCount} unused ({formatBytes(data.unusedImageBytes)})</span>
+    </span>
+  ) : (
+    <span className="storage-row-inline">…</span>
+  )
+
+  return (
+    <div className={collapsed ? `storage-box${open ? ' open' : ''}` : 'docker-storage-widget'}>
+      {collapsed ? (
+        <>
+          <div
+            className="storage-row"
+            role="button"
+            tabIndex={0}
+            onClick={() => setOpen((o) => !o)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setOpen((o) => !o)
+              }
+            }}
+          >
+            <ChevronRight className="chev h-3.5 w-3.5" />
+            <span className="storage-row-label">
+              <Database className="h-3.5 w-3.5" />
+              Storage
+            </span>
+            {inlineSummary}
+            <div className="storage-row-acts">
+              {refreshButton}
+              {pruneButton}
+            </div>
+          </div>
+          {open && <div className="storage-box-body">{stats}</div>}
+        </>
       ) : (
-        <dl className="docker-storage-widget__stats">
-          <div>
-            <dt>Total</dt>
-            <dd>
-              <button
-                type="button"
-                className="docker-storage-widget__stat-button"
-                disabled={!data}
-                onClick={() => setDetailScope('all')}
-              >
-                {data ? `${data.totalImageCount} images` : '…'}
-              </button>
-            </dd>
+        <>
+          <div className="docker-storage-widget__header">
+            <HardDrive className="h-4 w-4" />
+            <span className="docker-storage-widget__title">Storage</span>
+            {refreshButton}
+            <div className="docker-storage-widget__actions">{pruneButton}</div>
           </div>
-          <div>
-            <dt>Dangling</dt>
-            <dd>
-              <button
-                type="button"
-                className="docker-storage-widget__stat-button"
-                disabled={!data}
-                onClick={() => setDetailScope('dangling')}
-              >
-                {danglingLine}
-              </button>
-            </dd>
-          </div>
-          <div>
-            <dt>Unused</dt>
-            <dd>
-              <button
-                type="button"
-                className="docker-storage-widget__stat-button"
-                disabled={!data}
-                onClick={() => setDetailScope('unused')}
-              >
-                {unusedLine}
-              </button>
-            </dd>
-          </div>
-          <div>
-            <dt>Last prune</dt>
-            <dd>{data?.lastPruneUtc ? new Date(data.lastPruneUtc).toLocaleString() : 'Never'}</dd>
-          </div>
-        </dl>
+          {stats}
+        </>
       )}
 
       {/* Drill-down: which images make up the clicked stat. */}

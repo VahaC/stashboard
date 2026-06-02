@@ -1,11 +1,22 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { AlertCircle, Plus, RefreshCw, Settings, TerminalSquare } from 'lucide-react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useQueries } from '@tanstack/react-query'
 import {
+  AlertCircle,
+  ChevronRight,
+  Download,
+  Grid,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings,
+  TerminalSquare,
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { api } from '@/lib/api'
+import {
+  qk,
   useConnectionWatches,
   useDeleteConnectionWatch,
   useDockerConnections,
@@ -14,7 +25,11 @@ import {
   useDockerProjectUpdate,
   useFeatures,
 } from '@/lib/queries'
-import type { DockerConnection, DockerContainerCard, DockerWatch } from '@/lib/types'
+import type {
+  DockerConnection,
+  DockerContainerCard,
+  DockerWatch,
+} from '@/lib/types'
 import { resolveDockerHostType } from '@/lib/types'
 import { getApiErrorMessage } from '@/lib/utils'
 import { ContainerModal, type ContainerModalTab } from '@/components/ContainerModal'
@@ -24,6 +39,8 @@ import { ProjectUpdateDialog } from '@/components/docker/atoms/ProjectUpdateDial
 import { HostTerminalDialog } from '@/components/docker/HostTerminalDialog'
 import { StorageWidget } from '@/components/docker/StorageWidget'
 import '@/styles/docker-instances.css'
+
+type StateFilter = 'all' | 'running' | 'stopped'
 
 interface ModalState {
   connectionId: string
@@ -35,35 +52,188 @@ type ConnectionModalState =
   | { mode: 'create' }
   | { mode: 'edit'; connection: DockerConnection }
 
-type StateFilter = 'all' | 'running' | 'stopped'
+// V5.9 — Per-user display preferences for the Docker instances page. We keep
+// them in localStorage rather than threading them through the server-side
+// dashboard-preferences blob: the choices here (density, diagnostics, storage
+// style) are device-local and don't need to follow the user across browsers.
+interface DockerPagePrefs {
+  density: 'comfortable' | 'compact'
+  diagnostics: boolean
+  storage: 'collapsed' | 'panel'
+}
+const PREFS_DEFAULTS: DockerPagePrefs = { density: 'comfortable', diagnostics: true, storage: 'collapsed' }
+const PREFS_KEY = 'stashboard.dockerInstances.prefs.v1'
 
-/**
- * V3.5 — Docker instances page. One section per configured Docker
- * connection; inside each section a card grid of every container on
- * that host with Start / Stop / Restart / Remove actions plus a deep
- * link into the watch modal when one tracks the container.
- *
- * Remove is gated by the server-side `StashboardOptions.AllowContainerRemoval`
- * feature flag — when off the button doesn't render, and the matching
- * DELETE endpoint returns 403 even if the user crafts the request by
- * hand.
- */
+function readPrefs(): DockerPagePrefs {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY)
+    if (!raw) return PREFS_DEFAULTS
+    return { ...PREFS_DEFAULTS, ...(JSON.parse(raw) as Partial<DockerPagePrefs>) }
+  } catch {
+    return PREFS_DEFAULTS
+  }
+}
+
+function writePrefs(next: DockerPagePrefs) {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(next)) } catch { /* quota / private mode */ }
+}
+
+/** Card grid math from the handoff README — single source so summary,
+ *  switcher, and groups all agree on column counts. */
+interface PackLayout {
+  cardW: number
+  gap: number
+  maxCols: number
+}
+
+/** `avail` here is the actual pixel width available to cards (i.e. the
+ *  `.dock` element's `clientWidth` MINUS its own horizontal padding). The
+ *  caller does the measuring so we don't have to guess at any ancestor's
+ *  padding / scrollbar — `ResizeObserver` on the `.dock` element gives us
+ *  the truth in one shot. */
+function computePack(avail: number, density: DockerPagePrefs['density']): PackLayout {
+  const safe = Math.max(0, avail)
+  const gap = density === 'compact' ? 10 : 14
+  const base = density === 'compact' ? 258 : 300
+  let cardW = Math.min(base, safe)
+  const maxCols = Math.max(1, Math.floor((safe + gap) / (cardW + gap)))
+  if (maxCols === 1) cardW = safe
+  return { cardW, gap, maxCols }
+}
+
+/** Measure the `.dock` element's inner content width via `ResizeObserver`
+ *  and re-pack when it changes. Using the actual element instead of
+ *  `window.innerWidth` keeps the math correct regardless of the
+ *  `.app-content` parent's padding, its own `overflow: auto` scrollbar, or
+ *  any future sidebar / panel that eats horizontal space. */
+function usePackLayout(
+  density: DockerPagePrefs['density'],
+): [PackLayout, React.RefCallback<HTMLDivElement>] {
+  const [layout, setLayout] = useState<PackLayout>(() => computePack(1264, density))
+  const elRef = useRef<HTMLDivElement | null>(null)
+  const obsRef = useRef<ResizeObserver | null>(null)
+
+  // Recompute from the element's current dimensions.
+  const measure = useCallback(() => {
+    const el = elRef.current
+    if (!el) return
+    const cs = getComputedStyle(el)
+    const inner = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
+    setLayout((prev) => {
+      const next = computePack(inner, density)
+      if (prev.cardW === next.cardW && prev.gap === next.gap && prev.maxCols === next.maxCols) {
+        return prev
+      }
+      return next
+    })
+  }, [density])
+
+  // Re-measure whenever density flips (gap / base card change).
+  useLayoutEffect(() => { measure() }, [measure])
+
+  // Ref callback that wires up the ResizeObserver. Doing it here (rather
+  // than in a useEffect that depends on a ref) means we attach as soon as
+  // the .dock element mounts and detach the moment it leaves the tree.
+  const setRef = useCallback<React.RefCallback<HTMLDivElement>>((el) => {
+    if (obsRef.current) {
+      obsRef.current.disconnect()
+      obsRef.current = null
+    }
+    elRef.current = el
+    if (!el) return
+    measure()
+    if (typeof ResizeObserver !== 'undefined') {
+      obsRef.current = new ResizeObserver(() => measure())
+      obsRef.current.observe(el)
+    }
+  }, [measure])
+
+  return [layout, setRef]
+}
+
 export function DockerInstances() {
   const connections = useDockerConnections()
   const features = useFeatures()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // Search + state filter live at the page level so they apply uniformly
-  // across every connection section. Compose project filter is a "dim
-  // others" — clicking a project badge keeps the page focused on it
-  // until the user clicks Clear.
+  const [prefs, setPrefs] = useState<DockerPagePrefs>(readPrefs)
+  const updatePrefs = useCallback((partial: Partial<DockerPagePrefs>) => {
+    setPrefs((prev) => {
+      const next = { ...prev, ...partial }
+      writePrefs(next)
+      return next
+    })
+  }, [])
+
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<StateFilter>('all')
-  const [composeFilter, setComposeFilter] = useState<string | null>(null)
+  const [activeHost, setActiveHost] = useState<string>('all')
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
   const [modal, setModal] = useState<ModalState | null>(null)
   const [connectionModal, setConnectionModal] = useState<ConnectionModalState | null>(null)
   const [handledDeepLink, setHandledDeepLink] = useState<string | null>(null)
 
+  const [layout, dockRef] = usePackLayout(prefs.density)
+
+  // Containers + watches for every connection in one place — the per-host
+  // sections + summary strip + switcher all read from this single fan-out so
+  // they agree (and React-Query de-duplicates with the section's own hook
+  // calls because the query keys match).
+  const conns = useMemo(() => connections.data ?? [], [connections.data])
+  const containerQueries = useQueries({
+    queries: conns.map((conn) => ({
+      queryKey: qk.dockerInstanceContainers(conn.id),
+      queryFn: async (): Promise<DockerContainerCard[]> =>
+        (await api.get<DockerContainerCard[]>(
+          `/api/docker/connections/${conn.id}/instance/containers`)).data,
+      enabled: true,
+      refetchInterval: 10_000,
+      staleTime: 5_000,
+    })),
+  })
+  const watchQueries = useQueries({
+    queries: conns.map((conn) => ({
+      queryKey: qk.connectionWatches(conn.id),
+      queryFn: async (): Promise<DockerWatch[]> =>
+        (await api.get<DockerWatch[]>(`/api/docker/connections/${conn.id}/watches`)).data,
+      enabled: true,
+      staleTime: 30_000,
+    })),
+  })
+  const containersByHost = useMemo(() => {
+    const map = new Map<string, DockerContainerCard[]>()
+    conns.forEach((c, i) => map.set(c.id, containerQueries[i]?.data ?? []))
+    return map
+  }, [conns, containerQueries])
+  const updatesByHost = useMemo(() => {
+    const map = new Map<string, number>()
+    conns.forEach((c, i) => {
+      const list = watchQueries[i]?.data ?? []
+      map.set(c.id, list.filter((w) => w.updateStatus === 'UpdateAvailable' || w.updateStatus === 2).length)
+    })
+    return map
+  }, [conns, watchQueries])
+
+  // Aggregated totals for the summary strip (every host, ignoring filters).
+  const totals = useMemo(() => {
+    let total = 0
+    let running = 0
+    let stopped = 0
+    let updates = 0
+    for (const list of containersByHost.values()) {
+      for (const c of list) {
+        total++
+        if (c.state.toLowerCase() === 'running') running++
+        else stopped++
+      }
+    }
+    for (const n of updatesByHost.values()) updates += n
+    return { total, running, stopped, updates, hosts: conns.length }
+  }, [containersByHost, updatesByHost, conns])
+
+  const trimmedSearch = search.trim().toLowerCase()
+
+  // ── Deep-link: open container modal when ?connection=…&container=… ───
   const deepLinkConnectionId = searchParams.get('connection')
   const deepLinkContainer = searchParams.get('container')
   const deepLinkKey = deepLinkConnectionId && deepLinkContainer
@@ -82,128 +252,155 @@ export function DockerInstances() {
       setHandledDeepLink(deepLinkKey)
       return
     }
-
-    const hasConnection = (connections.data ?? []).some((conn) => conn.id === connectionId)
+    const hasConnection = (connections.data ?? []).some((c) => c.id === connectionId)
     if (!hasConnection) {
       setHandledDeepLink(deepLinkKey)
       return
     }
-
     const normalized = deepLinkContainer.replace(/^\/+/, '').toLowerCase()
     const target = (deepLinkContainers.data ?? []).find((card) => {
-      const normalizedName = card.name.replace(/^\/+/, '').toLowerCase()
-      return normalizedName === normalized || card.id === deepLinkContainer
+      const n = card.name.replace(/^\/+/, '').toLowerCase()
+      return n === normalized || card.id === deepLinkContainer
     })
-
     if (!target) {
       setHandledDeepLink(deepLinkKey)
       return
     }
-
+    setActiveHost(connectionId)
     setModal({ connectionId, card: target, tab: 'overview' })
     setHandledDeepLink(deepLinkKey)
-
     const next = new URLSearchParams(searchParams)
     next.delete('container')
     setSearchParams(next, { replace: true })
   }, [
-    connections.data,
-    connections.isLoading,
-    deepLinkConnectionId,
-    deepLinkContainer,
-    deepLinkContainers.data,
-    deepLinkContainers.isLoading,
-    deepLinkKey,
-    handledDeepLink,
-    modal,
-    searchParams,
-    setSearchParams,
+    connections.data, connections.isLoading,
+    deepLinkConnectionId, deepLinkContainer, deepLinkContainers.data,
+    deepLinkContainers.isLoading, deepLinkKey, handledDeepLink, modal,
+    searchParams, setSearchParams,
   ])
 
+  const visibleConnections = activeHost === 'all'
+    ? conns
+    : conns.filter((c) => c.id === activeHost)
+
+  const toggleGroup = useCallback((key: string) => {
+    setOpenGroups((prev) => {
+      const current = prev[key] !== false // default open
+      return { ...prev, [key]: !current }
+    })
+  }, [])
+
   return (
-    <div className="docker-instances-page">
-      <div className="docker-instances-header">
-        <div className="docker-instances-header-top">
-          <h1>Docker instances</h1>
-          <Button type="button" size="sm" onClick={() => setConnectionModal({ mode: 'create' })}>
-            <Plus className="h-3.5 w-3.5" />
-            Add connection
-          </Button>
+    <div
+      ref={dockRef}
+      className="dock"
+      data-density={prefs.density}
+      data-diag={prefs.diagnostics ? 'on' : 'off'}
+      data-storage={prefs.storage}
+    >
+      <header className="dock-header">
+        <div className="dock-header-text">
+          <h1 className="dock-title">Docker instances</h1>
         </div>
-        <p className="docker-instances-header-sub">
+        <Button
+          type="button"
+          size="sm"
+          className="dock-header-add"
+          onClick={() => setConnectionModal({ mode: 'create' })}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add connection
+        </Button>
+      </header>
+      <div className='dock-header'>
+        <p className="dock-sub">
           Live view of every container across your Docker connections. Click an action to start,
           stop, restart, or remove a container — actions are recorded in the per-watch update
           history so there's one audit trail.
         </p>
+        <PrefsBar prefs={prefs} onChange={updatePrefs} />
       </div>
 
-      <div className="docker-instances-toolbar">
-        <Input
-          className="docker-instances-toolbar-search"
-          placeholder="Search by name or image…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <label className="docker-instances-toolbar-filter">
-          <input
-            type="radio"
-            name="state-filter"
-            checked={stateFilter === 'all'}
-            onChange={() => setStateFilter('all')}
-          />
-          all
-        </label>
-        <label className="docker-instances-toolbar-filter">
-          <input
-            type="radio"
-            name="state-filter"
-            checked={stateFilter === 'running'}
-            onChange={() => setStateFilter('running')}
-          />
-          running
-        </label>
-        <label className="docker-instances-toolbar-filter">
-          <input
-            type="radio"
-            name="state-filter"
-            checked={stateFilter === 'stopped'}
-            onChange={() => setStateFilter('stopped')}
-          />
-          stopped
-        </label>
-        {composeFilter && (
-          <Button className="docker-instances-toolbar-compose-filter"
-            type="button" 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setComposeFilter(null)}>
-              project: {composeFilter} ✕
-          </Button>
-        )}
+
+      <div className="dock-summary">
+        <div className="sumtile">
+          <div className="sumtile-k"><Grid className="h-3 w-3" />Containers</div>
+          <div className="sumtile-v">{totals.total}<small>/ {totals.hosts} host{totals.hosts === 1 ? '' : 's'}</small></div>
+        </div>
+        <div className="sumtile is-accent">
+          <div className="sumtile-k">Running</div>
+          <div className="sumtile-v">{totals.running}</div>
+        </div>
+        <div className="sumtile is-down">
+          <div className="sumtile-k">Stopped</div>
+          <div className="sumtile-v">{totals.stopped}</div>
+        </div>
+        <div className="sumtile is-warn">
+          <div className="sumtile-k"><Download className="h-3 w-3" />Updates</div>
+          <div className="sumtile-v">{totals.updates}</div>
+        </div>
       </div>
 
-      {connections.isLoading && <p className="docker-instances-empty">Loading connections…</p>}
+      <ConnectionSwitcher
+        connections={conns}
+        active={activeHost}
+        onChange={setActiveHost}
+        containersByHost={containersByHost}
+        updatesByHost={updatesByHost}
+      />
+
+      <div className="dock-toolbar">
+        <div className="searchbox">
+          <Search className="ic" aria-hidden />
+          <input
+            className="input"
+            placeholder="Search by name or image…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search containers"
+          />
+        </div>
+        <div className="segmented" role="group" aria-label="State filter">
+          {(['all', 'running', 'stopped'] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={stateFilter === v}
+              onClick={() => setStateFilter(v)}
+            >
+              {v[0].toUpperCase() + v.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {connections.isLoading && <p className="dock-empty">Loading connections…</p>}
       {connections.error && (
-        <p className="docker-instances-error">
-          <AlertCircle className="h-3.5 w-3.5 inline" /> {getApiErrorMessage(connections.error) ?? 'Failed to load connections'}
+        <p className="dock-error">
+          <AlertCircle className="h-3.5 w-3.5 inline" />{' '}
+          {getApiErrorMessage(connections.error) ?? 'Failed to load connections'}
         </p>
       )}
-      {!connections.isLoading && (connections.data?.length ?? 0) === 0 && (
-        <p className="docker-instances-empty">
-          No Docker connections configured yet. Add one from a service's Docker watch panel.
+      {!connections.isLoading && conns.length === 0 && (
+        <p className="dock-empty">
+          No Docker connections configured yet. Click <strong>Add connection</strong> above to get started.
         </p>
       )}
 
-      {(connections.data ?? []).map((conn) => (
-        <ConnectionSection
+      {visibleConnections.map((conn) => (
+        <HostSection
           key={conn.id}
           connection={conn}
-          search={search.trim().toLowerCase()}
+          containers={containersByHost.get(conn.id) ?? null}
+          containerQuery={containerQueries[conns.findIndex((c) => c.id === conn.id)]}
+          search={trimmedSearch}
           stateFilter={stateFilter}
-          composeFilter={composeFilter}
+          layout={layout}
+          openGroups={openGroups}
+          onToggleGroup={toggleGroup}
           allowRemoval={features.data?.allowContainerRemoval ?? false}
           allowHostShellGlobal={features.data?.allowHostShell ?? false}
-          onComposeClick={(project) => setComposeFilter((prev) => prev === project ? null : project)}
+          storagePref={prefs.storage}
           onOpenModal={(card, tab) => setModal({ connectionId: conn.id, card, tab })}
           onEditConnection={() => setConnectionModal({ mode: 'edit', connection: conn })}
         />
@@ -214,7 +411,7 @@ export function DockerInstances() {
           state={modal}
           allowRemoval={features.data?.allowContainerRemoval ?? false}
           allowExecGlobal={features.data?.allowContainerExec ?? false}
-          connection={(connections.data ?? []).find((c) => c.id === modal.connectionId) ?? null}
+          connection={conns.find((c) => c.id === modal.connectionId) ?? null}
           onClose={() => setModal(null)}
           onCardRefresh={(card) => setModal((prev) => prev && prev.card.id === card.id ? { ...prev, card } : prev)}
         />
@@ -244,19 +441,484 @@ export function DockerInstances() {
   )
 }
 
-/**
- * Thin shell around `ContainerModal` that owns the per-modal action
- * mutation so the buttons inside the Overview tab can reuse the same
- * `useDockerContainerAction` hook the cards use, scoped to the current
- * connection. Lives at the page level so it survives card re-mounts.
- */
+// ── Prefs bar (density / diagnostics / storage) ─────────────────────────
+
+interface PrefsBarProps {
+  prefs: DockerPagePrefs
+  onChange: (partial: Partial<DockerPagePrefs>) => void
+}
+
+function PrefsBar({ prefs, onChange }: PrefsBarProps) {
+  return (
+    <div className="dock-prefs" aria-label="Display preferences">
+      <PrefSegmented
+        label="Density"
+        value={prefs.density}
+        options={[{ v: 'comfortable', l: 'Comfortable' }, { v: 'compact', l: 'Compact' }]}
+        onChange={(v) => onChange({ density: v as DockerPagePrefs['density'] })}
+      />
+      <PrefSegmented
+        label="Storage"
+        value={prefs.storage}
+        options={[{ v: 'collapsed', l: 'Collapsed' }, { v: 'panel', l: 'Panel' }]}
+        onChange={(v) => onChange({ storage: v as DockerPagePrefs['storage'] })}
+      />
+      <label className="dock-prefs-check">
+        <input
+          type="checkbox"
+          checked={prefs.diagnostics}
+          onChange={(e) => onChange({ diagnostics: e.target.checked })}
+        />
+        Diagnostics
+      </label>
+    </div>
+  )
+}
+
+interface PrefSegmentedProps {
+  label: string
+  value: string
+  options: Array<{ v: string; l: string }>
+  onChange: (v: string) => void
+}
+
+function PrefSegmented({ label, value, options, onChange }: PrefSegmentedProps) {
+  return (
+    <div className="dock-prefs-group">
+      <span className="dock-prefs-label">{label}</span>
+      <div className="segmented" role="group" aria-label={label}>
+        {options.map((o) => (
+          <button
+            key={o.v}
+            type="button"
+            aria-pressed={value === o.v}
+            onClick={() => onChange(o.v)}
+          >
+            {o.l}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Per-host summary card + storage + project groups ────────────────────
+
+interface HostSectionProps {
+  connection: DockerConnection
+  containers: DockerContainerCard[] | null
+  containerQuery: { isLoading?: boolean; error?: unknown } | undefined
+  search: string
+  stateFilter: StateFilter
+  layout: PackLayout
+  openGroups: Record<string, boolean>
+  onToggleGroup: (key: string) => void
+  allowRemoval: boolean
+  allowHostShellGlobal: boolean
+  storagePref: DockerPagePrefs['storage']
+  onOpenModal: (card: DockerContainerCard, tab: ContainerModalTab) => void
+  onEditConnection: () => void
+}
+
+function HostSection({
+  connection, containers, containerQuery, search, stateFilter, layout, openGroups,
+  onToggleGroup, allowRemoval, allowHostShellGlobal, storagePref, onOpenModal, onEditConnection,
+}: HostSectionProps) {
+  const watches = useConnectionWatches(connection.id)
+  const action = useDockerContainerAction(connection.id)
+  const deleteWatch = useDeleteConnectionWatch(connection.id)
+  const [hostTerminalOpen, setHostTerminalOpen] = useState(false)
+  const [actionErrors, setActionErrors] = useState<Record<string, string>>({})
+  const isSsh = resolveDockerHostType(connection.hostType) === 'Ssh'
+
+  const watchByContainer = useMemo(() => {
+    const map = new Map<string, DockerWatch>()
+    for (const w of watches.data ?? []) map.set(w.containerName, w)
+    return map
+  }, [watches.data])
+
+  const filtered = useMemo(() => {
+    const list = containers ?? []
+    return list.filter((c) => {
+      if (search) {
+        const hay = `${c.name} ${c.image}`.toLowerCase()
+        if (!hay.includes(search)) return false
+      }
+      if (stateFilter === 'running' && c.state.toLowerCase() !== 'running') return false
+      if (stateFilter === 'stopped' && c.state.toLowerCase() === 'running') return false
+      return true
+    })
+  }, [containers, search, stateFilter])
+
+  const handleAction = async (containerName: string, kind: 'start' | 'stop' | 'restart' | 'remove') => {
+    setActionErrors((prev) => {
+      const next = { ...prev }; delete next[containerName]; return next
+    })
+    try {
+      await action.mutateAsync({ containerName, action: kind })
+    } catch (err) {
+      if (kind === 'remove') throw err
+      const message = getApiErrorMessage(err) ?? `Failed to ${kind} ${containerName}`
+      setActionErrors((prev) => ({ ...prev, [containerName]: message }))
+    }
+  }
+
+  const onCardAction = async (card: DockerContainerCard, kind: 'start' | 'stop' | 'restart' | 'remove') => {
+    if (kind === 'remove' && card.state.toLowerCase() === 'not found' && card.watchId) {
+      await deleteWatch.mutateAsync(card.watchId)
+      return
+    }
+    await handleAction(card.name, kind)
+  }
+
+  const transport = resolveDockerHostType(connection.hostType)
+  const endpoint = connection.hostUrl
+    ? connection.hostUrl
+    : connection.sshHost
+      ? `${connection.sshHost}${connection.sshPort ? `:${connection.sshPort}` : ''}`
+      : ''
+  const total = containers?.length ?? 0
+  const online = !containerQuery?.error // best-effort signal — green dot if the list loaded
+  const containerError = containerQuery?.error
+
+  return (
+    <section className="host-section">
+      <div className="host-card">
+        <div className="host-card-top">
+          <span className="host-name">
+            <span className="host-dot" data-off={!online} />
+            {connection.name}
+          </span>
+          <span className="host-endpoint">
+            <span className="tp">{transport.toLowerCase()}</span>
+            {endpoint && <span>{endpoint}</span>}
+            <span className="host-count">· {total} container{total === 1 ? '' : 's'}</span>
+          </span>
+          <div className="host-actions">
+            {isSsh && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setHostTerminalOpen(true)}
+                title="Open an interactive shell on the Docker host (SSH)"
+              >
+                <TerminalSquare className="h-3.5 w-3.5" />
+                <span className="label-text">Terminal</span>
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onEditConnection}
+            >
+              <Settings className="h-3.5 w-3.5" />
+              <span className="label-text">Edit</span>
+            </Button>
+          </div>
+        </div>
+
+        <StorageWidget
+          connectionId={connection.id}
+          defaultPruneUnused={connection.pruneUnusedImages}
+          variant={storagePref}
+        />
+      </div>
+
+      {hostTerminalOpen && (
+        <HostTerminalDialog
+          connection={connection}
+          allowHostShellGlobal={allowHostShellGlobal}
+          onClose={() => setHostTerminalOpen(false)}
+        />
+      )}
+
+      <ProjectGroups
+        connectionId={connection.id}
+        containers={containers}
+        containersError={containerError}
+        filtered={filtered}
+        watchByContainer={watchByContainer}
+        allowRemoval={allowRemoval}
+        actionPending={action.isPending || deleteWatch.isPending}
+        actionErrors={actionErrors}
+        layout={layout}
+        openGroups={openGroups}
+        onToggleGroup={onToggleGroup}
+        onCardAction={onCardAction}
+        onOpenModal={onOpenModal}
+      />
+    </section>
+  )
+}
+
+// ── Project groups ──────────────────────────────────────────────────────
+
+interface ProjectGroupsProps {
+  connectionId: string
+  containers: DockerContainerCard[] | null
+  containersError: unknown
+  filtered: DockerContainerCard[]
+  watchByContainer: Map<string, DockerWatch>
+  allowRemoval: boolean
+  actionPending: boolean
+  actionErrors: Record<string, string>
+  layout: PackLayout
+  openGroups: Record<string, boolean>
+  onToggleGroup: (key: string) => void
+  onCardAction: (card: DockerContainerCard, kind: 'start' | 'stop' | 'restart' | 'remove') => Promise<void>
+  onOpenModal: (card: DockerContainerCard, tab: ContainerModalTab) => void
+}
+
+interface ProjectGroup {
+  /** `null` for the trailing "Other containers" bucket (no compose project). */
+  project: string | null
+  containers: DockerContainerCard[]
+}
+
+function ProjectGroups({
+  connectionId, containers, containersError, filtered, watchByContainer, allowRemoval,
+  actionPending, actionErrors, layout, openGroups, onToggleGroup, onCardAction, onOpenModal,
+}: ProjectGroupsProps) {
+  // Same single-service-compose-collapse rule as v5.4: a project group with
+  // only one container would render a meaningless 1-of-1 header, so demote
+  // those into the trailing "Other containers" bucket.
+  const groups = useMemo<ProjectGroup[]>(() => {
+    const byProject = new Map<string, DockerContainerCard[]>()
+    const other: DockerContainerCard[] = []
+    const order: string[] = []
+    for (const card of filtered) {
+      const key = card.composeProject?.trim()
+      if (!key) { other.push(card); continue }
+      if (!byProject.has(key)) { order.push(key); byProject.set(key, []) }
+      byProject.get(key)!.push(card)
+    }
+    const result: ProjectGroup[] = []
+    for (const project of order) {
+      const list = byProject.get(project)!
+      if (list.length < 2) { other.push(...list); continue }
+      result.push({ project, containers: list })
+    }
+    if (other.length > 0) result.push({ project: null, containers: other })
+    return result
+  }, [filtered])
+
+  if (containersError) {
+    return (
+      <p className="dock-error">
+        <AlertCircle className="h-3.5 w-3.5 inline" />{' '}
+        {getApiErrorMessage(containersError) ?? 'Failed to list containers'}
+      </p>
+    )
+  }
+
+  if (containers && filtered.length === 0) {
+    return (
+      <p className="dock-empty">
+        {containers.length === 0
+          ? 'No containers on this host.'
+          : 'No containers match the current filter.'}
+      </p>
+    )
+  }
+
+  return (
+    <div className="cgroups">
+      {groups.map((g) => (
+        <PackedGroup
+          key={g.project ?? '__other'}
+          groupKey={`${connectionId}/${g.project ?? '__other'}`}
+          isOther={g.project === null}
+          project={g.project}
+          connectionId={connectionId}
+          containers={g.containers}
+          watchByContainer={watchByContainer}
+          allowRemoval={allowRemoval}
+          actionPending={actionPending}
+          actionErrors={actionErrors}
+          layout={layout}
+          open={openGroups[`${connectionId}/${g.project ?? '__other'}`] !== false}
+          onToggle={onToggleGroup}
+          onCardAction={onCardAction}
+          onOpenModal={onOpenModal}
+        />
+      ))}
+    </div>
+  )
+}
+
+interface PackedGroupProps {
+  groupKey: string
+  isOther: boolean
+  project: string | null
+  connectionId: string
+  containers: DockerContainerCard[]
+  watchByContainer: Map<string, DockerWatch>
+  allowRemoval: boolean
+  actionPending: boolean
+  actionErrors: Record<string, string>
+  layout: PackLayout
+  open: boolean
+  onToggle: (key: string) => void
+  onCardAction: (card: DockerContainerCard, kind: 'start' | 'stop' | 'restart' | 'remove') => Promise<void>
+  onOpenModal: (card: DockerContainerCard, tab: ContainerModalTab) => void
+}
+
+function PackedGroup({
+  groupKey, isOther, project, connectionId, containers, watchByContainer, allowRemoval,
+  actionPending, actionErrors, layout, open, onToggle, onCardAction, onOpenModal,
+}: PackedGroupProps) {
+  const projectUpdate = useDockerProjectUpdate(connectionId)
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+
+  const cols = Math.min(containers.length, layout.maxCols)
+  const groupWidth = cols * layout.cardW + (cols - 1) * layout.gap
+  const gridStyle: React.CSSProperties = {
+    gridTemplateColumns: `repeat(${cols}, ${layout.cardW}px)`,
+    gap: `${layout.gap}px`,
+  }
+
+  // Tracked + with-updates counts drive the "N of M" meta line.
+  const tracked = containers
+    .map((c) => watchByContainer.get(c.name))
+    .filter((w): w is DockerWatch => Boolean(w))
+  const withUpdates = tracked.filter((w) => w.updateStatus === 'UpdateAvailable' || w.updateStatus === 2)
+
+  const headMeta: React.ReactNode = isOther
+    ? <span className="cgroup-meta">no compose project</span>
+    : tracked.length === 0
+      ? <span className="cgroup-meta">no tracked watches</span>
+      : withUpdates.length > 0
+        ? <span className="cgroup-meta"><span className="updates">{withUpdates.length} update{withUpdates.length === 1 ? '' : 's'}</span></span>
+        : <span className="cgroup-meta">up to date</span>
+
+  return (
+    <div
+      className={`cgroup ${open ? 'open' : ''}`}
+      style={open ? { width: `${groupWidth}px` } : undefined}
+    >
+      <div
+        className="cgroup-head"
+        role="button"
+        tabIndex={0}
+        onClick={() => onToggle(groupKey)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onToggle(groupKey)
+          }
+        }}
+      >
+        <ChevronRight className="chev h-3.5 w-3.5" />
+        <span className={`cgroup-name${isOther ? ' is-other' : ''}`}>
+          {isOther ? 'Other containers' : project}
+        </span>
+        <span className="cgroup-count">{containers.length}</span>
+        {headMeta}
+        {!isOther && (
+          <span className="cgroup-acts">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={(e) => { e.stopPropagation(); setUpdateDialogOpen(true) }}
+              disabled={projectUpdate.isPending}
+              title="Pull every image in this project and recreate the services in dependency order"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${projectUpdate.isPending ? 'animate-spin' : ''}`} />
+              {projectUpdate.isPending ? 'Updating…' : 'Update project'}
+            </Button>
+          </span>
+        )}
+      </div>
+      {open && (
+        <div className="cgroup-body">
+          <div className="cgroup-grid" style={gridStyle}>
+            {containers.map((card) => (
+              <ContainerCard
+                key={card.id || card.name}
+                card={card}
+                linkedWatch={watchByContainer.get(card.name) ?? null}
+                variant="docker-page"
+                allowRemoval={allowRemoval}
+                busy={actionPending || projectUpdate.isPending}
+                error={actionErrors[card.name]}
+                onAction={(kind) => onCardAction(card, kind)}
+                onOpen={(tab) => onOpenModal(card, tab)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {!isOther && project && (
+        <ProjectUpdateDialog
+          open={updateDialogOpen}
+          project={project}
+          containers={containers}
+          watchByContainer={watchByContainer}
+          onConfirm={async () => projectUpdate.mutateAsync(project)}
+          onClose={() => setUpdateDialogOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Connection switcher ─────────────────────────────────────────────────
+
+interface ConnectionSwitcherProps {
+  connections: DockerConnection[]
+  active: string
+  onChange: (next: string) => void
+  containersByHost: Map<string, DockerContainerCard[]>
+  updatesByHost: Map<string, number>
+}
+
+function ConnectionSwitcher({
+  connections, active, onChange, containersByHost, updatesByHost,
+}: ConnectionSwitcherProps) {
+  if (connections.length === 0) return null
+  return (
+    <div className="switcher" role="tablist" aria-label="Connection">
+      <button
+        type="button"
+        className="conn"
+        aria-pressed={active === 'all'}
+        onClick={() => onChange('all')}
+      >
+        <span className="conn-name">All connections</span>
+        <span className="conn-count">{connections.length} host{connections.length === 1 ? '' : 's'}</span>
+      </button>
+      {connections.map((conn) => {
+        const list = containersByHost.get(conn.id) ?? []
+        const total = list.length
+        const running = list.filter((c) => c.state.toLowerCase() === 'running').length
+        const updates = updatesByHost.get(conn.id) ?? 0
+        return (
+          <button
+            key={conn.id}
+            type="button"
+            className="conn"
+            aria-pressed={active === conn.id}
+            onClick={() => onChange(conn.id)}
+            title={conn.name}
+          >
+            <span className="conn-dot" />
+            <span className="conn-name">{conn.name}</span>
+            <span className="conn-count">{running}/{total}</span>
+            {updates > 0 && <span className="conn-updates">{updates}</span>}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Container modal host (unchanged from V5.8) ──────────────────────────
+
 function ContainerModalHost({
-  state,
-  allowRemoval,
-  allowExecGlobal,
-  connection,
-  onClose,
-  onCardRefresh,
+  state, allowRemoval, allowExecGlobal, connection, onClose, onCardRefresh,
 }: {
   state: ModalState
   allowRemoval: boolean
@@ -267,20 +929,13 @@ function ContainerModalHost({
 }) {
   const action = useDockerContainerAction(state.connectionId)
   const [error, setError] = useState<string | undefined>(undefined)
-  // Keep the modal's card in sync with the refetched list so state badges
-  // / status strings update after a successful action without forcing the
-  // user to close and reopen.
   const containersQuery = useDockerInstanceContainers(state.connectionId)
   useMemo(() => {
     if (!containersQuery.data) return
-    const fresh = containersQuery.data.find((c) =>
-      c.id === state.card.id || c.name === state.card.name)
+    const fresh = containersQuery.data.find((c) => c.id === state.card.id || c.name === state.card.name)
     if (fresh && fresh !== state.card) onCardRefresh(fresh)
   }, [containersQuery.data, state.card, onCardRefresh])
 
-  // V3.6 — the Watch tab and Overview tab resolve the tracked container (and
-  // its optional service link) themselves from the connection's watch list,
-  // so no service context needs to be threaded in from here.
   const handleAction = async (kind: 'start' | 'stop' | 'restart' | 'remove') => {
     setError(undefined)
     try {
@@ -305,423 +960,5 @@ function ContainerModalHost({
       onAction={handleAction}
       onClose={onClose}
     />
-  )
-}
-
-interface ConnectionSectionProps {
-  connection: DockerConnection
-  search: string
-  stateFilter: StateFilter
-  composeFilter: string | null
-  allowRemoval: boolean
-  /** V5.7 — global host-terminal master switch, for the connection-level Host terminal button. */
-  allowHostShellGlobal: boolean
-  onComposeClick: (project: string) => void
-  onOpenModal: (card: DockerContainerCard, tab: ContainerModalTab) => void
-  onEditConnection: () => void
-}
-
-function ConnectionSection({
-  connection, search, stateFilter, composeFilter, allowRemoval, allowHostShellGlobal,
-  onComposeClick, onOpenModal, onEditConnection,
-}: ConnectionSectionProps) {
-  const containers = useDockerInstanceContainers(connection.id)
-  const watches = useConnectionWatches(connection.id)
-  const action = useDockerContainerAction(connection.id)
-  const deleteWatch = useDeleteConnectionWatch(connection.id)
-  // V5.7 — the host terminal is connection-scoped (a shell on the host), so it
-  // opens from the connection header rather than a per-container modal tab.
-  // SSH-only by construction, so the button only appears for SSH connections.
-  const [hostTerminalOpen, setHostTerminalOpen] = useState(false)
-  const isSsh = resolveDockerHostType(connection.hostType) === 'Ssh'
-  const [actionErrors, setActionErrors] = useState<Record<string, string>>({})
-
-  // V3.6 — index the connection's tracked containers by name so each card can
-  // render its update-status badge without a per-card fetch.
-  const watchByContainer = useMemo(() => {
-    const map = new Map<string, DockerWatch>()
-    for (const w of watches.data ?? []) map.set(w.containerName, w)
-    return map
-  }, [watches.data])
-
-  const filtered = useMemo(() => {
-    const list = containers.data ?? []
-    return list.filter((c) => {
-      if (search) {
-        const hay = `${c.name} ${c.image}`.toLowerCase()
-        if (!hay.includes(search)) return false
-      }
-      if (stateFilter === 'running' && c.state.toLowerCase() !== 'running') return false
-      if (stateFilter === 'stopped' && c.state.toLowerCase() === 'running') return false
-      if (composeFilter && c.composeProject !== composeFilter) return false
-      return true
-    })
-  }, [containers.data, search, stateFilter, composeFilter])
-
-  const handleAction = async (containerName: string, kind: 'start' | 'stop' | 'restart' | 'remove') => {
-    setActionErrors((prev) => {
-      const next = { ...prev }
-      delete next[containerName]
-      return next
-    })
-    try {
-      await action.mutateAsync({ containerName, action: kind })
-    } catch (err) {
-      if (kind === 'remove') throw err
-      const message = getApiErrorMessage(err) ?? `Failed to ${kind} ${containerName}`
-      setActionErrors((prev) => ({ ...prev, [containerName]: message }))
-    }
-  }
-
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
-  const toggleGroup = (groupName: string) => setCollapsedGroups((prev) => ({ ...prev, [groupName]: !prev[groupName] }))
-
-  const groupName = connection.name.replace(/\s+/g, '-').toLowerCase();
-  const isCollapsed = collapsedGroups[groupName] ?? false
-  return (
-    <section key={groupName} className="docker-instances-connection">
-      <div className="dashboard-group-button"
-        role="button"
-        tabIndex={0}
-        onClick={() => toggleGroup(groupName)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            toggleGroup(groupName)
-          }
-        }}
-      >
-        <div className="dashboard-group-title-container">
-          <button
-            type="button"
-            className="dashboard-group-title"
-          >
-            {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            {connection.name}
-          </button>
-        </div>
-        <div className="docker-instances-connection-meta-group">
-          <span className="docker-instances-connection-meta">
-            {resolveDockerHostType(connection.hostType).toLowerCase()}
-            {connection.hostUrl ? ` · ${connection.hostUrl}` : connection.sshHost ? ` · ${connection.sshHost}${connection.sshPort ? `:${connection.sshPort}` : ''}` : ''}
-          </span>
-          <span className="docker-instances-connection-meta">
-            {containers.isLoading ? '…' : `${filtered.length}/${containers.data?.length ?? 0} containers`}
-          </span>
-        </div>
-        <div className="docker-instances-connection-actions">
-          {isSsh && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="docker-instances-connection-edit"
-              onClick={(e) => {
-                e.stopPropagation()
-                setHostTerminalOpen(true)
-              }}
-              title="Open an interactive shell on the Docker host (SSH)"
-            >
-              <TerminalSquare className="h-3.5 w-3.5" />
-              Terminal
-            </Button>
-          )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="docker-instances-connection-edit"
-            onClick={(e) => {
-              e.stopPropagation()
-              onEditConnection()
-            }}
-          >
-            <Settings className="h-3.5 w-3.5" />
-            Edit
-          </Button>
-        </div>
-      </div>
-      {hostTerminalOpen && (
-        <HostTerminalDialog
-          connection={connection}
-          allowHostShellGlobal={allowHostShellGlobal}
-          onClose={() => setHostTerminalOpen(false)}
-        />
-      )}
-      {!isCollapsed && (
-        <StorageWidget
-          connectionId={connection.id}
-          defaultPruneUnused={connection.pruneUnusedImages}
-        />
-      )}
-      {!isCollapsed && (
-        <ProjectGroupedGrid
-          connectionId={connection.id}
-          containers={containers.data}
-          containersError={containers.error}
-          filtered={filtered}
-          watchByContainer={watchByContainer}
-          allowRemoval={allowRemoval}
-          actionPending={action.isPending || deleteWatch.isPending}
-          actionErrors={actionErrors}
-          onComposeClick={onComposeClick}
-          onCardAction={async (card, kind) => {
-            if (kind === 'remove' && card.state.toLowerCase() === 'not found' && card.watchId) {
-              await deleteWatch.mutateAsync(card.watchId)
-              return
-            }
-            await handleAction(card.name, kind)
-          }}
-          onOpenModal={onOpenModal}
-        />
-      )}
-    </section>
-  )
-}
-
-// ── V5.4 — group containers by their com.docker.compose.project label ──────
-
-interface ProjectGroup {
-  /** `null` for standalone containers (no compose project label). */
-  project: string | null
-  containers: DockerContainerCard[]
-}
-
-interface ProjectGroupedGridProps {
-  connectionId: string
-  containers: DockerContainerCard[] | undefined
-  containersError: unknown
-  filtered: DockerContainerCard[]
-  watchByContainer: Map<string, DockerWatch>
-  allowRemoval: boolean
-  actionPending: boolean
-  actionErrors: Record<string, string>
-  onComposeClick: (project: string) => void
-  onCardAction: (card: DockerContainerCard, kind: 'start' | 'stop' | 'restart' | 'remove') => Promise<void>
-  onOpenModal: (card: DockerContainerCard, tab: ContainerModalTab) => void
-}
-
-function ProjectGroupedGrid({
-  connectionId,
-  containers,
-  containersError,
-  filtered,
-  watchByContainer,
-  allowRemoval,
-  actionPending,
-  actionErrors,
-  onComposeClick,
-  onCardAction,
-  onOpenModal,
-}: ProjectGroupedGridProps) {
-  // V5.4 — split filtered containers into compose-project groups while
-  // preserving order: the first time we see a project name it claims a slot,
-  // then every member of that project lands in the same group. Standalone
-  // containers (and single-service compose projects — see below) collect
-  // into a trailing `null` group so they still show up.
-  //
-  // Compose always stamps `com.docker.compose.project` on every container it
-  // creates, even when the project is a one-liner with a single service. A
-  // group of one would render a "0 of 1 tracked services have updates
-  // available" header card with an Update project button that does exactly
-  // what the container's own Update now does — pure noise. The fix: a
-  // compose group with only one container is rendered as a standalone card
-  // (the compose-project badge on the card itself still tells the user the
-  // container is compose-managed). The grouping shell only appears once
-  // ≥2 services share a project name.
-  const groups = useMemo<ProjectGroup[]>(() => {
-    const byProject = new Map<string, DockerContainerCard[]>()
-    const standalone: DockerContainerCard[] = []
-    const order: string[] = []
-    for (const card of filtered) {
-      const key = card.composeProject?.trim()
-      if (!key) {
-        standalone.push(card)
-        continue
-      }
-      if (!byProject.has(key)) {
-        order.push(key)
-        byProject.set(key, [])
-      }
-      byProject.get(key)!.push(card)
-    }
-    const result: ProjectGroup[] = []
-    for (const project of order) {
-      const containers = byProject.get(project)!
-      if (containers.length < 2) {
-        // Single-service compose project → demote to standalone so it doesn't
-        // wear a fake group header. Keeps relative ordering with other
-        // standalone cards.
-        standalone.push(...containers)
-        continue
-      }
-      result.push({ project, containers })
-    }
-    if (standalone.length > 0) result.push({ project: null, containers: standalone })
-    return result
-  }, [filtered])
-
-  if (containersError) {
-    return (
-      <div className="docker-instances-grid">
-        <p className="docker-instances-error">
-          <AlertCircle className="h-3.5 w-3.5 inline" />{' '}
-          {getApiErrorMessage(containersError) ?? 'Failed to list containers'}
-        </p>
-      </div>
-    )
-  }
-
-  if (containers && filtered.length === 0) {
-    return (
-      <div className="docker-instances-grid">
-        <p className="docker-instances-empty">
-          {containers.length === 0
-            ? 'No containers on this host.'
-            : 'No containers match the current filter.'}
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="docker-instances-project-list">
-      {groups.map((group) =>
-        group.project === null ? (
-          <div key="__standalone" className="docker-instances-grid">
-            {group.containers.map((card) => (
-              <ContainerCard
-                key={card.id || card.name}
-                card={card}
-                linkedWatch={watchByContainer.get(card.name) ?? null}
-                variant="docker-page"
-                allowRemoval={allowRemoval}
-                busy={actionPending}
-                error={actionErrors[card.name]}
-                onAction={(kind) => onCardAction(card, kind)}
-                onComposeClick={onComposeClick}
-                onOpen={(tab) => onOpenModal(card, tab)}
-              />
-            ))}
-          </div>
-        ) : (
-          <ProjectSection
-            key={group.project}
-            connectionId={connectionId}
-            project={group.project}
-            containers={group.containers}
-            watchByContainer={watchByContainer}
-            allowRemoval={allowRemoval}
-            actionPending={actionPending}
-            actionErrors={actionErrors}
-            onComposeClick={onComposeClick}
-            onCardAction={onCardAction}
-            onOpenModal={onOpenModal}
-          />
-        )
-      )}
-    </div>
-  )
-}
-
-interface ProjectSectionProps {
-  connectionId: string
-  project: string
-  containers: DockerContainerCard[]
-  watchByContainer: Map<string, DockerWatch>
-  allowRemoval: boolean
-  actionPending: boolean
-  actionErrors: Record<string, string>
-  onComposeClick: (project: string) => void
-  onCardAction: (card: DockerContainerCard, kind: 'start' | 'stop' | 'restart' | 'remove') => Promise<void>
-  onOpenModal: (card: DockerContainerCard, tab: ContainerModalTab) => void
-}
-
-/**
- * V5.4 — header card for a single Compose project plus the grid of its
- * services. The header surfaces the "N of M services have updates available"
- * counter and the **Update project** button that drives the bulk-update
- * endpoint. One audit row per service is written server-side under a single
- * aggregate parent.
- */
-function ProjectSection({
-  connectionId,
-  project,
-  containers,
-  watchByContainer,
-  allowRemoval,
-  actionPending,
-  actionErrors,
-  onComposeClick,
-  onCardAction,
-  onOpenModal,
-}: ProjectSectionProps) {
-  const projectUpdate = useDockerProjectUpdate(connectionId)
-  const [dialogOpen, setDialogOpen] = useState(false)
-
-  // Count "has updates" against the user's tracked watches — an untracked
-  // container has no signal we can show without polling the registry.
-  const tracked = containers
-    .map((c) => watchByContainer.get(c.name))
-    .filter((w): w is DockerWatch => Boolean(w))
-  const withUpdates = tracked.filter((w) => w.updateStatus === 'UpdateAvailable' || w.updateStatus === 2)
-
-  return (
-    <section className="docker-instances-project">
-      <div className="docker-instances-project-header">
-        <div className="docker-instances-project-header-meta">
-          <button
-            type="button"
-            className="docker-instances-project-badge"
-            onClick={() => onComposeClick(project)}
-            title="Filter the page to only this project"
-          >
-            {project}
-          </button>
-          <span className="docker-instances-project-counter">
-            {tracked.length === 0
-              ? `${containers.length} service${containers.length === 1 ? '' : 's'} · no tracked watches`
-              : `${withUpdates.length} of ${tracked.length} tracked service${tracked.length === 1 ? '' : 's'} have updates available`}
-          </span>
-        </div>
-        <div className="docker-instances-project-header-actions">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setDialogOpen(true)}
-            disabled={projectUpdate.isPending}
-            title="Pull every image in this project and recreate the services in dependency order"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${projectUpdate.isPending ? 'animate-spin' : ''}`} />
-            {projectUpdate.isPending ? 'Updating…' : 'Update project'}
-          </Button>
-        </div>
-      </div>
-      <div className="docker-instances-grid">
-        {containers.map((card) => (
-          <ContainerCard
-            key={card.id || card.name}
-            card={card}
-            linkedWatch={watchByContainer.get(card.name) ?? null}
-            variant="docker-page"
-            allowRemoval={allowRemoval}
-            busy={actionPending || projectUpdate.isPending}
-            error={actionErrors[card.name]}
-            onAction={(kind) => onCardAction(card, kind)}
-            onComposeClick={onComposeClick}
-            onOpen={(tab) => onOpenModal(card, tab)}
-          />
-        ))}
-      </div>
-      <ProjectUpdateDialog
-        open={dialogOpen}
-        project={project}
-        containers={containers}
-        watchByContainer={watchByContainer}
-        onConfirm={async () => projectUpdate.mutateAsync(project)}
-        onClose={() => setDialogOpen(false)}
-      />
-    </section>
   )
 }

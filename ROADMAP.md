@@ -9,7 +9,7 @@
 > in HISTORY.md; §14 remains in this file at its original heading number
 > to avoid breaking external references from PRs and commit messages.
 >
-> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2) · ✅ V5.4 (Compose project grouping & bulk update, image 5.4.0) · ✅ V5.5 (image cleanup / prune, image 5.5.0) · ✅ V5.6 (health-check tuning page, image 5.6.0) · ✅ V5.7 (container exec, image 5.7.0) · ✅ V5.8 (session audit viewer, image 5.8.0). All shipped V5.x phases keep their detail in §14 below; V1–V4 historical detail is in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
+> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2) · ✅ V5.4 (Compose project grouping & bulk update, image 5.4.0) · ✅ V5.5 (image cleanup / prune, image 5.5.0) · ✅ V5.6 (health-check tuning page, image 5.6.0) · ✅ V5.7 (container exec, image 5.7.0) · ✅ V5.8 (session audit viewer, image 5.8.0) · ✅ V5.9 (Docker instances page redesign, image 5.9.0). All shipped V5.x phases keep their detail in §14 below; V1–V4 historical detail is in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
 
 ## 14. Post-V4 backlog (V5+) — deferred Docker features
 
@@ -825,65 +825,154 @@ to open without a valid single-use ticket; and live resize works. ✅
 
 ---
 
-### Phase V5.8 — Session audit viewer (surface the shell / exec audit trail)
+### ✅ Phase V5.8 — Session audit viewer (surface the shell / exec audit trail)
 
 **Complexity:** Low–Medium (read-only UI + list endpoints on top of audit tables
 that already exist).
 **Value:** V5.3 (host terminal) and V5.7 (container exec) each write a complete
 start/stop audit row per session to `HostShellSessions` / `DockerExecSessions`
 (who, when, which connection / host / container, command, duration, bytes in /
-out, end reason, error) — but those tables are currently **write-only**: the rows
-are persisted and streamed to the application log, yet there is no API endpoint
+out, end reason, error) — but those tables were **write-only**: the rows were
+persisted and streamed to the application log, yet there was no API endpoint
 or UI to read them back. The most dangerous surfaces in the product (a root shell
-on the host, arbitrary commands inside a workload) leave a trail that an operator
-can only inspect with direct SQL against `app.db`. This phase closes that gap by
+on the host, arbitrary commands inside a workload) left a trail that an operator
+could only inspect with direct SQL against `app.db`. This phase closes that gap by
 surfacing the existing audit data in the frontend — no new auditing, just a read
 path over what V5.3 / V5.7 already record.
 
-**Scope:**
+**Shipped (5.8.0):**
 
-- **List endpoints (read-only, owner-scoped).** Two paginated `GET` endpoints
-  returning the audit rows newest-first, scoped to connections the caller owns:
+- ✓ **Four read-only, owner-scoped list endpoints** (`DockerAuditController`,
+  routed under `api/docker`) returning the audit rows newest-first, scoped to
+  connections the caller owns — the stretch goal (fold in the update + prune
+  trails) shipped too, so all four trails live behind one page:
   - `GET /api/docker/host-shell/sessions` → host-terminal sessions
-    (`HostShellSessionEntity`).
+    (`HostShellSessionEntity`, V5.3).
   - `GET /api/docker/container-exec/sessions` → container-exec sessions
-    (`DockerExecSessionEntity`).
-  Each supports simple paging (`?skip=&take=`, capped page size) and optional
-  `?connectionId=` filtering. Responses are flat DTOs — denormalised connection
-  name / host / container are already captured on the row, so deleting a
-  connection doesn't orphan the history. No write/delete verbs (audit rows are
+    (`DockerExecSessionEntity`, V5.7).
+  - `GET /api/docker/update-attempts` → per-container "Update now" history
+    (`DockerUpdateAttempts`, V2.7).
+  - `GET /api/docker/prune-runs` → scheduled / manual image-prune runs
+    (`DockerPruneRuns`, V5.5).
+  Each supports simple paging (`?skip=&take=`, page size capped at 200) and an
+  optional `?connectionId=` filter. Responses are flat DTOs — denormalised
+  connection name / host / container are already captured on the row, so deleting
+  a connection doesn't orphan the history. No write/delete verbs (audit rows are
   immutable from the UI).
-- **Audit page in the SPA.** A new **Settings → Audit** (or **Activity**) page
-  with two tabbed tables — *Host terminal* and *Container exec* — showing per
-  row: user, connection / host (or container + command), started / ended,
-  duration, bytes in / out, and end reason (with the error inline when the
-  reason is `Error`). An *Active* badge for rows whose `EndedUtc` is still null.
-  Sidebar entry + protected route, consistent with the other settings pages.
-- **Cross-link from the existing surfaces.** The connection header (host
-  terminal) and the container modal's Exec tab gain a small "View session
-  history" link that opens the audit page pre-filtered to that connection.
-- **Stretch (optional, same page):** fold the existing
-  `DockerUpdateAttempts` history (already exposed per-watch) and the
-  `DockerPruneRuns` history (V5.5, already surfaced on the storage widget) into
-  the same Audit page as additional tabs, so all four audit trails live in one
-  place. Kept as a stretch goal because both already have a read path elsewhere
-  — the genuine gap this phase must close is the shell / exec one.
-
-**Tests:**
-
-- Backend: the two list endpoints return rows newest-first, page correctly, are
+- ✓ **Audit page in the SPA.** A new **Settings → Audit** page with four tabbed
+  tables — *Host terminal*, *Container exec*, *Update attempts*, *Image prune* —
+  showing per row: user, connection / host (or container + command), started /
+  ended, duration, bytes in / out, and end reason (with the error inline when the
+  session ended on one). An **Active** badge for rows whose `EndedUtc` is still
+  null. Sidebar entry + protected route, consistent with the other settings pages.
+- ✓ **Cross-links from the existing surfaces.** The host-terminal dialog and the
+  container modal's **Exec** panel each gained a "View session history" link that
+  opens the Audit page pre-filtered to the connection they were opened from.
+- ✓ **No new auditing, no schema change.** Purely a read path over the rows
+  V5.3 / V5.7 / V2.7 / V5.5 already persist — no new tables, no migration.
+- ✓ Tests: the list endpoints return rows newest-first, page correctly, are
   scoped to the owner (a foreign connection's sessions are not returned), and
-  surface a session that is still open (`EndedUtc == null`) as well as a
-  finalised one. Regression: opening + closing a host-shell / exec session
-  produces exactly one row that the endpoint then returns.
-- Frontend: the audit page renders both tables, shows the Active badge only for
-  open sessions, formats duration / bytes / end reason correctly, and the
-  per-connection "View session history" link applies the connection filter.
+  surface a still-open session (`EndedUtc == null`) as well as a finalised one;
+  frontend coverage for the Active badge, duration / bytes / end-reason
+  formatting, and the per-connection filter link.
 
-**DoD:** an operator can open the **Audit** page and see every host-terminal and
-container-exec session that has been recorded — who ran it, against what, for how
-long, how it ended — without touching the database directly; the data is the same
-rows V5.3 / V5.7 already persist, now read back over an owner-scoped API.
+**DoD met:** an operator can open the **Settings → Audit** page and see every
+host-terminal and container-exec session that has been recorded — who ran it,
+against what, for how long, how it ended — without touching the database directly;
+the data is the same rows V5.3 / V5.7 already persist, now read back over an
+owner-scoped API. ✅ The stretch *Update attempts* / *Image prune* tabs shipped in
+the same release.
+
+---
+
+### ✅ Phase V5.9 — Docker instances page redesign (connection switcher layout)
+
+**Complexity:** Low–Medium (frontend-only).
+**Value:** The V3.5 `/docker` page packed one section per Docker host into a
+single long scroll. Once a homelab has 3–4 hosts, the page becomes a long
+nested list where each Compose project header claims the full page width and
+small projects waste horizontal space, and the *page-level state of the
+fleet* (how many containers across all hosts? how many updates pending?) is
+nowhere to be seen until you scroll through every section. This phase
+restructures the page around a **connection switcher** so picking a host is
+an action up-front, not a scroll, and packs Compose project groups so
+several small projects can share a row.
+
+**Shipped (5.9.0):**
+
+- ✓ **Page-level summary strip** — *Containers · Running · Stopped ·
+  Updates* tiles aggregated across every Docker host so the overall fleet
+  state is the first thing on the page. Driven by the same
+  `/api/docker/connections/:id/instance/containers` +
+  `/api/docker/connections/:id/watches` endpoints the per-host sections
+  already use (one shared `useQueries` fan-out, so the cache is shared with
+  every other consumer on the page).
+- ✓ **Horizontal connection switcher** — one pill per host plus an
+  *All connections* pill that keeps the cross-host view available. Each
+  host pill shows a status dot, host name, the running-/-total container
+  count, and an amber update badge when any tracked watch on that host has
+  a pending update. Selecting a pill filters the rendered sections; the
+  active pill gets a primary-tinted border.
+- ✓ **Compact per-host summary card** — status dot, host name, mono
+  transport + endpoint line, container count, and right-aligned Terminal
+  (SSH-only) / Edit buttons. The V5.5 **Storage** widget is folded inline
+  as a collapsible row: chevron + label + inline mono summary
+  (`N images · M dangling · K unused`) + Refresh / Prune, expanding to the
+  same 4-metric grid the panel layout used.
+- ✓ **Packed Compose project groups** — each group is exactly as wide as
+  the cards it contains; groups flow with `flex-wrap` so several small
+  projects sit on one row when there's room. Card width and column count
+  are derived from the viewport (`base = 300px comfortable / 258px
+  compact`; `gap = 14px / 10px`), recomputed on resize. Standalone
+  containers and single-service Compose projects (where a group header
+  would be a meaningless 1-of-1) collect into a trailing **Other
+  containers** group.
+- ✓ **Container card refinements** — the trailing `(healthy)` segment of
+  the status line is colored green (and `(unhealthy)` red, `(starting)`
+  amber); a 1px divider with `margin-top: auto` pushes the action row to
+  the bottom so action rows of all cards in a row line up; the *service:*
+  compose chip gains a small external-link icon. Diagnostic icon row
+  (Inspect / Logs / Stats / Notifications / Exec) and the lifecycle row
+  (Stop / Restart, or Start / Remove) keep their existing handlers — same
+  per-watch audit trail.
+- ✓ **Display preferences** — page-level toggles for density (comfortable /
+  compact), storage style (collapsed / panel), and diagnostics on/off.
+  Persisted per device in `localStorage` (key
+  `stashboard.dockerInstances.prefs.v1`). Defaults: cards · comfortable ·
+  collapsed · diagnostics on.
+- ✓ **Responsive** — column count adapts via the formula above; ≤520px the
+  grid collapses to a single full-width column and the toolbar stacks
+  (full-width search + equal-width segmented buttons); the page works
+  cleanly down to 320px.
+- ✓ **Frontend-only, no backend changes.** Same V3.5+ API surface; the
+  container card still calls the existing
+  `useDockerContainerAction` / `useDockerProjectUpdate` /
+  `useDeleteConnectionWatch` mutations, so audit history is unchanged.
+
+**Known mapping gaps flagged for follow-up:**
+
+- The *host online* dot is derived best-effort from whether the per-host
+  container list query succeeded — there's no first-class host
+  reachability signal in `DockerConnection`. A future phase could surface
+  a dedicated probe (e.g. extend the V5.3 storage refresh path).
+- The handoff describes the *service:* chip as "open the linked Stashboard
+  service". The chip is rendered as a styled link, but it currently only
+  carries the existing `onComposeClick` filter behavior (no-op on the new
+  page where the group header already names the project). Routing into the
+  Service modal would require resolving `card.webResourceId` → service
+  URL; left for a follow-up that touches the dashboard routing layer too.
+- Display preferences are device-local (`localStorage`) rather than
+  folded into the server-side `DashboardPreferences` blob — the existing
+  blob has a fixed `{ sortMode, groupByCategory }` shape and extending it
+  to carry the docker-page prefs would have added a migration unrelated to
+  the redesign.
+
+**DoD met:** the redesigned page renders the same data the V3.5 page did,
+but starts with a fleet-level summary and a connection switcher; Compose
+project groups pack tightly so several small projects share a row; the
+container card matches the design's status / divider / action-row
+treatment; display preferences persist; the layout works from 320px up to
+the 1320px page max in both light and dark themes. ✅
 
 ---
 

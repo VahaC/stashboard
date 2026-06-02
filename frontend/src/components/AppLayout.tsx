@@ -6,14 +6,16 @@ import { useAuthStore } from '@/lib/auth-store'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import logo from '@/assets/logo.svg'
-import { LayoutGrid, Tags as TagsIcon, FolderTree, Database, LogOut, UserCog, Menu, X, Container, Bell, ChevronDown, Settings, TerminalSquare, SquareChevronRight, HardDrive, Activity, ScrollText } from 'lucide-react'
+// import { LayoutGrid, Tags as TagsIcon, FolderTree, Database, LogOut, UserCog, Menu, X, Container, Bell, ChevronDown, Settings, TerminalSquare, SquareChevronRight, HardDrive, Activity, ScrollText } from 'lucide-react'
+import { LayoutGrid, FolderTree, Database, LogOut, UserCog, Menu, X, Container, Bell, ChevronDown, Settings, TerminalSquare, SquareChevronRight, HardDrive, Activity, ScrollText } from 'lucide-react'
 import '@/styles/app-layout.css'
 
 const mainNavItems = [
   { to: '/', label: 'Services', icon: LayoutGrid, end: true },
   { to: '/docker', label: 'Docker', icon: Container, end: false },
   { to: '/categories', label: 'Categories', icon: FolderTree, end: false },
-  { to: '/tags', label: 'Tags', icon: TagsIcon, end: false },
+  // { to: '/tags', label: 'Tags', icon: TagsIcon, end: false },
+  { to: '/audit', label: 'Audit', icon: ScrollText, end: false },
 ]
 
 const settingsNavItems = [
@@ -22,7 +24,6 @@ const settingsNavItems = [
   { to: '/container-exec', label: 'Container exec', icon: SquareChevronRight, end: false },
   { to: '/image-cleanup', label: 'Image cleanup', icon: HardDrive, end: false },
   { to: '/health-checks', label: 'Health checks', icon: Activity, end: false },
-  { to: '/audit', label: 'Audit', icon: ScrollText, end: false },
   { to: '/backup', label: 'Backup / Restore', icon: Database, end: false },
   { to: '/account', label: 'Account', icon: UserCog, end: false },
 ]

@@ -80,6 +80,11 @@
   --shadow-sm: 0 1px 2px 0 rgba(0,0,0,.5);
   --shadow-md: 0 2px 4px 0 rgba(0,0,0,.6);
   --shadow-lg: 0 8px 16px -4px rgba(0,0,0,.7);
+
+  /* Status tokens — design intent is a brighter "up" green on dark. The
+     other status colours (down / attention / update-available) read fine
+     against the dark surface as-is, so we only override the up tone. */
+  --status-up: #22c55e;
 }
 
 @theme inline {
