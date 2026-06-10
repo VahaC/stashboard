@@ -17,11 +17,15 @@ namespace Stashboard.Tests.Services;
 public class BackupServiceTests
 {
     // Reversible fake so the test can assert the decrypt-on-export /
-    // encrypt-on-import round-trip without a real AES key.
+    // encrypt-on-import round-trip without a real AES key. Like the real AES
+    // service, it throws FormatException on values that were never encrypted
+    // (legacy plaintext rows).
     private sealed class FakeEncryption : IEncryptionService
     {
         public string Encrypt(string plaintext) => "enc:" + plaintext;
-        public string Decrypt(string ciphertext) => ciphertext.StartsWith("enc:") ? ciphertext[4..] : ciphertext;
+        public string Decrypt(string ciphertext) => ciphertext.StartsWith("enc:")
+            ? ciphertext[4..]
+            : throw new FormatException("The input is not a valid Base-64 string.");
     }
 
     private static ApplicationDbContext NewContext(string path) =>
@@ -202,6 +206,56 @@ public class BackupServiceTests
             foreach (var p in new[] { sourceDb, targetDb })
                 foreach (var f in new[] { p, p + "-wal", p + "-shm" })
                     if (File.Exists(f)) File.Delete(f);
+        }
+    }
+
+    [Fact]
+    public async Task Export_LegacyPlaintextSecret_ExportsRawValueAndImportReEncrypts()
+    {
+        // A Telegram bot token saved before the encrypt-at-rest migration sits
+        // as plaintext in the *Encrypted column ("123:ABC" is not Base64).
+        // Export must not 500 on it; the raw value is exported and the import
+        // path re-encrypts it properly.
+        var dbPath = Path.Combine(Path.GetTempPath(), $"backup-legacy-{Guid.NewGuid():N}.db");
+        var enc = new FakeEncryption();
+        const string legacyToken = "123456789:AAE-legacy-plaintext-token";
+        try
+        {
+            Guid userA, userB;
+            byte[] export;
+            await using (var ctx = NewContext(dbPath))
+            {
+                await ctx.Database.EnsureCreatedAsync();
+                var alice = new UserEntity
+                {
+                    Email = "alice@x.com", NormalizedEmail = "ALICE@X.COM", PasswordHash = "h",
+                    TelegramBotTokenEncrypted = legacyToken, TelegramChatId = "chat",
+                };
+                var bob = new UserEntity { Email = "bob@x.com", NormalizedEmail = "BOB@X.COM", PasswordHash = "h" };
+                ctx.Users.AddRange(alice, bob);
+                await ctx.SaveChangesAsync();
+                userA = alice.Id;
+                userB = bob.Id;
+
+                export = await new BackupService(ctx, enc).ExportAsync(userA);
+            }
+
+            await using (var ctx = NewContext(dbPath))
+            {
+                using var stream = new MemoryStream(export);
+                await new BackupService(ctx, enc).ImportAsync(userB, stream);
+            }
+
+            await using (var ctx = NewContext(dbPath))
+            {
+                var bob = await ctx.Users.AsNoTracking().SingleAsync(u => u.Id == userB);
+                Assert.Equal(legacyToken, enc.Decrypt(bob.TelegramBotTokenEncrypted!));
+            }
+        }
+        finally
+        {
+            foreach (var f in new[] { dbPath, dbPath + "-wal", dbPath + "-shm" })
+                if (File.Exists(f)) File.Delete(f);
         }
     }
 

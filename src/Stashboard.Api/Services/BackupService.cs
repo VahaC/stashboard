@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Stashboard.Api.Data;
@@ -34,7 +35,19 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
     };
 
-    private string? Dec(string? cipher) => string.IsNullOrEmpty(cipher) ? cipher : encryption.Decrypt(cipher);
+    // Legacy tolerance: rows written before a value was encrypted at rest (e.g.
+    // a Telegram bot token that predates the EncryptTelegramBotToken column
+    // rename) hold raw plaintext in an *Encrypted column. Export the stored
+    // value as-is instead of failing the whole backup — same convention as
+    // UserService.MaterializeTelegramToken; import re-encrypts it properly.
+    private string? Dec(string? cipher)
+    {
+        if (string.IsNullOrEmpty(cipher)) return cipher;
+        try { return encryption.Decrypt(cipher); }
+        catch (CryptographicException) { return cipher; }
+        catch (FormatException) { return cipher; }
+    }
+
     private string? Enc(string? plain) => string.IsNullOrEmpty(plain) ? plain : encryption.Encrypt(plain);
 
     public async Task<byte[]> ExportAsync(Guid userId, CancellationToken cancellationToken = default)
