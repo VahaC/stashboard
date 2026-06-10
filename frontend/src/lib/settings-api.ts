@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { ContainerExecSettings, HealthCheckSettings, HostShellSettings, ImagePruneSettings } from './types'
+import type { ContainerExecSettings, HealthCheckSettings, HostShellSettings, ImagePruneSettings, ProxmoxConsoleSettings, ProxmoxCreateSettings, ProxmoxDestroySettings, ProxmoxUpdateApplySettings } from './types'
 
 /** V5.3 — app-wide operational settings managed from the Settings page. */
 export const settingsApi = {
@@ -12,6 +12,26 @@ export const settingsApi = {
     api.get<ContainerExecSettings>('/api/settings/container-exec').then((r) => r.data),
   updateContainerExecSettings: (settings: ContainerExecSettings) =>
     api.put('/api/settings/container-exec', settings),
+  /** V6.6 — global LXC-console toggle. */
+  getProxmoxConsoleSettings: () =>
+    api.get<ProxmoxConsoleSettings>('/api/settings/proxmox-console').then((r) => r.data),
+  updateProxmoxConsoleSettings: (settings: ProxmoxConsoleSettings) =>
+    api.put('/api/settings/proxmox-console', settings),
+  /** V6.7.1 — global Proxmox "Update now" toggle. */
+  getProxmoxUpdatesSettings: () =>
+    api.get<ProxmoxUpdateApplySettings>('/api/settings/proxmox-updates').then((r) => r.data),
+  updateProxmoxUpdatesSettings: (settings: ProxmoxUpdateApplySettings) =>
+    api.put('/api/settings/proxmox-updates', settings),
+  /** V6.13 — global destroy-LXC toggle. */
+  getProxmoxDestroySettings: () =>
+    api.get<ProxmoxDestroySettings>('/api/settings/proxmox-destroy').then((r) => r.data),
+  updateProxmoxDestroySettings: (settings: ProxmoxDestroySettings) =>
+    api.put('/api/settings/proxmox-destroy', settings),
+  /** V6.13.1 — global create-LXC toggle. */
+  getProxmoxCreateSettings: () =>
+    api.get<ProxmoxCreateSettings>('/api/settings/proxmox-create').then((r) => r.data),
+  updateProxmoxCreateSettings: (settings: ProxmoxCreateSettings) =>
+    api.put('/api/settings/proxmox-create', settings),
   /** V5.5 — global image-prune toggle + schedule interval. */
   getImagePruneSettings: () =>
     api.get<ImagePruneSettings>('/api/settings/image-prune').then((r) => r.data),

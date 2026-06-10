@@ -135,7 +135,7 @@ public class HostTerminalController(
         {
             // ssh.Connect() blocks on the network handshake — keep it off the
             // request thread.
-            channel = await Task.Run(() => connector.Connect(ssh, window, cancellationToken), cancellationToken);
+            channel = await Task.Run(() => connector.Connect(ssh, window, cancellationToken: cancellationToken), cancellationToken);
         }
         catch (Exception ex)
         {

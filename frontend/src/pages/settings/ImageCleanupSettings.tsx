@@ -45,7 +45,7 @@ export function ImageCleanupSettings() {
 
   return (
     <div className="account-page account-stack">
-      <h1 className="text-2xl font-semibold">Image cleanup</h1>
+      <h1 className="text-2xl font-semibold">Image cleanup (Docker)</h1>
 
       <Card>
         <CardHeader>

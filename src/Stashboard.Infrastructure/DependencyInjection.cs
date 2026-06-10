@@ -5,6 +5,7 @@ using Stashboard.Core.Options;
 using Stashboard.Infrastructure.Aws;
 using Stashboard.Infrastructure.Docker;
 using Stashboard.Infrastructure.GitHub;
+using Stashboard.Infrastructure.Proxmox;
 using Stashboard.Infrastructure.Security;
 using Stashboard.Infrastructure.Services;
 
@@ -75,6 +76,23 @@ public static class DependencyInjection
             c.DefaultRequestHeaders.UserAgent.ParseAdd("Stashboard/1.0 (+aws-ecr)");
         });
 
+        // V6.0 — Proxmox VE REST API client. Two variants: a validating one and
+        // an insecure one for the self-signed certificates that homelab Proxmox
+        // installs ship with (selected per-connection via SkipTlsVerify).
+        services.AddHttpClient(ProxmoxApiClient.HttpClientName, c =>
+        {
+            c.Timeout = TimeSpan.FromSeconds(15);
+            c.DefaultRequestHeaders.UserAgent.ParseAdd("Stashboard/1.0 (+proxmox)");
+        });
+        services.AddHttpClient(ProxmoxApiClient.InsecureHttpClientName, c =>
+        {
+            c.Timeout = TimeSpan.FromSeconds(15);
+            c.DefaultRequestHeaders.UserAgent.ParseAdd("Stashboard/1.0 (+proxmox)");
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+        });
+
         services.AddSingleton<IFaviconService, FaviconService>();
         services.AddSingleton<IServiceHealthChecker, ServiceHealthChecker>();
         services.AddSingleton<IImageReferenceParser, ImageReferenceParser>();
@@ -124,6 +142,19 @@ public static class DependencyInjection
         services.AddSingleton<IDockerWebhookCheckQueue, DockerWebhookCheckQueue>();
         services.AddSingleton<IDockerWebhookPayloadParser, DockerWebhookPayloadParser>();
         services.AddSingleton<IDockerWebhookTokenGenerator, DockerWebhookTokenGenerator>();
+
+        // V6.0 — Proxmox LXC update monitoring. The API client + SSH guest
+        // inspector are the two transports; the checker is the pure
+        // orchestrator that composes them (mirrors the Docker checker).
+        services.AddSingleton<IProxmoxApiClient, ProxmoxApiClient>();
+        services.AddSingleton<IProxmoxGuestInspector, ProxmoxSshGuestInspector>();
+        services.AddSingleton<IProxmoxUpdateChecker, ProxmoxUpdateChecker>();
+        // V6.7.1 — one-click "Update now" applier (streams apt over SSH).
+        services.AddSingleton<IProxmoxUpdateApplier, ProxmoxSshUpdateApplier>();
+        // V6.11 — webhook-triggered scan queue (the Proxmox analogue of the
+        // Docker webhook check queue). Singleton process-local buffer; the
+        // webhook token reuses the Docker token generator above.
+        services.AddSingleton<IProxmoxScanQueue, ProxmoxScanQueue>();
 
         return services;
     }

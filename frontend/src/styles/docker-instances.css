@@ -528,7 +528,8 @@
 }
 .dock .docker-instances-card-state[data-state='exited'],
 .dock .docker-instances-card-state[data-state='dead'],
-.dock .docker-instances-card-state[data-state='removing'] {
+.dock .docker-instances-card-state[data-state='removing'],
+.dock .docker-instances-card-state[data-state='stopped'] {
   background: color-mix(in oklab, var(--status-down) 12%, transparent);
   color: var(--status-down);
 }
@@ -576,7 +577,8 @@
 /* Diagnostics + lifecycle rows: diagnostics on the left, lifecycle pushed
  * to the right edge. Lay them out as a single row instead of the legacy
  * `display: block` (which is what made the old card lay them vertically). */
-.dock .docker-instances-card-actions {
+.dock .docker-instances-card-actions,
+.proxmox-conn .docker-instances-card-actions {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -775,17 +777,31 @@
   max-width: 280px;
 }
 
-/* V5.0 — Disabled card style for terminal containers */
+/* V5.0 — Disabled card style for terminal containers (LXC `stopped` aliases). */
 .docker-instances-card[data-container-state='exited'],
 .docker-instances-card[data-container-state='dead'],
-.docker-instances-card[data-container-state='removing'] {
+.docker-instances-card[data-container-state='removing'],
+.docker-instances-card[data-container-state='stopped'] {
   border-style: dashed;
   opacity: 0.6;
 }
 
 .docker-instances-card[data-container-state='exited']:hover,
 .docker-instances-card[data-container-state='dead']:hover,
-.docker-instances-card[data-container-state='removing']:hover {
+.docker-instances-card[data-container-state='removing']:hover,
+.docker-instances-card[data-container-state='stopped']:hover {
+  opacity: 0.85;
+}
+
+/* V6.7 — muted card for an LXC whose update monitoring is turned off (the
+   Proxmox analogue of a disabled Docker watch). Works for a running guest too,
+   so it composes with — not replaces — the stopped-state dimming above. */
+.docker-instances-card.cc-dimmed {
+  border-style: dashed;
+  opacity: 0.6;
+}
+
+.docker-instances-card.cc-dimmed:hover {
   opacity: 0.85;
 }
 
@@ -825,7 +841,8 @@
   color: hsl(142 71% 65%);
 }
 
-.docker-instances-card-state[data-state='exited'] {
+.docker-instances-card-state[data-state='exited'],
+.docker-instances-card-state[data-state='stopped'] {
   background: hsl(var(--destructive) / 0.12);
   color: hsl(var(--destructive));
 }
@@ -1252,6 +1269,47 @@
   gap: 0.25rem;
 }
 
+/* V6.5 — editable Config tab: a compact responsive grid of labelled inputs. */
+.container-modal-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+}
+
+/* V6.13.1 — a native <select> in an edit-grid cell must stack under its label and
+ * fill the cell, exactly like the (block, w-full) Input fields do — otherwise a
+ * short option (e.g. a "local-lvm" storage) leaves the select inline beside its
+ * label text while the longer-option Template select wraps, misaligning the row. */
+.container-modal-edit-grid .proxmox-select {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+/* V6.13.1 — the create form's "Template & root filesystem" row: Template should
+ * eat the free width while the storage / size fields stay compact. A flex row
+ * (instead of the equal-1fr auto-fit grid) lets Template grow and the other two
+ * stay fixed, wrapping on a narrow modal. The `.container-modal-edit-grid` class
+ * stays on the element only so the descendant `.proxmox-select` width rule above
+ * still applies. */
+.lxc-create-rootfs-grid { display: flex; flex-wrap: wrap; }
+.lxc-create-field-template { flex: 1 1 200px; min-width: 200px; }
+.lxc-create-field-storage { flex: 0 0 12rem; max-width: 12rem; }
+.lxc-create-field-size { flex: 0 0 8rem; max-width: 8rem; }
+
+/* "← Choose from list" toggle under the custom-template input. */
+.lxc-create-link {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.lxc-create-link:hover { text-decoration: underline; }
+
 .container-modal-card-ports {
   display: flex;
   flex-wrap: wrap;
@@ -1261,7 +1319,9 @@
 .container-modal-empty {
   color: var(--muted-foreground);
   font-size: 12px;
-  font-style: italic;
+  font-style: italic;  
+  align-content: center;
+  margin-right: 0.5rem;
 }
 
 .container-modal-error {
@@ -1277,6 +1337,49 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+/* V6.9 — editable net<n> / mp<n> / rootfs rows on the Config tab. Each entry is
+   a bordered card with structured fields so the user edits one interface / mount
+   at a time instead of wrangling a single raw textarea. Stacks cleanly on mobile
+   and never overflows: long raw strings wrap. */
+.lxc-config-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.lxc-config-row {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.lxc-config-row-removed {
+  opacity: 0.55;
+}
+
+.lxc-config-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.lxc-config-row-key {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lxc-config-raw {
+  font-size: 11px;
+  word-break: break-all;
+  white-space: pre-wrap;
 }
 
 .container-modal-collapsible {
@@ -1296,7 +1399,6 @@
 .container-modal-collapsible > summary::-webkit-details-marker {
   display: none;
 }
-
 .container-modal-collapsible[open] > summary {
   margin-bottom: 0.5rem;
   color: var(--foreground);
@@ -1305,8 +1407,97 @@
 .container-modal-collapsible-with-action {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.5rem;
+}
+
+.container-modal-collapsible-with-action .task-type-row {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.container-modal-collapsible-with-action .task-type-row:has(.task-status) {
+  margin-left: 0;
+  flex: 1;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.container-modal-collapsible-with-action .task-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+.container-modal-collapsible-with-action > .task-status {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  flex: 0 1 auto;     
+  max-width: calc(100% - 8rem); 
+}
+
+.container-modal-collapsible-with-action .task-status-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.container-modal-collapsible-with-action .task-status-inner .text-red-600 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.container-modal-collapsible-with-action .task-status-up    { color: var(--status-up); }
+.container-modal-collapsible-with-action .task-status-attention { color: var(--status-attention); }
+.container-modal-collapsible-with-action .task-status-down  { color: var(--status-down); }
+
+.container-modal-collapsible-with-action .task-warning svg { flex-shrink: 0; }
+
+.container-modal-collapsible-with-action .task-time-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.container-modal-collapsible-with-action .task-start-time { min-width: 7rem; }
+.container-modal-collapsible-with-action .task-duration   { min-width: 2rem; margin-left: auto; }
+
+@media (max-width: 480px) {
+  .container-modal-collapsible-with-action {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .container-modal-collapsible-with-action .task-type-row {
+    width: 100%;
+  }
+
+  .container-modal-collapsible-with-action .task-type-row:has(.task-status) {
+    justify-content: space-between; 
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .container-modal-collapsible-with-action > .task-status {
+    max-width: 100%;
+    width: auto;
+    align-self: flex-end;  
+    margin-left: 0;
+  }
+
+  .container-modal-collapsible-with-action .task-time-row {
+    width: 100%;
+  }
 }
 
 .container-modal-table {

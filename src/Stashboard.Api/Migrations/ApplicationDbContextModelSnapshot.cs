@@ -165,6 +165,86 @@ namespace Stashboard.Api.Migrations
                     b.ToTable("ImagePruneSettings");
                 });
 
+            modelBuilder.Entity("Stashboard.Api.Data.ProxmoxConsoleSettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ProxmoxConsoleSettings");
+                });
+
+            modelBuilder.Entity("Stashboard.Api.Data.ProxmoxCreateSettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ProxmoxCreateSettings");
+                });
+
+            modelBuilder.Entity("Stashboard.Api.Data.ProxmoxDestroySettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ProxmoxDestroySettings");
+                });
+
+            modelBuilder.Entity("Stashboard.Api.Data.ProxmoxUpdateApplySettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ProxmoxUpdateApplySettings");
+                });
+
             modelBuilder.Entity("Stashboard.Api.Data.RefreshTokenEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -857,6 +937,595 @@ namespace Stashboard.Api.Migrations
                     b.ToTable("HostShellSessions");
                 });
 
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxConnectionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("AllowConsole")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AllowCreate")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AllowDestroy")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AllowUpdates")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ApiBaseUrl")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApiTokenId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApiTokenSecretEncrypted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<TimeOnly?>("CheckAtTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CheckEveryHours")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("CheckOnDayOfWeek")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastCheckedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastNotificationSentUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastNotifiedSignature")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastTelegramNotifiedSignature")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastWebhookReceivedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NodeName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ScheduleType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ServerType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("SkipTlsVerify")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SshHost")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SshPort")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SshPrivateKeyEncrypted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SshPrivateKeyPassphraseEncrypted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SshUsername")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("TelegramNotificationsEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("TelemetryPollSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("UpdateNotificationsEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WebhookToken")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WebhookToken")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "Name")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "Enabled", "LastCheckedUtc");
+
+                    b.ToTable("ProxmoxConnections");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxConsoleSessionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("BytesFromClient")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("BytesToClient")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Command")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConnectionName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EndReason")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("EndedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GuestName")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("InitiatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NodeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ProxmoxConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("StartedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("VmId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InitiatedByUserId", "StartedUtc");
+
+                    b.HasIndex("ProxmoxConnectionId", "StartedUtc");
+
+                    b.ToTable("ProxmoxConsoleSessions");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxCreateAuditEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConnectionName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Hostname")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("InitiatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NodeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ProxmoxConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Template")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("VmId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InitiatedByUserId", "CreatedAtUtc");
+
+                    b.HasIndex("ProxmoxConnectionId", "CreatedAtUtc");
+
+                    b.ToTable("ProxmoxCreateAudits");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxDestroyAuditEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConnectionName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("DestroyedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GuestName")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("InitiatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NodeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ProxmoxConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("VmId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InitiatedByUserId", "DestroyedUtc");
+
+                    b.HasIndex("ProxmoxConnectionId", "DestroyedUtc");
+
+                    b.ToTable("ProxmoxDestroyAudits");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxGuestEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("CpuCores")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("DiskBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("GuestType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsRunning")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastCheckedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("MemoryBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("MonitoringEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTime?>("MonitoringSnoozedUntil")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PendingUpdates")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("ProxmoxConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Tags")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("UptimeSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("VmId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProxmoxConnectionId", "VmId")
+                        .IsUnique();
+
+                    b.ToTable("ProxmoxGuests");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxMonitoringAuditEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Bulk")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ChangeType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("ChangedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConnectionName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GuestName")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("InitiatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("MonitoringEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("NodeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ProxmoxConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("SnoozedUntil")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("VmId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InitiatedByUserId", "ChangedUtc");
+
+                    b.HasIndex("ProxmoxConnectionId", "ChangedUtc");
+
+                    b.ToTable("ProxmoxMonitoringAudits");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxNodeAlertSettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CategoryMask")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("CpuCrit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("CpuWarn")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastNotificationSentUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastNotifiedSignature")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastTelegramNotifiedSignature")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("MemCrit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("MemWarn")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("ProxmoxConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("StorageCrit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("StorageWarn")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("TempCrit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("TempWarn")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProxmoxConnectionId")
+                        .IsUnique();
+
+                    b.ToTable("ProxmoxNodeAlertSettings");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxNodeAlertStateEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ActiveLevel")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("FirstSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Metric")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("NicCounterBaseline")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PendingCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PendingLevel")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("ProxmoxConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("Threshold")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("Value")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProxmoxConnectionId", "Category")
+                        .IsUnique();
+
+                    b.ToTable("ProxmoxNodeAlertStates");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxUpdateSessionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("BytesToClient")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ConnectionName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EndReason")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("EndedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ExitStatus")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("InitiatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NodeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ProxmoxConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("StartedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TargetName")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TargetType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("VmId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InitiatedByUserId", "StartedUtc");
+
+                    b.HasIndex("ProxmoxConnectionId", "StartedUtc");
+
+                    b.ToTable("ProxmoxUpdateSessions");
+                });
+
             modelBuilder.Entity("Stashboard.Core.Entities.TagEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1127,6 +1796,118 @@ namespace Stashboard.Api.Migrations
                         .HasForeignKey("InitiatedByUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxConnectionEntity", b =>
+                {
+                    b.HasOne("Stashboard.Api.Data.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxConsoleSessionEntity", b =>
+                {
+                    b.HasOne("Stashboard.Api.Data.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("InitiatedByUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Stashboard.Core.Entities.ProxmoxConnectionEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ProxmoxConnectionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxCreateAuditEntity", b =>
+                {
+                    b.HasOne("Stashboard.Api.Data.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("InitiatedByUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Stashboard.Core.Entities.ProxmoxConnectionEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ProxmoxConnectionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxDestroyAuditEntity", b =>
+                {
+                    b.HasOne("Stashboard.Api.Data.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("InitiatedByUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Stashboard.Core.Entities.ProxmoxConnectionEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ProxmoxConnectionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxGuestEntity", b =>
+                {
+                    b.HasOne("Stashboard.Core.Entities.ProxmoxConnectionEntity", "ProxmoxConnection")
+                        .WithMany()
+                        .HasForeignKey("ProxmoxConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ProxmoxConnection");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxMonitoringAuditEntity", b =>
+                {
+                    b.HasOne("Stashboard.Api.Data.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("InitiatedByUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Stashboard.Core.Entities.ProxmoxConnectionEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ProxmoxConnectionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxNodeAlertSettingsEntity", b =>
+                {
+                    b.HasOne("Stashboard.Core.Entities.ProxmoxConnectionEntity", "ProxmoxConnection")
+                        .WithMany()
+                        .HasForeignKey("ProxmoxConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ProxmoxConnection");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxNodeAlertStateEntity", b =>
+                {
+                    b.HasOne("Stashboard.Core.Entities.ProxmoxConnectionEntity", "ProxmoxConnection")
+                        .WithMany()
+                        .HasForeignKey("ProxmoxConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ProxmoxConnection");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxUpdateSessionEntity", b =>
+                {
+                    b.HasOne("Stashboard.Api.Data.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("InitiatedByUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Stashboard.Core.Entities.ProxmoxConnectionEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ProxmoxConnectionId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Stashboard.Core.Entities.TagEntity", b =>

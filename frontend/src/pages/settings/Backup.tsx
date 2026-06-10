@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import { qk } from '@/lib/queries'
+import { proxmoxQk } from '@/lib/proxmox-queries'
 import { getApiErrorMessage } from '@/lib/utils'
 import '@/styles/management-pages.css'
 
@@ -35,14 +36,22 @@ export function Backup() {
       qc.invalidateQueries({ queryKey: qk.services })
       qc.invalidateQueries({ queryKey: qk.categories })
       qc.invalidateQueries({ queryKey: qk.tags })
+      qc.invalidateQueries({ queryKey: qk.dockerConnections })
+      qc.invalidateQueries({ queryKey: proxmoxQk.connections })
     } catch (e: unknown) {
       setStatus(`Import failed: ${getApiErrorMessage(e, 'An unexpected error occurred.')}`)
     } finally { setBusy(false); e.target.value = '' }
   }
 
   return (
-    <>
+    <div className="account-page account-stack">
       <h1 className="manage-page-title text-2xl font-semibold">Backup</h1>
+
+      <p className="backup-intro">
+        Exports your full configuration: services, categories, tags, Docker connections &amp; watches,
+        Proxmox connections (with their per-guest monitoring choices), and account settings. Importing is
+        additive — connections are merged by name, so an existing host is never duplicated.
+      </p>
 
       <div className="backup-warning">
         Exports include decrypted credential values in plain text. Treat the JSON file as a password file.
@@ -63,6 +72,6 @@ export function Backup() {
           {status && <p className="backup-status">{status}</p>}
         </div>
       </div>
-    </>
+    </div>
   )
 }

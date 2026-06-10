@@ -1,42 +1,26 @@
 import { useState } from 'react'
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { useAuthStore } from '@/lib/auth-store'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import logo from '@/assets/logo.svg'
-// import { LayoutGrid, Tags as TagsIcon, FolderTree, Database, LogOut, UserCog, Menu, X, Container, Bell, ChevronDown, Settings, TerminalSquare, SquareChevronRight, HardDrive, Activity, ScrollText } from 'lucide-react'
-import { LayoutGrid, FolderTree, Database, LogOut, UserCog, Menu, X, Container, Bell, ChevronDown, Settings, TerminalSquare, SquareChevronRight, HardDrive, Activity, ScrollText } from 'lucide-react'
+import { LayoutGrid, FolderTree, LogOut, Menu, X, Container, Settings, ScrollText, Server, BookOpen } from 'lucide-react'
 import '@/styles/app-layout.css'
 
 const mainNavItems = [
   { to: '/', label: 'Services', icon: LayoutGrid, end: true },
   { to: '/docker', label: 'Docker', icon: Container, end: false },
+  { to: '/proxmox', label: 'Proxmox', icon: Server, end: false },
   { to: '/categories', label: 'Categories', icon: FolderTree, end: false },
-  // { to: '/tags', label: 'Tags', icon: TagsIcon, end: false },
   { to: '/audit', label: 'Audit', icon: ScrollText, end: false },
 ]
 
-const settingsNavItems = [
-  { to: '/notifications', label: 'Notifications', icon: Bell, end: false },
-  { to: '/host-terminal', label: 'Host terminal', icon: TerminalSquare, end: false },
-  { to: '/container-exec', label: 'Container exec', icon: SquareChevronRight, end: false },
-  { to: '/image-cleanup', label: 'Image cleanup', icon: HardDrive, end: false },
-  { to: '/health-checks', label: 'Health checks', icon: Activity, end: false },
-  { to: '/backup', label: 'Backup / Restore', icon: Database, end: false },
-  { to: '/account', label: 'Account', icon: UserCog, end: false },
-]
-
-const settingsPaths = settingsNavItems.map(i => i.to)
-
 export function AppLayout() {
   const nav = useNavigate()
-  const location = useLocation()
   const { user, refreshToken, clear } = useAuthStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const settingsActive = settingsPaths.some(p => location.pathname.startsWith(p))
-  const [settingsOpen, setSettingsOpen] = useState(settingsActive)
 
   const logout = async () => {
     try {
@@ -94,34 +78,24 @@ export function AppLayout() {
           ))}
         </nav>
         <div className="app-sidebar-settings">
-          <button
-            className={cn('app-settings-toggle', settingsActive && 'app-settings-toggle-active')}
-            onClick={() => setSettingsOpen(v => !v)}
+          <NavLink
+            to="/settings"
+            onClick={closeSidebar}
+            className={({ isActive }) =>
+              cn('app-nav-link', isActive && 'app-nav-link-active')
+            }
           >
-            <Settings className="h-3.5 w-3.5" />
-            <span>Settings</span>
-            <ChevronDown className={cn('app-settings-chevron', settingsOpen && 'app-settings-chevron-open')} />
-          </button>
-          {settingsOpen && (
-            <div className="app-settings-items">
-              {settingsNavItems.map(({ to, label, icon: Icon, end }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={end}
-                  onClick={closeSidebar}
-                  className={({ isActive }) =>
-                    cn(
-                      'app-nav-link',
-                      isActive && 'app-nav-link-active'
-                    )
-                  }
-                >
-                  <Icon className="h-3.5 w-3.5" /> {label}
-                </NavLink>
-              ))}
-            </div>
-          )}
+            <Settings className="h-3.5 w-3.5" /> Settings
+          </NavLink>
+          <NavLink
+            to="/help"
+            onClick={closeSidebar}
+            className={({ isActive }) =>
+              cn('app-nav-link', isActive && 'app-nav-link-active')
+            }
+          >
+            <BookOpen className="h-3.5 w-3.5" /> Setup guides
+          </NavLink>
         </div>
         <div className="app-sidebar-footer">
           <div className="app-theme-switcher-wrap">

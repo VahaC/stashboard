@@ -9,8 +9,13 @@ import {
   formatBytes,
   formatDuration,
   formatTimestamp,
+  type ConsoleSession,
   type ExecSession,
   type HostShellSession,
+  type ProxmoxCreateAudit,
+  type ProxmoxDestroyAudit,
+  type ProxmoxMonitoringAudit,
+  type ProxmoxUpdateSession,
   type PruneRun,
   type UpdateAttempt,
 } from '@/lib/audit-api'
@@ -24,14 +29,26 @@ import '@/styles/audit.css'
  * already have a read path elsewhere and are folded in here for convenience.
  */
 
-type TabKey = 'host' | 'exec' | 'updates' | 'prune'
+type TabKey = 'host' | 'exec' | 'console' | 'pmupdates' | 'pmmonitoring' | 'pmcreate' | 'pmdestroy' | 'updates' | 'prune'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'host', label: 'Host terminal' },
   { key: 'exec', label: 'Container exec' },
+  { key: 'console', label: 'LXC console' },
+  { key: 'pmupdates', label: 'Proxmox updates' },
+  { key: 'pmmonitoring', label: 'LXC monitoring' },
+  { key: 'pmcreate', label: 'LXC create' },
+  { key: 'pmdestroy', label: 'LXC destroy' },
   { key: 'updates', label: 'Update attempts' },
   { key: 'prune', label: 'Image prune' },
 ]
+
+const MONITORING_CHANGE_LABELS: Record<string, string> = {
+  Enabled: 'Enabled',
+  Disabled: 'Disabled',
+  Snoozed: 'Snoozed',
+  SnoozeCleared: 'Snooze cleared',
+}
 
 const UPDATE_STATUS_LABELS: Record<string, string> = {
   Success: 'Success',
@@ -131,6 +148,198 @@ function ExecTable({ connectionId }: { connectionId: string | null }) {
               <td>{formatBytes(r.bytesFromClient)}</td>
               <td>{formatBytes(r.bytesToClient)}</td>
               <td>{endReasonLabel(r.endReason)}<ErrorLine error={r.error} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ConsoleTable({ connectionId }: { connectionId: string | null }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['audit', 'console', connectionId ?? 'all'],
+    queryFn: () => auditApi.getConsoleSessions({ connectionId }),
+  })
+  if (isLoading) return <StateMessage>Loading…</StateMessage>
+  if (isError) return <StateMessage>Failed to load LXC-console sessions.</StateMessage>
+  if (!data || data.length === 0) return <StateMessage>No LXC-console sessions recorded yet.</StateMessage>
+  return (
+    <div className="audit-table-wrap">
+      <table className="audit-table">
+        <thead>
+          <tr>
+            <th>Host / node</th><th>Container</th><th>Command</th><th>Started</th><th>Ended</th>
+            <th>Duration</th><th>In</th><th>Out</th><th>End reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((r: ConsoleSession) => (
+            <tr key={r.id}>
+              <td>
+                {r.connectionName ?? '(deleted)'}
+                <div className="audit-sub">{r.nodeName ?? ''}</div>
+              </td>
+              <td>{r.guestName ? `${r.guestName} (CT ${r.vmId})` : `CT ${r.vmId}`}</td>
+              <td><code>{r.command ?? '—'}</code></td>
+              <td>{formatTimestamp(r.startedUtc)}</td>
+              <td>{r.active ? <ActiveBadge /> : formatTimestamp(r.endedUtc)}</td>
+              <td>{formatDuration(r.startedUtc, r.endedUtc)}</td>
+              <td>{formatBytes(r.bytesFromClient)}</td>
+              <td>{formatBytes(r.bytesToClient)}</td>
+              <td>{endReasonLabel(r.endReason)}<ErrorLine error={r.error} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ProxmoxUpdatesTable({ connectionId }: { connectionId: string | null }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['audit', 'pmupdates', connectionId ?? 'all'],
+    queryFn: () => auditApi.getProxmoxUpdateSessions({ connectionId }),
+  })
+  if (isLoading) return <StateMessage>Loading…</StateMessage>
+  if (isError) return <StateMessage>Failed to load Proxmox update runs.</StateMessage>
+  if (!data || data.length === 0) return <StateMessage>No Proxmox update runs recorded yet.</StateMessage>
+  return (
+    <div className="audit-table-wrap">
+      <table className="audit-table">
+        <thead>
+          <tr>
+            <th>Host / node</th><th>Target</th><th>Started</th><th>Ended</th>
+            <th>Duration</th><th>Exit</th><th>Output</th><th>End reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((r: ProxmoxUpdateSession) => (
+            <tr key={r.id}>
+              <td>
+                {r.connectionName ?? '(deleted)'}
+                <div className="audit-sub">{r.nodeName ?? ''}</div>
+              </td>
+              <td>
+                {r.targetType === 'Node'
+                  ? `node (${r.nodeName ?? r.targetName ?? '—'})`
+                  : r.targetName ? `${r.targetName} (CT ${r.vmId})` : `CT ${r.vmId}`}
+              </td>
+              <td>{formatTimestamp(r.startedUtc)}</td>
+              <td>{r.active ? <ActiveBadge /> : formatTimestamp(r.endedUtc)}</td>
+              <td>{formatDuration(r.startedUtc, r.endedUtc)}</td>
+              <td>{r.exitStatus == null ? '—' : r.exitStatus}</td>
+              <td>{formatBytes(r.bytesToClient)}</td>
+              <td>{endReasonLabel(r.endReason)}<ErrorLine error={r.error} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ProxmoxMonitoringTable({ connectionId }: { connectionId: string | null }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['audit', 'pmmonitoring', connectionId ?? 'all'],
+    queryFn: () => auditApi.getProxmoxMonitoringAudits({ connectionId }),
+  })
+  if (isLoading) return <StateMessage>Loading…</StateMessage>
+  if (isError) return <StateMessage>Failed to load LXC monitoring changes.</StateMessage>
+  if (!data || data.length === 0) return <StateMessage>No LXC monitoring changes recorded yet.</StateMessage>
+  return (
+    <div className="audit-table-wrap">
+      <table className="audit-table">
+        <thead>
+          <tr>
+            <th>Host / node</th><th>Container</th><th>Change</th><th>New state</th><th>Scope</th><th>When</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((r: ProxmoxMonitoringAudit) => (
+            <tr key={r.id}>
+              <td>
+                {r.connectionName ?? '(deleted)'}
+                <div className="audit-sub">{r.nodeName ?? ''}</div>
+              </td>
+              <td>{r.guestName ? `${r.guestName} (CT ${r.vmId})` : `CT ${r.vmId}`}</td>
+              <td>{MONITORING_CHANGE_LABELS[r.changeType] ?? r.changeType}</td>
+              <td>
+                {r.changeType === 'Snoozed' && r.snoozedUntil
+                  ? `snoozed until ${formatTimestamp(r.snoozedUntil)}`
+                  : r.monitoringEnabled ? 'monitoring on' : 'monitoring off'}
+              </td>
+              <td>{r.bulk ? 'Bulk (all)' : 'Single'}</td>
+              <td>{formatTimestamp(r.changedUtc)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ProxmoxDestroyTable({ connectionId }: { connectionId: string | null }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['audit', 'pmdestroy', connectionId ?? 'all'],
+    queryFn: () => auditApi.getProxmoxDestroyAudits({ connectionId }),
+  })
+  if (isLoading) return <StateMessage>Loading…</StateMessage>
+  if (isError) return <StateMessage>Failed to load LXC destroys.</StateMessage>
+  if (!data || data.length === 0) return <StateMessage>No LXC destroys recorded yet.</StateMessage>
+  return (
+    <div className="audit-table-wrap">
+      <table className="audit-table">
+        <thead>
+          <tr>
+            <th>Host / node</th><th>Container</th><th>Result</th><th>When</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((r: ProxmoxDestroyAudit) => (
+            <tr key={r.id}>
+              <td>
+                {r.connectionName ?? '(deleted)'}
+                <div className="audit-sub">{r.nodeName ?? ''}</div>
+              </td>
+              <td>{r.guestName ? `${r.guestName} (CT ${r.vmId})` : `CT ${r.vmId}`}</td>
+              <td>{r.success ? 'Destroyed' : 'Failed'}<ErrorLine error={r.error} /></td>
+              <td>{formatTimestamp(r.destroyedUtc)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ProxmoxCreateTable({ connectionId }: { connectionId: string | null }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['audit', 'pmcreate', connectionId ?? 'all'],
+    queryFn: () => auditApi.getProxmoxCreateAudits({ connectionId }),
+  })
+  if (isLoading) return <StateMessage>Loading…</StateMessage>
+  if (isError) return <StateMessage>Failed to load LXC creates.</StateMessage>
+  if (!data || data.length === 0) return <StateMessage>No LXC creates recorded yet.</StateMessage>
+  return (
+    <div className="audit-table-wrap">
+      <table className="audit-table">
+        <thead>
+          <tr>
+            <th>Host / node</th><th>Container</th><th>Template</th><th>Result</th><th>When</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((r: ProxmoxCreateAudit) => (
+            <tr key={r.id}>
+              <td>
+                {r.connectionName ?? '(deleted)'}
+                <div className="audit-sub">{r.nodeName ?? ''}</div>
+              </td>
+              <td>{r.hostname ? `${r.hostname} (CT ${r.vmId})` : `CT ${r.vmId}`}</td>
+              <td><code>{r.template ?? '—'}</code></td>
+              <td>{r.success ? 'Created' : 'Failed'}<ErrorLine error={r.error} /></td>
+              <td>{formatTimestamp(r.createdAtUtc)}</td>
             </tr>
           ))}
         </tbody>
@@ -263,6 +472,11 @@ export function AuditLog() {
           <div role="tabpanel">
             {activeTab === 'host' && <HostShellTable connectionId={connectionId} />}
             {activeTab === 'exec' && <ExecTable connectionId={connectionId} />}
+            {activeTab === 'console' && <ConsoleTable connectionId={connectionId} />}
+            {activeTab === 'pmupdates' && <ProxmoxUpdatesTable connectionId={connectionId} />}
+            {activeTab === 'pmmonitoring' && <ProxmoxMonitoringTable connectionId={connectionId} />}
+            {activeTab === 'pmcreate' && <ProxmoxCreateTable connectionId={connectionId} />}
+            {activeTab === 'pmdestroy' && <ProxmoxDestroyTable connectionId={connectionId} />}
             {activeTab === 'updates' && <UpdatesTable connectionId={connectionId} />}
             {activeTab === 'prune' && <PruneTable connectionId={connectionId} />}
           </div>

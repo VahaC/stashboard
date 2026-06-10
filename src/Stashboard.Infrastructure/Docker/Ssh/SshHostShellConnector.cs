@@ -40,7 +40,8 @@ public sealed class SshHostShellConnector(ILogger<SshHostShellConnector>? logger
     private const int ShellBufferSize = 8 * 1024;
 
     public IHostShellChannel Connect(
-        DockerSshCredentials credentials, HostShellWindow window, CancellationToken cancellationToken = default)
+        DockerSshCredentials credentials, HostShellWindow window,
+        string? initialCommand = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(credentials);
 
@@ -69,6 +70,18 @@ public sealed class SshHostShellConnector(ILogger<SshHostShellConnector>? logger
                 width: 0,
                 height: 0,
                 bufferSize: ShellBufferSize);
+
+            // V6.6 — if the caller asked to drop straight into a target (the
+            // Proxmox console passes `exec pct exec <vmid> -- <shell>`), run it
+            // now via the same reliable synchronous Write + Flush path the duplex
+            // stream uses for keystrokes. `exec` replaces the login shell so the
+            // SSH channel closes when the inner shell exits.
+            if (!string.IsNullOrWhiteSpace(initialCommand))
+            {
+                var line = System.Text.Encoding.UTF8.GetBytes(initialCommand + "\n");
+                shell.Write(line, 0, line.Length);
+                shell.Flush();
+            }
 
             return new SshHostShellChannel(ssh, shell, logger);
         }

@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Activity, AlertCircle, Bell, FileText, MoreHorizontal, Search, Trash2, SquareChevronRight } from 'lucide-react'
+import { Activity, Bell, FileText, MoreHorizontal, Search, Trash2, SquareChevronRight, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { DockerContainerCard, DockerWatch } from '@/lib/types'
-import { ContainerStateBadge } from './atoms/ContainerStateBadge'
+import { EntityCard } from '@/components/shared/EntityCard'
 import { UpdateStatusBadge } from './atoms/UpdateStatusBadge'
 import { ContainerLifecycleActions } from './atoms/ContainerLifecycleActions'
 import { RemoveConfirmDialog } from './atoms/RemoveConfirmDialog'
@@ -57,145 +57,76 @@ export function ContainerCard({
     setRemoveDialogOpen(false)
   }
 
+  // Docker reports a container's `Image` as the tag (`mariadb:11`) only while
+  // that tag still points to the same local image. After Stashboard pulls a
+  // newer image with the same tag, the running container's reported `Image`
+  // becomes a bare `sha256:…` (the now-dangling old image) — a strong update
+  // signal, but unreadable on the card. When tracked by a watch, prefer the
+  // watch's stable `imageReference`; keep the raw value as the tooltip.
+  const isDangling = card.image.startsWith('sha256:')
+  const imageDisplay = isDangling && linkedWatch?.imageReference ? linkedWatch.imageReference : card.image
+
   return (
-    <div className="cc docker-instances-card" data-container-state={card.state.toLowerCase()}>
-      <div
-        className="cc-body docker-instances-card-body"
-        role="button"
-        tabIndex={0}
-        onClick={() => onOpen(defaultTab)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onOpen(defaultTab)
-          }
-        }}
-      >
-        <div className="cc-head docker-instances-card-head">
-          <span className="cc-name docker-instances-card-name">
-            {card.name}
-            {variant === 'service-modal' && linkedWatch && (
-              <span className="cc-watch-chip">{linkedWatch.label}</span>
-            )}
+    <EntityCard
+      state={card.state}
+      name={card.name}
+      headerExtra={variant === 'service-modal' && linkedWatch
+        ? <span className="cc-watch-chip">{linkedWatch.label}</span>
+        : undefined}
+      updateBadge={linkedWatch
+        ? <UpdateStatusBadge
+            status={linkedWatch.updateStatus}
+            title={`Tracked${linkedWatch.label ? ` as "${linkedWatch.label}"` : ''}`}
+            className="cc-update-badge"
+          />
+        : undefined}
+      subtitle={imageDisplay}
+      subtitleTitle={isDangling && linkedWatch?.imageReference ? card.image : undefined}
+      statusLine={card.status ? renderStatusWithHealth(card.status) : undefined}
+      chips={card.ports.length > 0
+        ? card.ports.map((p, idx) => (
+          <span key={idx} className="cc-chip docker-instances-card-port">
+            {p.publicPort ? `${p.publicPort}→` : ''}{p.privatePort}/{p.type}
           </span>
-          <div className="cc-head-right">
-            {linkedWatch && (
-              <UpdateStatusBadge
-                status={linkedWatch.updateStatus}
-                title={`Tracked${linkedWatch.label ? ` as "${linkedWatch.label}"` : ''}`}
-                className="cc-update-badge"
-              />
-            )}
-            <ContainerStateBadge state={card.state} />
-          </div>
-        </div>
-
-        {/*
-          Docker reports a container's `Image` as the tag (`mariadb:11`) only
-          while that tag still points to the same local image. As soon as
-          Stashboard pulls a newer image with the same tag, the tag migrates
-          to the new image and the running container's reported `Image`
-          becomes a bare `sha256:…` (the now-dangling old image). That's
-          actually a strong signal an update is available, but it's
-          unreadable on the card. When the container is tracked by a watch,
-          prefer the watch's stable `imageReference` (the user-configured
-          identity); the raw `card.image` stays available as the tooltip so
-          a debugger can still see what Docker is reporting.
-        */}
-        {(() => {
-          const isDangling = card.image.startsWith('sha256:')
-          const display = isDangling && linkedWatch?.imageReference
-            ? linkedWatch.imageReference
-            : card.image
-          return (
-            <div
-              className="cc-image docker-instances-card-image"
-              title={isDangling && linkedWatch?.imageReference ? card.image : undefined}
-            >
-              {display}
-            </div>
-          )
-        })()}
-
-        {card.status && (
-          <div className="cc-meta docker-instances-card-meta">
-            {renderStatusWithHealth(card.status)}
-          </div>
-        )}
-        {card.ports.length > 0 && (
-          <div className="cc-meta docker-instances-card-meta docker-instances-card-ports">
-            {card.ports.map((p, idx) => (
-              <span key={idx} className="cc-chip docker-instances-card-port">
-                {p.publicPort ? `${p.publicPort}→` : ''}{p.privatePort}/{p.type}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-      
-      <div className="cc-rule" aria-hidden />
-      <div
-        // className="cc-actions cc-actions-split docker-instances-card-actions"
-        className="cc-actions docker-instances-card-actions"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="cc-actions-secondary">
-          {!notFound && (
-            <>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onOpen('inspect')}
-                title="Inspect container"
-              >
-                <Search className="h-3.5 w-3.5" />
-                {/* <span className="label-text">Inspect</span> */}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onOpen('logs')}
-                title="Live container logs"
-              >
-                <FileText className="h-3.5 w-3.5" />
-                {/* <span className="label-text">Logs</span> */}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onOpen('stats')}
-                title="Live container stats"
-              >
-                <Activity className="h-3.5 w-3.5" />
-                {/* <span className="label-text">Stats</span> */}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onOpen('watch')}
-                title={linkedWatch ? 'Edit update tracking' : 'Track this container for updates'}
-              >
-                <Bell className="h-3.5 w-3.5" />
-                {/* <span className="label-text">{linkedWatch ? 'Watch' : 'Track'}</span> */}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onOpen('exec')}
-                title="Open a shell inside this container (exec)"
-              >
-                <SquareChevronRight className="h-3.5 w-3.5" />
-                {/* <span className="label-text">Exec</span> */}
-              </Button>
-            </>
-          )}
-        </div>
-        <div className="cc-actions-right">
+        ))
+        : undefined}
+      onActivate={() => onOpen(defaultTab)}
+      actionsLeft={!notFound && (
+        <>
+          <Button type="button" variant="ghost" size="sm" onClick={() => onOpen('overview')} title="Overview">
+            <Info className="h-3.5 w-3.5" />
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => onOpen('inspect')} title="Inspect container">
+            <Search className="h-3.5 w-3.5" />
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => onOpen('logs')} title="Live container logs">
+            <FileText className="h-3.5 w-3.5" />
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => onOpen('stats')} title="Live container stats">
+            <Activity className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onOpen('watch')}
+            title={linkedWatch ? 'Edit update tracking' : 'Track this container for updates'}
+          >
+            <Bell className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onOpen('exec')}
+            title="Open a shell inside this container (exec)"
+          >
+            <SquareChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </>
+      )}
+      actionsRight={
+        <>
           {!notFound && (
             <ContainerLifecycleActions
               containerName={card.name}
@@ -222,19 +153,13 @@ export function ContainerCard({
             <CardOverflow
               allowRemoval={allowRemoval}
               busy={busy}
-              containerName={card.name}
               onRequestRemove={requestRemove}
             />
           )}
-        </div>
-      </div>
-
-      {error && (
-        <p className="cc-action-error docker-instances-card-action-error">
-          <AlertCircle className="h-3.5 w-3.5 inline" /> {error}
-        </p>
-      )}
-
+        </>
+      }
+      error={error}
+    >
       <RemoveConfirmDialog
         open={removeDialogOpen}
         containerName={card.name}
@@ -244,7 +169,7 @@ export function ContainerCard({
         onConfirm={confirmRemove}
         onCancel={() => setRemoveDialogOpen(false)}
       />
-    </div>
+    </EntityCard>
   )
 }
 
@@ -262,12 +187,11 @@ function renderStatusWithHealth(status: string) {
 interface CardOverflowProps {
   allowRemoval: boolean
   busy: boolean
-  containerName: string
   onRequestRemove: () => void
 }
 
 function CardOverflow({
-  allowRemoval, busy, containerName: _containerName, onRequestRemove,
+  allowRemoval, busy, onRequestRemove,
 }: CardOverflowProps) {
   if (!allowRemoval) return null
 

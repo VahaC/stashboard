@@ -47,4 +47,55 @@ public sealed class StashboardOptions
     /// works for every host type (local socket, TCP+TLS, SSH tunnel).
     /// </summary>
     public bool AllowContainerExec { get; set; } = false;
+
+    /// <summary>
+    /// V6.6 — <strong>first-run seed</strong> for the browser Proxmox LXC
+    /// console master switch. The live value is DB-backed and managed from the
+    /// Settings page (<c>ProxmoxConsoleSettingsEntity</c> /
+    /// <c>/api/settings/proxmox-console</c>); this config flag only seeds the
+    /// row the first time it's read, so an operator who set it on first boot
+    /// keeps that value until they change it in the UI. Default <c>false</c> —
+    /// the console SSHes to the Proxmox host and runs <c>pct exec</c> inside a
+    /// guest, so it also requires a per-host opt-in
+    /// (<c>ProxmoxConnection.AllowConsole</c>) and SSH credentials on the host.
+    /// </summary>
+    public bool AllowProxmoxConsole { get; set; } = false;
+
+    /// <summary>
+    /// V6.7.1 — <strong>first-run seed</strong> for the one-click Proxmox
+    /// <em>Update now</em> master switch. The live value is DB-backed and
+    /// managed from the Settings page (<c>ProxmoxUpdateApplySettingsEntity</c> /
+    /// <c>/api/settings/proxmox-updates</c>); this config flag only seeds the row
+    /// the first time it's read, so an operator who set it on first boot keeps
+    /// that value until they change it in the UI. Default <c>false</c> — applying
+    /// updates runs <c>apt-get dist-upgrade</c> on the node and inside its LXCs
+    /// over SSH, so it also requires a per-host opt-in
+    /// (<c>ProxmoxConnection.AllowUpdates</c>) and SSH credentials on the host.
+    /// </summary>
+    public bool AllowProxmoxUpdates { get; set; } = false;
+
+    /// <summary>
+    /// V6.13 — <strong>first-run seed</strong> for the destroy-LXC master switch.
+    /// The live value is DB-backed and managed from the Settings page
+    /// (<c>ProxmoxDestroySettingsEntity</c> /
+    /// <c>/api/settings/proxmox-destroy</c>); this config flag only seeds the row
+    /// the first time it's read, so an operator who set it on first boot keeps
+    /// that value until they change it in the UI. Default <c>false</c> —
+    /// destroying an LXC is irreversible (the container's disk is gone), so it
+    /// also requires a per-host opt-in (<c>ProxmoxConnection.AllowDestroy</c>) and
+    /// a double confirmation in the UI before it can run.
+    /// </summary>
+    public bool AllowProxmoxDestroy { get; set; } = false;
+
+    /// <summary>
+    /// V6.13.1 — <strong>first-run seed</strong> for the create-LXC master switch.
+    /// The live value is DB-backed and managed from the Settings page
+    /// (<c>ProxmoxCreateSettingsEntity</c> /
+    /// <c>/api/settings/proxmox-create</c>); this config flag only seeds the row
+    /// the first time it's read, so an operator who set it on first run keeps that
+    /// value until they change it in the UI. Default <c>false</c> — creating an LXC
+    /// provisions a new container from a template on the host, so it also requires
+    /// a per-host opt-in (<c>ProxmoxConnection.AllowCreate</c>) before it can run.
+    /// </summary>
+    public bool AllowProxmoxCreate { get; set; } = false;
 }

@@ -1,0 +1,22 @@
+/* V6 — Setup guides page. Reuses settings-page layout and account-page card
+   styles; adds only the code-block + anchor offset. */
+
+.help-section {
+  /* Keep the card title clear of the viewport top when jumped to via #hash. */
+  scroll-margin-top: 1rem;
+}
+
+.help-code {
+  display: block;
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.375rem;
+  background: var(--muted);
+  color: var(--foreground);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}

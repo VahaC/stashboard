@@ -10,11 +10,13 @@ namespace Stashboard.Api.Services;
 /// <summary>
 /// Exports / imports a single user's full configuration as portable JSON:
 /// categories, tags, Docker connections, services (with credentials + tags +
-/// the Docker connection link), Docker watches, and the user's own settings.
+/// the Docker connection link), Docker watches, Proxmox connections (with their
+/// per-guest monitoring intent), and the user's own settings.
 /// <para>
 /// Encrypted-at-rest values (credential values, TLS/SSH material, registry/AWS/
-/// GitHub secrets) are decrypted on export and re-encrypted on import, so a
-/// backup is portable across instances that use different encryption keys.
+/// GitHub secrets, Proxmox API token + SSH key) are decrypted on export and
+/// re-encrypted on import, so a backup is portable across instances that use
+/// different encryption keys.
 /// Runtime status (digests, last-checked timestamps, update history) is
 /// intentionally not exported — it is re-derived by the background checker.
 /// </para>
@@ -47,6 +49,18 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             .Where(s => s.UserId == userId)
             .ToListAsync(cancellationToken);
         var watches = await db.DockerWatches.AsNoTracking().Where(w => w.UserId == userId).ToListAsync(cancellationToken);
+        var proxmoxConnections = await db.ProxmoxConnections.AsNoTracking().Where(c => c.UserId == userId).ToListAsync(cancellationToken);
+        var proxmoxConnectionIds = proxmoxConnections.Select(c => c.Id).ToList();
+        // Only the guest rows carrying user intent (monitoring turned off, or
+        // snoozed) are worth exporting; everything else on a guest is scan output
+        // that repopulates on the next scan. Keyed by VmId so it re-attaches.
+        var proxmoxGuests = await db.ProxmoxGuests.AsNoTracking()
+            .Where(g => proxmoxConnectionIds.Contains(g.ProxmoxConnectionId)
+                && (!g.MonitoringEnabled || g.MonitoringSnoozedUntil != null))
+            .ToListAsync(cancellationToken);
+        var guestsByConnection = proxmoxGuests
+            .GroupBy(g => g.ProxmoxConnectionId)
+            .ToDictionary(grp => grp.Key, grp => grp.ToList());
 
         var dto = new BackupDto(
             ExportedUtc: DateTime.UtcNow,
@@ -73,7 +87,19 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 Dec(w.RegistryUsernameEncrypted), Dec(w.RegistryPasswordEncrypted), Dec(w.GitHubPatEncrypted),
                 w.RegistryAuthType, Dec(w.AwsAccessKeyIdEncrypted), Dec(w.AwsSecretAccessKeyEncrypted), w.AwsRegion,
                 w.UpdateNotificationsEnabled, w.TelegramNotificationsEnabled, w.ScheduleType, w.CheckEveryHours,
-                w.CheckAtTime, w.CheckOnDayOfWeek, w.TagPatternFilter, w.WebhookToken)).ToList());
+                w.CheckAtTime, w.CheckOnDayOfWeek, w.TagPatternFilter, w.WebhookToken)).ToList(),
+            ProxmoxConnections: proxmoxConnections.Select(c => new ProxmoxConnectionDto(
+                c.Id, c.Name, c.ApiBaseUrl, c.NodeName, c.ServerType, c.ApiTokenId,
+                Dec(c.ApiTokenSecretEncrypted), c.SkipTlsVerify,
+                c.SshHost, c.SshPort, c.SshUsername,
+                Dec(c.SshPrivateKeyEncrypted), Dec(c.SshPrivateKeyPassphraseEncrypted),
+                c.AllowConsole, c.AllowUpdates, c.AllowDestroy, c.AllowCreate, c.Enabled,
+                c.TelemetryPollSeconds, c.UpdateNotificationsEnabled, c.TelegramNotificationsEnabled,
+                c.ScheduleType, c.CheckEveryHours, c.CheckAtTime, c.CheckOnDayOfWeek, c.WebhookToken,
+                (guestsByConnection.TryGetValue(c.Id, out var gs) ? gs : [])
+                    .Select(g => new ProxmoxGuestDto(
+                        g.VmId, g.GuestType, g.Name, g.MonitoringEnabled, g.MonitoringSnoozedUntil))
+                    .ToList())).ToList());
 
         return JsonSerializer.SerializeToUtf8Bytes(dto, JsonOpts);
     }
@@ -155,6 +181,78 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 idMap[dc.Id] = fresh.Id;
             }
             else { idMap[dc.Id] = existing.Id; }
+        }
+
+        // ── Proxmox connections (merge by name) ──
+        foreach (var pc in dto.ProxmoxConnections ?? [])
+        {
+            var existing = await db.ProxmoxConnections.FirstOrDefaultAsync(x => x.UserId == userId && x.Name == pc.Name, cancellationToken);
+            Guid connectionId;
+            if (existing is null)
+            {
+                // Webhook tokens are globally unique. On a same-instance re-import
+                // the original host may still hold this token — drop it rather than
+                // fail the import; the user can re-issue a webhook URL from the UI.
+                var webhookToken = pc.WebhookToken;
+                if (webhookToken is not null
+                    && await db.ProxmoxConnections.AnyAsync(x => x.WebhookToken == webhookToken, cancellationToken))
+                {
+                    webhookToken = null;
+                }
+
+                var fresh = new ProxmoxConnectionEntity
+                {
+                    UserId = userId,
+                    Name = pc.Name,
+                    ApiBaseUrl = pc.ApiBaseUrl,
+                    NodeName = pc.NodeName,
+                    ServerType = pc.ServerType,
+                    ApiTokenId = pc.ApiTokenId,
+                    ApiTokenSecretEncrypted = Enc(pc.ApiTokenSecret),
+                    SkipTlsVerify = pc.SkipTlsVerify,
+                    SshHost = pc.SshHost,
+                    SshPort = pc.SshPort,
+                    SshUsername = pc.SshUsername,
+                    SshPrivateKeyEncrypted = Enc(pc.SshPrivateKey),
+                    SshPrivateKeyPassphraseEncrypted = Enc(pc.SshPrivateKeyPassphrase),
+                    AllowConsole = pc.AllowConsole,
+                    AllowUpdates = pc.AllowUpdates,
+                    AllowDestroy = pc.AllowDestroy,
+                    AllowCreate = pc.AllowCreate,
+                    Enabled = pc.Enabled,
+                    TelemetryPollSeconds = pc.TelemetryPollSeconds,
+                    UpdateNotificationsEnabled = pc.UpdateNotificationsEnabled,
+                    TelegramNotificationsEnabled = pc.TelegramNotificationsEnabled,
+                    ScheduleType = pc.ScheduleType,
+                    CheckEveryHours = pc.CheckEveryHours,
+                    CheckAtTime = pc.CheckAtTime,
+                    CheckOnDayOfWeek = pc.CheckOnDayOfWeek,
+                    WebhookToken = webhookToken,
+                };
+                db.ProxmoxConnections.Add(fresh);
+                connectionId = fresh.Id;
+            }
+            else { connectionId = existing.Id; }
+
+            // Per-guest monitoring intent. Additive: only seed rows that don't
+            // already exist for this host (keyed by VmId); the next scan fills in
+            // the scan-derived fields and preserves these flags across re-discovery.
+            foreach (var g in pc.Guests ?? [])
+            {
+                var guestExists = await db.ProxmoxGuests
+                    .AnyAsync(x => x.ProxmoxConnectionId == connectionId && x.VmId == g.VmId, cancellationToken);
+                if (guestExists) continue;
+
+                db.ProxmoxGuests.Add(new ProxmoxGuestEntity
+                {
+                    ProxmoxConnectionId = connectionId,
+                    VmId = g.VmId,
+                    GuestType = g.GuestType,
+                    Name = g.Name,
+                    MonitoringEnabled = g.MonitoringEnabled,
+                    MonitoringSnoozedUntil = g.MonitoringSnoozedUntil,
+                });
+            }
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -267,7 +365,8 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         List<TagDto>? Tags,
         List<DockerConnectionDto>? DockerConnections,
         List<ServiceDto>? Services,
-        List<DockerWatchDto>? DockerWatches);
+        List<DockerWatchDto>? DockerWatches,
+        List<ProxmoxConnectionDto>? ProxmoxConnections = null);
 
     private sealed record UserSettingsDto(
         string? DisplayName, string Theme, string DashboardSortMode, bool DashboardGroupByCategory,
@@ -301,4 +400,17 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         string? AwsAccessKeyId, string? AwsSecretAccessKey, string? AwsRegion,
         bool UpdateNotificationsEnabled, bool TelegramNotificationsEnabled, CheckScheduleType ScheduleType,
         int CheckEveryHours, TimeOnly? CheckAtTime, DayOfWeek? CheckOnDayOfWeek, string? TagPatternFilter, string? WebhookToken);
+
+    private sealed record ProxmoxConnectionDto(
+        Guid Id, string Name, string ApiBaseUrl, string NodeName, ProxmoxServerType ServerType, string ApiTokenId,
+        string? ApiTokenSecret, bool SkipTlsVerify,
+        string? SshHost, int? SshPort, string? SshUsername,
+        string? SshPrivateKey, string? SshPrivateKeyPassphrase,
+        bool AllowConsole, bool AllowUpdates, bool AllowDestroy, bool AllowCreate, bool Enabled,
+        int? TelemetryPollSeconds, bool UpdateNotificationsEnabled, bool TelegramNotificationsEnabled,
+        CheckScheduleType ScheduleType, int CheckEveryHours, TimeOnly? CheckAtTime, DayOfWeek? CheckOnDayOfWeek,
+        string? WebhookToken, List<ProxmoxGuestDto> Guests);
+
+    private sealed record ProxmoxGuestDto(
+        int VmId, ProxmoxGuestType GuestType, string Name, bool MonitoringEnabled, DateTime? MonitoringSnoozedUntil);
 }

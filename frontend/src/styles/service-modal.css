@@ -138,6 +138,17 @@
   gap: 0.375rem;
 }
 
+.service-modal-field.two-column {
+  grid-template-columns: 1fr 1fr;
+  flex-direction: row;
+}
+.service-modal-field.two-column .ssh-host-field{
+  width: 75%;
+}
+.service-modal-field.two-column .ssh-port-field{
+  width: 25%;
+}
+
 .service-modal-field-full {
   grid-column: 1 / -1;
 }
@@ -590,6 +601,7 @@
   background: var(--background);
   padding: 0 0.5rem;
   font-size: 12px;
+  height: 2.25rem;
 }
 
 .docker-secret-row input,

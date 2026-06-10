@@ -14,6 +14,7 @@ using Stashboard.Api.Services.ContainerExec;
 using Stashboard.Api.Services.HealthCheckSettings;
 using Stashboard.Api.Services.HostShell;
 using Stashboard.Api.Services.ImagePrune;
+using Stashboard.Api.Services.ProxmoxConsole;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Enums;
 using Stashboard.Core.Options;
@@ -134,6 +135,7 @@ public class Program
         builder.Services.AddScoped<IWebResourceMapper, WebResourceMapper>();
         builder.Services.AddScoped<IDockerWatchMapper, DockerWatchMapper>();
         builder.Services.AddScoped<IDockerConnectionMapper, DockerConnectionMapper>();
+        builder.Services.AddScoped<IProxmoxConnectionMapper, ProxmoxConnectionMapper>();
         builder.Services.AddSingleton<IStashboardMapper, StashboardMapper>();
         builder.Services.AddScoped<IServiceStatusNotificationService, ServiceStatusNotificationService>();
         builder.Services.AddScoped<IDockerUpdateNotificationService, DockerUpdateNotificationService>();
@@ -169,9 +171,39 @@ public class Program
         // managed from the Settings → Health checks page. Seeded from the HealthCheck
         // config block (bound in Infrastructure) on first read.
         builder.Services.AddScoped<IHealthCheckSettingsService, HealthCheckSettingsService>();
+        // V6.0 — Proxmox LXC update monitoring. The API client + SSH inspector
+        // + checker live in Infrastructure; here we wire the scan service (the
+        // per-connection unit of work, shared by the loop and the "Check now"
+        // endpoint), the notification channel, the tick options, and the
+        // background loop.
+        builder.Services.Configure<ProxmoxUpdateOptions>(builder.Configuration.GetSection(ProxmoxUpdateOptions.SectionName));
+        builder.Services.AddScoped<IProxmoxUpdateNotificationService, ProxmoxUpdateNotificationService>();
+        builder.Services.AddScoped<Services.Proxmox.IProxmoxScanService, Services.Proxmox.ProxmoxScanService>();
+        // V6.8.1 — node-health alerting: the per-tick evaluation service + its
+        // email/Telegram notifier. Both scoped; the background loop resolves the
+        // service per tick.
+        builder.Services.AddScoped<IProxmoxNodeAlertNotificationService, ProxmoxNodeAlertNotificationService>();
+        builder.Services.AddScoped<Services.Proxmox.IProxmoxNodeAlertService, Services.Proxmox.ProxmoxNodeAlertService>();
+        // V6.7.1 — DB-backed master switch for one-click "Update now".
+        builder.Services.AddScoped<Services.Proxmox.IProxmoxUpdateApplySettingsService, Services.Proxmox.ProxmoxUpdateApplySettingsService>();
+        // V6.13 — DB-backed master switch for destroy-LXC.
+        builder.Services.AddScoped<Services.Proxmox.IProxmoxDestroySettingsService, Services.Proxmox.ProxmoxDestroySettingsService>();
+        // V6.13.1 — DB-backed master switch for create-LXC.
+        builder.Services.AddScoped<Services.Proxmox.IProxmoxCreateSettingsService, Services.Proxmox.ProxmoxCreateSettingsService>();
+        // V6.6 — browser LXC console: an interactive shell *inside* an LXC,
+        // reached by SSHing to the Proxmox host and running `pct exec`. Reuses
+        // the V5.3 SSH PTY connector (IHostShellConnector) + the shared
+        // WebSocket bridge / byte pump. Here we wire the ticket store,
+        // concurrency tally, the tunables, and the DB-backed master switch
+        // (seeded from Stashboard:AllowProxmoxConsole on first run).
+        builder.Services.Configure<ProxmoxConsoleOptions>(builder.Configuration.GetSection(ProxmoxConsoleOptions.SectionName));
+        builder.Services.AddSingleton<IProxmoxConsoleTicketService, ProxmoxConsoleTicketService>();
+        builder.Services.AddSingleton<IProxmoxConsoleSessionRegistry, ProxmoxConsoleSessionRegistry>();
+        builder.Services.AddScoped<IProxmoxConsoleSettingsService, ProxmoxConsoleSettingsService>();
         builder.Services.AddHostedService<HealthCheckBackgroundService>();
         builder.Services.AddHostedService<DockerUpdateBackgroundService>();
         builder.Services.AddHostedService<DockerImagePruneBackgroundService>();
+        builder.Services.AddHostedService<ProxmoxUpdateBackgroundService>();
 
         // CORS — allow the Vite dev server (5173) in development.
         builder.Services.AddCors(o => o.AddDefaultPolicy(p => p
@@ -274,7 +306,9 @@ public class Program
                 db.Database.ExecuteSqlRaw(
                     $"UPDATE \"HostShellSessions\" SET \"EndedUtc\" = \"StartedUtc\", \"EndReason\" = {interrupted} WHERE \"EndReason\" = {active};") +
                 db.Database.ExecuteSqlRaw(
-                    $"UPDATE \"DockerExecSessions\" SET \"EndedUtc\" = \"StartedUtc\", \"EndReason\" = {interrupted} WHERE \"EndReason\" = {active};");
+                    $"UPDATE \"DockerExecSessions\" SET \"EndedUtc\" = \"StartedUtc\", \"EndReason\" = {interrupted} WHERE \"EndReason\" = {active};") +
+                db.Database.ExecuteSqlRaw(
+                    $"UPDATE \"ProxmoxConsoleSessions\" SET \"EndedUtc\" = \"StartedUtc\", \"EndReason\" = {interrupted} WHERE \"EndReason\" = {active};");
 
             if (closed > 0)
                 logger.LogWarning(

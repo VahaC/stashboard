@@ -49,6 +49,81 @@ export interface ExecSession {
   active: boolean
 }
 
+export interface ConsoleSession {
+  id: string
+  proxmoxConnectionId: string | null
+  connectionName: string | null
+  nodeName: string | null
+  vmId: number
+  guestName: string | null
+  command: string | null
+  startedUtc: string
+  endedUtc: string | null
+  bytesFromClient: number
+  bytesToClient: number
+  endReason: SessionEndReason
+  error: string | null
+  active: boolean
+}
+
+export interface ProxmoxUpdateSession {
+  id: string
+  proxmoxConnectionId: string | null
+  connectionName: string | null
+  nodeName: string | null
+  /** 'Node' | 'Lxc' (serialised enum). */
+  targetType: string
+  vmId: number
+  targetName: string | null
+  startedUtc: string
+  endedUtc: string | null
+  exitStatus: number | null
+  bytesToClient: number
+  endReason: SessionEndReason
+  error: string | null
+  active: boolean
+}
+
+export interface ProxmoxMonitoringAudit {
+  id: string
+  proxmoxConnectionId: string | null
+  connectionName: string | null
+  nodeName: string | null
+  vmId: number
+  guestName: string | null
+  /** 'Enabled' | 'Disabled' | 'Snoozed' | 'SnoozeCleared' (serialised enum). */
+  changeType: string
+  monitoringEnabled: boolean
+  snoozedUntil: string | null
+  bulk: boolean
+  changedUtc: string
+}
+
+export interface ProxmoxDestroyAudit {
+  id: string
+  proxmoxConnectionId: string | null
+  connectionName: string | null
+  nodeName: string | null
+  vmId: number
+  guestName: string | null
+  success: boolean
+  error: string | null
+  destroyedUtc: string
+}
+
+export interface ProxmoxCreateAudit {
+  id: string
+  proxmoxConnectionId: string | null
+  connectionName: string | null
+  nodeName: string | null
+  vmId: number
+  hostname: string | null
+  template: string | null
+  success: boolean
+  error: string | null
+  createdAtUtc: string
+}
+
 export interface UpdateAttempt {
   id: string
   status: string
@@ -91,6 +166,21 @@ export const auditApi = {
   },
   async getExecSessions(opts: PageParams = {}): Promise<ExecSession[]> {
     return (await api.get<ExecSession[]>('/api/docker/container-exec/sessions', { params: params(opts) })).data
+  },
+  async getConsoleSessions(opts: PageParams = {}): Promise<ConsoleSession[]> {
+    return (await api.get<ConsoleSession[]>('/api/proxmox/console/sessions', { params: params(opts) })).data
+  },
+  async getProxmoxUpdateSessions(opts: PageParams = {}): Promise<ProxmoxUpdateSession[]> {
+    return (await api.get<ProxmoxUpdateSession[]>('/api/proxmox/updates/sessions', { params: params(opts) })).data
+  },
+  async getProxmoxMonitoringAudits(opts: PageParams = {}): Promise<ProxmoxMonitoringAudit[]> {
+    return (await api.get<ProxmoxMonitoringAudit[]>('/api/proxmox/monitoring/sessions', { params: params(opts) })).data
+  },
+  async getProxmoxDestroyAudits(opts: PageParams = {}): Promise<ProxmoxDestroyAudit[]> {
+    return (await api.get<ProxmoxDestroyAudit[]>('/api/proxmox/destroy/sessions', { params: params(opts) })).data
+  },
+  async getProxmoxCreateAudits(opts: PageParams = {}): Promise<ProxmoxCreateAudit[]> {
+    return (await api.get<ProxmoxCreateAudit[]>('/api/proxmox/create/sessions', { params: params(opts) })).data
   },
   async getUpdateAttempts(opts: PageParams = {}): Promise<UpdateAttempt[]> {
     return (await api.get<UpdateAttempt[]>('/api/docker/update-attempts', { params: params(opts) })).data

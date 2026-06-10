@@ -45,8 +45,17 @@ public interface IHostShellConnector
     /// surfaces it as a failed handshake); the SSH session is cleaned up before
     /// re-throwing so nothing leaks.
     /// </summary>
+    /// <param name="initialCommand">
+    /// V6.6 — optional command written to the PTY immediately after it opens
+    /// (followed by a newline). The V5.3 host terminal passes <c>null</c> for a
+    /// plain login shell; the Proxmox LXC console passes
+    /// <c>exec pct exec &lt;vmid&gt; -- &lt;shell&gt;</c> so the login shell is
+    /// replaced by a shell inside the container — when that inner shell exits,
+    /// the SSH channel closes and the session ends cleanly.
+    /// </param>
     IHostShellChannel Connect(
         DockerSshCredentials credentials,
         HostShellWindow window,
+        string? initialCommand = null,
         CancellationToken cancellationToken = default);
 }

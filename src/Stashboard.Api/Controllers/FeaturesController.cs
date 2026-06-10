@@ -4,6 +4,8 @@ using Microsoft.Extensions.Options;
 using Stashboard.Api.Contracts;
 using Stashboard.Api.Services.ContainerExec;
 using Stashboard.Api.Services.HostShell;
+using Stashboard.Api.Services.Proxmox;
+using Stashboard.Api.Services.ProxmoxConsole;
 using Stashboard.Core.Options;
 
 namespace Stashboard.Api.Controllers;
@@ -21,7 +23,11 @@ namespace Stashboard.Api.Controllers;
 public class FeaturesController(
     IOptions<StashboardOptions> options,
     IHostShellSettingsService hostShellSettings,
-    IContainerExecSettingsService containerExecSettings) : ControllerBase
+    IContainerExecSettingsService containerExecSettings,
+    IProxmoxConsoleSettingsService proxmoxConsoleSettings,
+    IProxmoxUpdateApplySettingsService proxmoxUpdatesSettings,
+    IProxmoxDestroySettingsService proxmoxDestroySettings,
+    IProxmoxCreateSettingsService proxmoxCreateSettings) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<StashboardFeaturesResponse>> Get(CancellationToken cancellationToken) =>
@@ -31,5 +37,13 @@ public class FeaturesController(
             // the Settings page, not a static config flag.
             await hostShellSettings.IsEnabledAsync(cancellationToken),
             // V5.7 — container-exec master switch, same DB-backed pattern.
-            await containerExecSettings.IsEnabledAsync(cancellationToken)));
+            await containerExecSettings.IsEnabledAsync(cancellationToken),
+            // V6.6 — LXC-console master switch, same DB-backed pattern.
+            await proxmoxConsoleSettings.IsEnabledAsync(cancellationToken),
+            // V6.7.1 — Proxmox "Update now" master switch, same DB-backed pattern.
+            await proxmoxUpdatesSettings.IsEnabledAsync(cancellationToken),
+            // V6.13 — destroy-LXC master switch, same DB-backed pattern.
+            await proxmoxDestroySettings.IsEnabledAsync(cancellationToken),
+            // V6.13.1 — create-LXC master switch, same DB-backed pattern.
+            await proxmoxCreateSettings.IsEnabledAsync(cancellationToken)));
 }

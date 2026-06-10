@@ -1505,18 +1505,152 @@ notify you on the usual cadence. You'll never silently miss an update.
 ## Audit (V5.8)
 
 The **Audit** page (sidebar → **Settings → Audit**) is a read-only view of the
-activity Stashboard records. Four tabs:
+activity Stashboard records. Five tabs:
 
 - **Host terminal** — every browser SSH shell opened to a Docker host (V5.3):
   connection / host, user, start / end, duration, bytes in / out, and how it
   ended.
 - **Container exec** — every shell opened inside a container (V5.7), plus the
   command that was run.
+- **LXC console** — every shell opened inside a Proxmox LXC (V6.6): host / node /
+  guest, the command, and the same duration / bytes / end-reason detail.
 - **Update attempts** — the per-container "Update now" history (V2.7).
 - **Image prune** — scheduled and manual prune runs and how much was reclaimed
   (V5.5).
 
 Sessions still open show an **Active** badge. The page is read-only — audit rows
-cannot be edited or deleted from the UI. The host-terminal dialog and the
-container **Exec** panel each link straight to this page, pre-filtered to the
-connection you opened them from.
+cannot be edited or deleted from the UI. The host-terminal dialog, the container
+**Exec** panel and the LXC **Console** panel each link straight to this page,
+pre-filtered to the connection you opened them from.
+
+## Proxmox LXC update monitoring (V6.0)
+
+Stashboard also tracks pending **OS package updates** one layer below Docker —
+on Proxmox **LXC containers** and the Proxmox **node** itself. It's a separate
+**Proxmox** page (sidebar → **Proxmox**), not a Docker watch.
+
+### What you need
+
+Two credentials per Proxmox host, because no single one covers the whole job:
+
+1. **An API token** — *Datacenter → Permissions → API Tokens → Add*. Give it a
+   token id like `stashboard` under a user such as `root@pam`, and a role that
+   can read node + guest status (`PVEAuditor` is enough). You'll get a
+   `USER@REALM!TOKENID` id and a one-time **secret** (UUID). Stashboard sends
+   these as the `PVEAPIToken` header — no password, no login round-trip.
+2. **An SSH key** — the API can list LXCs and read the *node's* updates, but
+   Proxmox exposes **no command-exec endpoint for LXC**, so the per-container
+   count is read over SSH with `pct exec <vmid> -- apt list --upgradable`. Add a
+   key the same way as the Docker SSH path (see §2): generate a keypair, append
+   the public key to `~/.ssh/authorized_keys` on the Proxmox host for a user
+   that can run `pct` (root, or a sudo-capable user), and paste the **private**
+   key into Stashboard.
+
+> If you only provide the API token, the **node** card still works; running LXC
+> cards will show *"SSH not configured"* instead of a count.
+
+### Add a host
+
+**Proxmox → Add Proxmox host**:
+
+- **API base URL** — e.g. `https://pve.lan:8006`. **Skip TLS verification** is
+  on by default because homelab Proxmox installs ship a self-signed cert.
+- **Node name** — as it appears in Proxmox (e.g. `pve`).
+- **API token ID + secret**, then the **SSH** host / port / username / private
+  key (+ passphrase if the key is encrypted).
+- **Schedule** — the same Hourly / Daily / Weekly model as Docker watches.
+- **Notifications** — email and/or Telegram when new updates appear.
+
+Use **Test connection** to probe the API and SSH independently before saving.
+
+### What you see
+
+Each host shows one card per object — the node plus every LXC — with the
+**pending-update count**, running state, and last-checked time. A card turns
+amber when updates are pending. Stopped or non-Debian guests show *"—"* / a
+short reason instead of a count. **Check now** runs an immediate scan; otherwise
+the schedule drives it and email/Telegram fire when the pending set changes
+(you won't be re-pinged for the same un-applied updates).
+
+### Per-LXC monitoring toggle (V6.7)
+
+Each LXC has its own **Monitoring enabled** switch — the Proxmox counterpart to
+pausing a Docker watch. Open an LXC card → **Watch** tab and turn it off to skip
+a noisy or intentionally unmanaged container *without* disabling the whole host:
+
+- The disabled guest is **skipped by scheduled and manual checks** — Stashboard
+  never runs its `pct exec` update count — and is **excluded from email/Telegram
+  notifications** straight away, so you stop getting re-pinged about it. Its card
+  is muted with a **Disabled** badge and drops the amber emphasis; the
+  last-checked time stays visible.
+- The choice **sticks across rescans** (matched on host + vmid). Newly discovered
+  LXCs start **enabled**, so nothing changes until you opt a container out. The
+  Proxmox **node** itself is always monitored and can't be toggled here.
+- The Watch tab also has a **Check now**. Proxmox has no per-container probe — a
+  check is a single sweep of the whole node — so **Check now re-scans every
+  container on that node at once**, not just the one you opened. (One Stashboard
+  Proxmox host maps to one node.)
+
+### Apply updates — "Update now" (V6.7.1)
+
+Once you can *see* the pending count, you can **apply** it in one click. A
+**Update now** button appears on the node card and in each LXC's **Watch** tab;
+it runs `apt-get update && apt-get -y dist-upgrade` over SSH — directly on the
+node, or via `pct exec <vmid>` inside the LXC — and streams the apt output live
+into a confirm → run → result dialog.
+
+- **Node vs. container.** A node-level **Update now** upgrades the **whole node**
+  (a new kernel may need a reboot afterwards — Stashboard won't reboot for you);
+  an LXC-level one upgrades just that container. The confirmation spells this out
+  before anything runs.
+- **It's off by default and gated three ways**, exactly like the LXC console:
+  1. the server-wide switch at **Settings → Proxmox updates**;
+  2. a per-host **Allow apply updates** opt-in on the Proxmox host;
+  3. **SSH configured** on the host.
+  If any is missing, the button doesn't appear and the request is refused
+  server-side.
+- **Audited.** Every run is recorded on the Audit page's **Proxmox updates** tab
+  (who, when, host / node / guest, exit status, bytes of output, outcome).
+- **Non-Debian guests** (no `apt`) are detected and reported as "nothing to
+  upgrade" rather than failing. The upgrade is non-interactive and keeps your
+  existing config files on conflict, so it never hangs on a prompt.
+
+### LXC console (V6.6)
+
+Click an LXC card to open its modal, then the **Console** tab (or the console
+button on the card) for an interactive shell **inside the container** — the
+Proxmox counterpart to the Docker **Exec** tab, and the natural follow-up to the
+update count: once you see "this LXC has 7 updates pending", you can `apt
+upgrade` it without leaving the browser. Under the hood Stashboard SSHes to the
+Proxmox host (reusing the host's SSH credentials) and runs
+`pct exec <vmid> -- /bin/bash`, so there's no per-container key to manage.
+
+Like container exec it runs arbitrary commands inside the guest — usually as
+root — so it is **off by default** and needs **three** things before the live
+terminal appears:
+
+1. **Globally**, by the operator — **Settings → LXC console** → turn on **Enable
+   the LXC console server-wide**. (DB-backed; the optional
+   `Stashboard:AllowProxmoxConsole` config flag only seeds it on first run.)
+2. **Per host** — edit the Proxmox host and tick **Allow LXC console**.
+3. **SSH configured** on that host — the console SSHes in to run `pct exec`.
+
+Then open a **running** LXC → **Console**, optionally change the **Command**
+(defaults to `/bin/bash`; use `/bin/sh` for an Alpine guest), and **Connect**.
+
+**Guardrails (all enforced server-side):** every session is audited (who, when,
+host / node / guest, command, duration, bytes, why it ended) — visible on the
+**Settings → Audit** page's **LXC console** tab — with per-user / per-host
+concurrency caps and a server-side idle timeout (tune via
+`STASHBOARD_Stashboard__ProxmoxConsole__MaxSessionsPerUser` (default 3),
+`__MaxSessionsPerHost` (5), `__IdleTimeoutSeconds` (600; `0` disables),
+`__TicketTtlSeconds` (30), `__DefaultCommand` (`/bin/bash`)); the WebSocket is
+authorised by a single-use ticket. Live terminal resize is unavailable over SSH
+(the shell is sized on connect), same as the host terminal. The same
+reverse-proxy WebSocket note applies — the endpoint is
+`/api/proxmox/connections/{id}/lxc/{vmid}/console/ws`.
+
+### Out of scope (for now)
+
+- **Non-Debian** LXC templates (Alpine `apk`, Rocky `dnf`) — Debian/Ubuntu
+  `apt` only for the first cut.

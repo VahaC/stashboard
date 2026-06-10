@@ -94,55 +94,6 @@
   font-weight: 500;
 }
 
-.app-sidebar-settings {
-  padding: 0 0.5rem 0.5rem;
-}
-
-.app-settings-toggle {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 0.5rem;
-  border: none;
-  border-radius: var(--radius-md);
-  padding: 0.5rem 0.75rem;
-  background: none;
-  color: var(--muted-foreground);
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: color 160ms ease, background-color 160ms ease;
-}
-
-.app-settings-toggle:hover {
-  background: var(--accent);
-  color: var(--accent-foreground);
-}
-
-.app-settings-toggle-active {
-  color: var(--foreground);
-  font-weight: 500;
-}
-
-.app-settings-chevron {
-  margin-left: auto;
-  height: 0.875rem;
-  width: 0.875rem;
-  transition: transform 200ms ease;
-}
-
-.app-settings-chevron-open {
-  transform: rotate(180deg);
-}
-
-.app-settings-items {
-  padding-left: 0.5rem;
-  margin-top: 0.25rem;
-}
-
-.app-settings-items .app-nav-link {
-  font-size: 0.8125rem;
-}
-
 .app-sidebar-footer {
   border-top: 1px solid var(--border);
   padding: 0.75rem;

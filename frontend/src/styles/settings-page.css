@@ -1,0 +1,122 @@
+.settings-layout {
+  display: flex;
+  min-height: 100%;
+  position: relative;
+}
+
+.settings-mobile-bar {
+  display: none;
+}
+
+.settings-sidebar {
+  /* width: 12rem; */
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-right: 0.5rem;
+  border-right: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+}
+
+.settings-nav-link-group {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  padding: 0.75rem 0.5rem 0.25rem;
+  text-transform: uppercase;
+}
+.settings-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.75rem;
+  background: none;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+  transition: color 160ms ease, background-color 160ms ease;
+  white-space: nowrap;
+}
+
+.settings-nav-link + .settings-nav-link {
+  margin-top: 0.25rem;
+}
+
+.settings-nav-link:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.settings-nav-link-active {
+  border-left-color: var(--primary);
+  background: var(--accent);
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.settings-content {
+  flex: 1;
+  min-width: 0;
+  padding-left: 1.5rem;
+}
+
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgb(0 0 0 / 0.5);
+}
+
+.settings-mobile-nav {
+  background: var(--background);
+  border-right: 1px solid var(--border);
+  width: 14rem;
+  height: 100%;
+  padding: 0.75rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  overflow-y: auto;
+}
+
+.settings-mobile-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  padding: 0.25rem 0;
+}
+
+@media (max-width: 767px) {
+  .settings-layout {
+    flex-direction: column;
+  }
+
+  .settings-mobile-bar {
+    display: flex;
+    align-items: center;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1rem;
+  }
+
+  .settings-sidebar {
+    display: none;
+  }
+
+  .settings-content {
+    padding-left: 0;
+  }
+}

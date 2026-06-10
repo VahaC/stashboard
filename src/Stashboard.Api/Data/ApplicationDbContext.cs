@@ -13,6 +13,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<EmailSettingsEntity> EmailSettings => Set<EmailSettingsEntity>();
     public DbSet<HostShellSettingsEntity> HostShellSettings => Set<HostShellSettingsEntity>();
     public DbSet<ContainerExecSettingsEntity> ContainerExecSettings => Set<ContainerExecSettingsEntity>();
+    public DbSet<ProxmoxConsoleSettingsEntity> ProxmoxConsoleSettings => Set<ProxmoxConsoleSettingsEntity>();
+    public DbSet<ProxmoxUpdateApplySettingsEntity> ProxmoxUpdateApplySettings => Set<ProxmoxUpdateApplySettingsEntity>();
+    public DbSet<ProxmoxDestroySettingsEntity> ProxmoxDestroySettings => Set<ProxmoxDestroySettingsEntity>();
+    public DbSet<ProxmoxCreateSettingsEntity> ProxmoxCreateSettings => Set<ProxmoxCreateSettingsEntity>();
     public DbSet<HealthCheckSettingsEntity> HealthCheckSettings => Set<HealthCheckSettingsEntity>();
 
     public DbSet<WebResourceEntity> WebResources => Set<WebResourceEntity>();
@@ -27,6 +31,15 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<DockerExecSessionEntity> DockerExecSessions => Set<DockerExecSessionEntity>();
     public DbSet<ImagePruneSettingsEntity> ImagePruneSettings => Set<ImagePruneSettingsEntity>();
     public DbSet<DockerPruneRunEntity> DockerPruneRuns => Set<DockerPruneRunEntity>();
+    public DbSet<ProxmoxConnectionEntity> ProxmoxConnections => Set<ProxmoxConnectionEntity>();
+    public DbSet<ProxmoxGuestEntity> ProxmoxGuests => Set<ProxmoxGuestEntity>();
+    public DbSet<ProxmoxConsoleSessionEntity> ProxmoxConsoleSessions => Set<ProxmoxConsoleSessionEntity>();
+    public DbSet<ProxmoxUpdateSessionEntity> ProxmoxUpdateSessions => Set<ProxmoxUpdateSessionEntity>();
+    public DbSet<ProxmoxMonitoringAuditEntity> ProxmoxMonitoringAudits => Set<ProxmoxMonitoringAuditEntity>();
+    public DbSet<ProxmoxDestroyAuditEntity> ProxmoxDestroyAudits => Set<ProxmoxDestroyAuditEntity>();
+    public DbSet<ProxmoxCreateAuditEntity> ProxmoxCreateAudits => Set<ProxmoxCreateAuditEntity>();
+    public DbSet<ProxmoxNodeAlertSettingsEntity> ProxmoxNodeAlertSettings => Set<ProxmoxNodeAlertSettingsEntity>();
+    public DbSet<ProxmoxNodeAlertStateEntity> ProxmoxNodeAlertStates => Set<ProxmoxNodeAlertStateEntity>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -46,6 +59,18 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         // V5.7 — single-row, app-wide container-exec master switch (see ContainerExecSettingsEntity.SingletonId).
         builder.Entity<ContainerExecSettingsEntity>();
+
+        // V6.6 — single-row, app-wide LXC-console master switch (see ProxmoxConsoleSettingsEntity.SingletonId).
+        builder.Entity<ProxmoxConsoleSettingsEntity>();
+
+        // V6.7.1 — single-row, app-wide Proxmox "Update now" master switch (see ProxmoxUpdateApplySettingsEntity.SingletonId).
+        builder.Entity<ProxmoxUpdateApplySettingsEntity>();
+
+        // V6.13 — single-row, app-wide destroy-LXC master switch (see ProxmoxDestroySettingsEntity.SingletonId).
+        builder.Entity<ProxmoxDestroySettingsEntity>();
+
+        // V6.13.1 — single-row, app-wide create-LXC master switch (see ProxmoxCreateSettingsEntity.SingletonId).
+        builder.Entity<ProxmoxCreateSettingsEntity>();
 
         // V5.5 — single-row, app-wide image-prune settings (see ImagePruneSettingsEntity.SingletonId).
         builder.Entity<ImagePruneSettingsEntity>();
@@ -258,6 +283,42 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        builder.Entity<ProxmoxConnectionEntity>(e =>
+        {
+            // V6.0 — user-scoped, named Proxmox host. (UserId, Name) unique so
+            // the list has stable labels, mirroring DockerConnection.
+            e.HasIndex(c => new { c.UserId, c.Name }).IsUnique();
+            // The scan loads all enabled connections and filters due-ness in
+            // memory (same V2.2 schedule model as Docker watches).
+            e.HasIndex(c => new { c.UserId, c.Enabled, c.LastCheckedUtc });
+            // V6.11 — webhook token is the URL secret for the public update-check
+            // webhook endpoint. Unique so a tampered URL can't collide with
+            // another host's token; NULL is allowed for the majority of hosts
+            // that haven't opted in (both Postgres and SQLite treat multiple
+            // NULLs as distinct in a unique index).
+            e.HasIndex(c => c.WebhookToken).IsUnique();
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(c => c.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ProxmoxGuestEntity>(e =>
+        {
+            // V6.0 — auto-discovered node + LXC rows. (connection, vmid) is the
+            // natural key the scan upserts against.
+            e.HasIndex(g => new { g.ProxmoxConnectionId, g.VmId }).IsUnique();
+            // V6.7 — backfill existing rows to "monitoring on" so the toggle is
+            // additive and preserves current behaviour.
+            e.Property(g => g.MonitoringEnabled).HasDefaultValue(true);
+            // Deleting the host removes its discovered guests — they're
+            // meaningless without it.
+            e.HasOne(g => g.ProxmoxConnection)
+                .WithMany()
+                .HasForeignKey(g => g.ProxmoxConnectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         builder.Entity<DockerExecSessionEntity>(e =>
         {
             // V5.7 — audit log for browser container-exec sessions. Same shape
@@ -275,6 +336,134 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.HasOne<UserEntity>()
                 .WithMany()
                 .HasForeignKey(s => s.InitiatedByUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ProxmoxConsoleSessionEntity>(e =>
+        {
+            // V6.6 — audit log for browser LXC-console sessions. Same shape and
+            // conventions as the V5.7 container-exec audit table.
+            e.HasIndex(s => new { s.InitiatedByUserId, s.StartedUtc });
+            e.HasIndex(s => new { s.ProxmoxConnectionId, s.StartedUtc });
+            // Keep the audit row when the host is deleted — the host / guest
+            // details are denormalised onto the row precisely so the history
+            // survives. SetNull mirrors the container-exec convention.
+            e.HasOne<ProxmoxConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.ProxmoxConnectionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            // Owner cascade — deleting a user removes their console history.
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.InitiatedByUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ProxmoxUpdateSessionEntity>(e =>
+        {
+            // V6.7.1 — audit log for one-click "Update now" runs. Same shape and
+            // conventions as the V6.6 LXC-console audit table.
+            e.HasIndex(s => new { s.InitiatedByUserId, s.StartedUtc });
+            e.HasIndex(s => new { s.ProxmoxConnectionId, s.StartedUtc });
+            // Keep the audit row when the host is deleted — the host / target
+            // details are denormalised onto the row precisely so the history
+            // survives. SetNull mirrors the console convention.
+            e.HasOne<ProxmoxConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.ProxmoxConnectionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            // Owner cascade — deleting a user removes their update history.
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.InitiatedByUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ProxmoxMonitoringAuditEntity>(e =>
+        {
+            // V6.11 — audit log for LXC monitoring changes (toggle / bulk /
+            // snooze). Same shape and conventions as the V6.7.1 update-session
+            // audit table: per-user history (newest first applied at query time)
+            // and per-host history.
+            e.HasIndex(s => new { s.InitiatedByUserId, s.ChangedUtc });
+            e.HasIndex(s => new { s.ProxmoxConnectionId, s.ChangedUtc });
+            // Keep the audit row when the host is deleted — the host / guest
+            // details are denormalised onto the row precisely so the history
+            // survives. SetNull mirrors the update-session convention.
+            e.HasOne<ProxmoxConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.ProxmoxConnectionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            // Owner cascade — deleting a user removes their monitoring history.
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.InitiatedByUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ProxmoxDestroyAuditEntity>(e =>
+        {
+            // V6.13 — audit log for LXC destroys. Same shape and conventions as
+            // the V6.11 monitoring audit table: per-user history (newest first
+            // applied at query time) and per-host history.
+            e.HasIndex(s => new { s.InitiatedByUserId, s.DestroyedUtc });
+            e.HasIndex(s => new { s.ProxmoxConnectionId, s.DestroyedUtc });
+            // Keep the audit row when the host is deleted — the host / guest
+            // details are denormalised onto the row precisely so the history
+            // survives. SetNull mirrors the monitoring-audit convention.
+            e.HasOne<ProxmoxConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.ProxmoxConnectionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            // Owner cascade — deleting a user removes their destroy history.
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.InitiatedByUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ProxmoxCreateAuditEntity>(e =>
+        {
+            // V6.13.1 — audit log for LXC creates. Same shape and conventions as
+            // the V6.13 destroy audit table: per-user history (newest first
+            // applied at query time) and per-host history.
+            e.HasIndex(s => new { s.InitiatedByUserId, s.CreatedAtUtc });
+            e.HasIndex(s => new { s.ProxmoxConnectionId, s.CreatedAtUtc });
+            // Keep the audit row when the host is deleted — the host / guest
+            // details are denormalised onto the row precisely so the history
+            // survives. SetNull mirrors the destroy-audit convention.
+            e.HasOne<ProxmoxConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.ProxmoxConnectionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            // Owner cascade — deleting a user removes their create history.
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.InitiatedByUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ProxmoxNodeAlertSettingsEntity>(e =>
+        {
+            // V6.8.1 — one node-alert settings row per host (1:1). Unique so the
+            // service can upsert by connection id. Deleting the host cascades
+            // these preferences away.
+            e.HasIndex(s => s.ProxmoxConnectionId).IsUnique();
+            e.HasOne(s => s.ProxmoxConnection)
+                .WithMany()
+                .HasForeignKey(s => s.ProxmoxConnectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ProxmoxNodeAlertStateEntity>(e =>
+        {
+            // V6.8.1 — per-category debounce/throttle state. (connection,
+            // category) is the natural key the evaluation loop upserts against,
+            // mirroring ProxmoxGuest's (connection, vmid).
+            e.HasIndex(s => new { s.ProxmoxConnectionId, s.Category }).IsUnique();
+            e.HasOne(s => s.ProxmoxConnection)
+                .WithMany()
+                .HasForeignKey(s => s.ProxmoxConnectionId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

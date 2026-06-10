@@ -64,6 +64,13 @@ public abstract class DatabaseTestBase : IAsyncLifetime
         await db.ContainerExecSettings.ExecuteDeleteAsync();
         await db.DockerExecSessions.ExecuteDeleteAsync();
         await db.HealthCheckSettings.ExecuteDeleteAsync();
+        // V6.7.1 — reset the "Update now" master-switch singleton so each test
+        // starts from the config seed, not a previous test's persisted value.
+        await db.ProxmoxUpdateApplySettings.ExecuteDeleteAsync();
+        // V6.13 — same for the destroy-LXC master-switch singleton.
+        await db.ProxmoxDestroySettings.ExecuteDeleteAsync();
+        // V6.13.1 — same for the create-LXC master-switch singleton.
+        await db.ProxmoxCreateSettings.ExecuteDeleteAsync();
     }
 
     private static string BuildTestConnectionString()

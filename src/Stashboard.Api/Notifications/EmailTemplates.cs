@@ -97,6 +97,91 @@ public static class EmailTemplates
         return new EmailMessage(toEmail, $"[Stashboard] Update available for {serviceName}", html, text);
     }
 
+    /// <summary>
+    /// V6.0 — pending package updates detected on a Proxmox host. <paramref name="lines"/>
+    /// is an already-formatted "<c>name (vmid): N</c>" list of the node + LXCs
+    /// that have updates pending; <paramref name="totalUpdates"/> is their sum.
+    /// </summary>
+    public static EmailMessage ProxmoxUpdatesAvailable(
+        string toEmail,
+        string hostName,
+        IReadOnlyList<string> lines,
+        int totalUpdates)
+    {
+        var safeHost = WebUtility.HtmlEncode(hostName);
+        var htmlRows = string.Concat(lines.Select(l => $"<tr><td>{WebUtility.HtmlEncode(l)}</td></tr>"));
+        var textRows = string.Join("\n", lines.Select(l => $"  {l}"));
+
+        var html = $"""
+            <p>Pending package updates were detected on Proxmox host <strong>{safeHost}</strong> ({totalUpdates} total).</p>
+            <table cellpadding="4" style="border-collapse:collapse;font-family:monospace;">
+              {htmlRows}
+            </table>
+            <p>Apply them at your convenience. Stashboard only checks — it never runs <code>apt upgrade</code> for you.</p>
+            """;
+
+        var text = $"""
+            Pending package updates were detected on Proxmox host {hostName} ({totalUpdates} total).
+
+            {textRows}
+
+            Apply them at your convenience. Stashboard only checks - it never runs apt upgrade for you.
+            """;
+
+        return new EmailMessage(toEmail, $"[Stashboard] Updates pending on {hostName}", html, text);
+    }
+
+    /// <summary>
+    /// V6.8.1 — node-health alert digest for a Proxmox host. <paramref name="lines"/>
+    /// is an already-formatted list of active alerts (severity + metric + value +
+    /// threshold + first-seen); when <paramref name="allClear"/> is <c>true</c>
+    /// the list is empty and the message reports that previously-alerting metrics
+    /// have recovered.
+    /// </summary>
+    public static EmailMessage ProxmoxNodeAlerts(
+        string toEmail,
+        string hostName,
+        IReadOnlyList<string> lines,
+        bool allClear)
+    {
+        var safeHost = WebUtility.HtmlEncode(hostName);
+
+        if (allClear)
+        {
+            var clearHtml = $"""
+                <p>Node health on Proxmox host <strong>{safeHost}</strong> has recovered.</p>
+                <p>All previously alerting metrics are back within their thresholds.</p>
+                """;
+            var clearText = $"""
+                Node health on Proxmox host {hostName} has recovered.
+
+                All previously alerting metrics are back within their thresholds.
+                """;
+            return new EmailMessage(toEmail, $"[Stashboard] {hostName} node health recovered", clearHtml, clearText);
+        }
+
+        var htmlRows = string.Concat(lines.Select(l => $"<tr><td>{WebUtility.HtmlEncode(l)}</td></tr>"));
+        var textRows = string.Join("\n", lines.Select(l => $"  {l}"));
+
+        var html = $"""
+            <p>Node-health deviations are active on Proxmox host <strong>{safeHost}</strong>.</p>
+            <table cellpadding="4" style="border-collapse:collapse;font-family:monospace;">
+              {htmlRows}
+            </table>
+            <p>Check the node card on Stashboard for live metrics and suggested actions.</p>
+            """;
+
+        var text = $"""
+            Node-health deviations are active on Proxmox host {hostName}.
+
+            {textRows}
+
+            Check the node card on Stashboard for live metrics and suggested actions.
+            """;
+
+        return new EmailMessage(toEmail, $"[Stashboard] Node health alert on {hostName}", html, text);
+    }
+
     private static string? ShortenDigest(string? digest)
     {
         if (string.IsNullOrEmpty(digest)) return null;

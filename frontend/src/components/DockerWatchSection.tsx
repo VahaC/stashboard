@@ -3,7 +3,6 @@ import { Activity, AlertCircle, Check, ChevronDown, ChevronRight, Copy, Download
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import {
   useConnectionWatchUpdates,
   useCreateConnectionWatch,
@@ -33,8 +32,6 @@ import type {
   DockerWatch,
   DockerWatchUpsert,
   LinkedDockerWatchSummary,
-  SecretValueAction,
-  SecretValueUpsert,
   Service,
 } from '@/lib/types'
 import {
@@ -44,6 +41,14 @@ import {
   resolveRegistryAuthType,
 } from '@/lib/types'
 import { cn, getApiErrorMessage, parseApiErrors } from '@/lib/utils'
+import {
+  SecretFieldRow,
+  existingSecret,
+  pickFieldError,
+  toUpsert,
+  type SecretField,
+} from '@/components/connections/secret-field'
+import { SshCredentialFields } from '@/components/connections/SshCredentialFields'
 import { Link } from 'react-router-dom'
 import { ContainerInspectBody } from '@/components/docker/ContainerInspectBody'
 import { ContainerLogsPanel } from '@/components/docker/ContainerLogsPanel'
@@ -491,11 +496,8 @@ export function DockerConnectionForm({
   const tlsCaError = pickFieldError(fieldErrors, 'tlscacert', 'tlsCaCert')
   const tlsCertError = pickFieldError(fieldErrors, 'tlsclientcert', 'tlsClientCert')
   const tlsKeyError = pickFieldError(fieldErrors, 'tlsclientkey', 'tlsClientKey')
-  const sshHostError = pickFieldError(fieldErrors, 'sshhost', 'sshHost')
-  const sshPortError = pickFieldError(fieldErrors, 'sshport', 'sshPort')
-  const sshUsernameError = pickFieldError(fieldErrors, 'sshusername', 'sshUsername')
-  const sshPrivateKeyError = pickFieldError(fieldErrors, 'sshprivatekey', 'sshPrivateKey')
-  const sshPassphraseError = pickFieldError(fieldErrors, 'sshprivatekeypassphrase', 'sshPrivateKeyPassphrase')
+  // SSH host / port / username / key / passphrase errors are resolved inside
+  // the shared <SshCredentialFields> from the same fieldErrors map.
   const sshRemoteSocketError = pickFieldError(fieldErrors, 'sshremotesocketpath', 'sshRemoteSocketPath')
   const composeProjectPathError = pickFieldError(fieldErrors, 'composeprojectpath', 'composeProjectPath')
 
@@ -585,6 +587,15 @@ export function DockerConnectionForm({
 
         {isTcpTls && (
           <>
+            <div className="service-modal-field docker-section-field-full">
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Connects to the Docker daemon over the network with mutual TLS. Paste the CA cert, client cert and
+                client key generated when you protected the daemon socket.{' '}
+                <Link to="/help/docker-tls" target="_blank" rel="noreferrer" className="text-[var(--primary)] underline">
+                  How to generate the certs →
+                </Link>
+              </p>
+            </div>
             <SecretFieldRow label="TLS CA cert (PEM)" field={tlsCa} hasExisting={existing?.hasTlsConfigured ?? false} multiline error={tlsCaError} onChange={setTlsCa} />
             <SecretFieldRow label="TLS client cert (PEM)" field={tlsCert} hasExisting={existing?.hasTlsConfigured ?? false} multiline error={tlsCertError} onChange={setTlsCert} />
             <SecretFieldRow label="TLS client key (PEM)" field={tlsKey} hasExisting={existing?.hasTlsConfigured ?? false} multiline secret error={tlsKeyError} onChange={setTlsKey} />
@@ -593,78 +604,44 @@ export function DockerConnectionForm({
 
         {isSsh && (
           <>
-            <div className="service-modal-field">
-              <Label className="service-modal-label">SSH host</Label>
-              <Input
-                placeholder="vps.example.com"
-                value={form.sshHost}
-                onChange={(e) => setForm({ ...form, sshHost: e.target.value })}
-                className={cn('font-mono text-[12px]', sshHostError && 'border-destructive')}
-              />
-              {sshHostError && <p className="service-modal-field-error">{sshHostError}</p>}
-            </div>
-
-            <div className="service-modal-field">
-              <Label className="service-modal-label">SSH port</Label>
-              <Input
-                type="number"
-                min={1}
-                max={65535}
-                placeholder="22"
-                value={form.sshPort}
-                onChange={(e) => setForm({ ...form, sshPort: e.target.value })}
-                className={cn('font-mono text-[12px]', sshPortError && 'border-destructive')}
-              />
-              {sshPortError && <p className="service-modal-field-error">{sshPortError}</p>}
-            </div>
-
-            <div className="service-modal-field">
-              <Label className="service-modal-label">SSH username</Label>
-              <Input
-                placeholder="docker"
-                value={form.sshUsername}
-                onChange={(e) => setForm({ ...form, sshUsername: e.target.value })}
-                className={cn('font-mono text-[12px]', sshUsernameError && 'border-destructive')}
-              />
-              {sshUsernameError && <p className="service-modal-field-error">{sshUsernameError}</p>}
-            </div>
-
-            <div className="service-modal-field docker-section-field-full">
-              <Label className="service-modal-label">Remote socket path</Label>
-              <Input
-                placeholder="/var/run/docker.sock"
-                value={form.sshRemoteSocketPath}
-                onChange={(e) => setForm({ ...form, sshRemoteSocketPath: e.target.value })}
-                className={cn('font-mono text-[12px]', sshRemoteSocketError && 'border-destructive')}
-              />
-              {sshRemoteSocketError && <p className="service-modal-field-error">{sshRemoteSocketError}</p>}
-              <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                Defaults to <code>/var/run/docker.sock</code>. Use <code>/run/user/&lt;uid&gt;/docker.sock</code> for rootless Docker.
-              </p>
-            </div>
-
-            <SecretFieldRow
-              label="SSH private key (PEM)"
-              field={sshPrivateKey}
-              hasExisting={existing?.hasSshPrivateKey ?? false}
-              multiline
-              secret
-              error={sshPrivateKeyError}
-              onChange={setSshPrivateKey}
-            />
-            <SecretFieldRow
-              label="Private key passphrase (optional)"
-              field={sshPassphrase}
-              hasExisting={existing?.hasSshPrivateKeyPassphrase ?? false}
-              secret
-              error={sshPassphraseError}
-              onChange={setSshPassphrase}
-            />
+            <SshCredentialFields
+              host={form.sshHost}
+              onHostChange={(v) => setForm({ ...form, sshHost: v })}
+              port={form.sshPort}
+              onPortChange={(v) => setForm({ ...form, sshPort: v })}
+              username={form.sshUsername}
+              onUsernameChange={(v) => setForm({ ...form, sshUsername: v })}
+              usernamePlaceholder="docker"
+              privateKey={sshPrivateKey}
+              onPrivateKeyChange={setSshPrivateKey}
+              hasPrivateKey={existing?.hasSshPrivateKey ?? false}
+              passphrase={sshPassphrase}
+              onPassphraseChange={setSshPassphrase}
+              hasPassphrase={existing?.hasSshPrivateKeyPassphrase ?? false}
+              errors={fieldErrors}
+            >
+              <div className="service-modal-field docker-section-field-full">
+                <Label className="service-modal-label">Remote socket path</Label>
+                <Input
+                  placeholder="/var/run/docker.sock"
+                  value={form.sshRemoteSocketPath}
+                  onChange={(e) => setForm({ ...form, sshRemoteSocketPath: e.target.value })}
+                  className={cn('font-mono text-[12px]', sshRemoteSocketError && 'border-destructive')}
+                />
+                {sshRemoteSocketError && <p className="service-modal-field-error">{sshRemoteSocketError}</p>}
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                  Defaults to <code>/var/run/docker.sock</code>. Use <code>/run/user/&lt;uid&gt;/docker.sock</code> for rootless Docker.
+                </p>
+              </div>
+            </SshCredentialFields>
             <div className="service-modal-field docker-section-field-full">
               <p className="text-xs text-[var(--muted-foreground)]">
                 Stashboard opens an SSH connection per check and bridges <code>docker system dial-stdio</code> on
                 the remote host. Make sure the SSH user is in the <code>docker</code> group (or has equivalent
-                permission on the socket).
+                permission on the socket).{' '}
+                <Link to="/help/docker-ssh" target="_blank" rel="noreferrer" className="text-[var(--primary)] underline">
+                  How to set up SSH access →
+                </Link>
               </p>
             </div>
 
@@ -816,12 +793,6 @@ const TAG_FILTER_PRESETS: { label: string; pattern: string }[] = [
   { label: 'Stable only (no pre-release/rolling tags)', pattern: '(?i)^(?!.*-(rc|beta|alpha|dev|snapshot|pre|preview|canary|next|nightly|edge)).*$' },
   { label: 'Tag equals "stable"', pattern: '^stable$' },
 ]
-
-interface SecretField {
-  action: SecretValueAction
-  value: string
-  reveal: boolean
-}
 
 const emptyForm: FormState = {
   label: '',
@@ -1763,91 +1734,6 @@ function ReleaseNotesPanel({ url, body, tag }: { url: string | null; body: strin
     </div>
   )
 }
-
-interface SecretRowProps {
-  label: string
-  tooltip?: string
-  field: SecretField
-  hasExisting: boolean
-  secret?: boolean
-  multiline?: boolean
-  error?: string | null
-  onChange: (next: SecretField) => void
-}
-
-function SecretFieldRow({ label, tooltip, field, hasExisting, secret, multiline, error, onChange }: SecretRowProps) {
-  return (
-    <div className={cn('service-modal-field', multiline && 'docker-section-field-full')}>
-      <Label className="service-modal-label">
-        {label}
-        {tooltip && (
-          <span title={tooltip} className="docker-label-help">
-            <HelpCircle className="h-3 w-3 inline" />
-          </span>
-        )}
-      </Label>
-      <div className="docker-secret-row">
-        <select
-          className={error ? 'border-destructive' : ''}
-          value={field.action}
-          onChange={(e) => onChange({ ...field, action: e.target.value as SecretValueAction, value: '' })}
-        >
-          {hasExisting && <option value="Keep">Keep</option>}
-          <option value="Set">Set</option>
-          {hasExisting && <option value="Clear">Clear</option>}
-        </select>
-
-        {field.action === 'Set' ? (
-          multiline ? (
-            <Textarea
-              rows={3}
-              value={field.value}
-              onChange={(e) => onChange({ ...field, value: e.target.value })}
-              placeholder={secret ? '-----BEGIN PRIVATE KEY-----' : ''}
-              className={error ? 'border-destructive' : ''}
-            />
-          ) : (
-            <Input
-              type={secret && !field.reveal ? 'password' : 'text'}
-              value={field.value}
-              onChange={(e) => onChange({ ...field, value: e.target.value })}
-              className={error ? 'border-destructive' : ''}
-            />
-          )
-        ) : field.action === 'Keep' ? (
-          <span className="docker-secret-placeholder">Using saved value</span>
-        ) : (
-          <span className="docker-secret-placeholder">Will be cleared on save</span>
-        )}
-      </div>
-      {error && <p className="service-modal-field-error">{error}</p>}
-    </div>
-  )
-}
-
-const normalizeFieldKey = (key: string) => key.replace(/[^a-z0-9]/gi, '').toLowerCase()
-
-const pickFieldError = (errors: Record<string, string>, ...keys: string[]) => {
-  for (const key of keys) {
-    if (errors[key]) return errors[key]
-    if (errors[key.toLowerCase()]) return errors[key.toLowerCase()]
-
-    const normalized = normalizeFieldKey(key)
-    const found = Object.entries(errors).find(([k]) => normalizeFieldKey(k) === normalized)
-    if (found?.[1]) return found[1]
-  }
-  return null
-}
-
-const existingSecret = (hasValue: boolean): SecretField =>
-  hasValue
-    ? { action: 'Keep', value: '', reveal: false }
-    : { action: 'Set', value: '', reveal: false }
-
-const toUpsert = (s: SecretField): SecretValueUpsert => ({
-  action: s.action,
-  value: s.action === 'Set' ? s.value : null,
-})
 
 /** Schedule picker — V2.2 segmented control. Edits the slice of FormState
  *  that maps to the backend's `scheduleType` / `checkEveryHours` /

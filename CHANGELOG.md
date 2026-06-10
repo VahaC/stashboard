@@ -5,6 +5,767 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [6.15.0] — 2026-06-09
+
+### Added
+- **Proxmox connections in backup / restore (V6.15).** The config backup
+  ([`BackupService`](src/Stashboard.Api/Services/BackupService.cs), endpoints
+  `GET /api/backup/export` + `POST /api/backup/import`) exported categories, tags,
+  Docker connections, services, Docker watches and settings — but **omitted
+  Proxmox entirely**, so a user who exported a backup and restored it (e.g.
+  migrating hosts) silently lost every Proxmox host and its per-guest monitoring
+  choices. This closes that data-integrity gap.
+  - **`ProxmoxConnections`** are now exported / imported alongside
+    `DockerConnections`, reusing the same **merge-by-name** strategy. Connection
+    fields covered: node name, API base URL + token id, SSH host/user/port, the
+    `AllowConsole` / `AllowUpdates` / `AllowDestroy` / `AllowCreate` toggles,
+    `Enabled`, server type, telemetry poll interval, notification preferences,
+    schedule, and webhook token. The encrypted **API token secret** and **SSH
+    private key / passphrase** are decrypted on export and re-encrypted on import,
+    exactly like Docker TLS/SSH material, so a backup stays portable across
+    instances with different encryption keys.
+  - **Per-guest monitoring intent** travels with the host: a guest the user turned
+    monitoring **off** for (`MonitoringEnabled`), or **snoozed**
+    (`MonitoringSnoozedUntil`), is exported keyed by VmId and re-seeded on import
+    so the next scan re-attaches it. Default-monitored guests and all scan-derived
+    state (status, pending counts, errors, IP/uptime/resources) are **not**
+    exported — they repopulate on the next scan.
+  - Import stays **additive**: an existing host (matched by name) is never
+    duplicated, a webhook token colliding with an existing one is dropped
+    (re-issue in the UI), and per-guest intent is only seeded for guests not
+    already present on the host. A pre-V6.15 backup with no Proxmox section
+    imports cleanly. The **Backup** page copy and the export's documented contents
+    now mention Proxmox. See [ROADMAP](./ROADMAP.md) Phase V6.15.
+
+## [6.14.0] — 2026-06-09
+
+### Added
+- **VM (QEMU) support (V6.14).** Stashboard's Proxmox integration covered LXC +
+  nodes only; many homelabs also run QEMU VMs. This phase adds VMs as a
+  first-class guest type so the Proxmox page reflects the whole host, not just its
+  containers — discovery, lifecycle, and stats, **reusing the LXC surface** so the
+  experience is one and the same.
+  - **New `ProxmoxGuestType.Qemu`** (value `2`) threaded through the enum, the
+    scan service, the API responses, and the TS `ProxmoxGuestType` union. Proxmox
+    vmids are unique cluster-wide across LXC and QEMU, so `(connection, vmid)`
+    stays a clean natural key and the scan's upsert needed no change.
+  - **Discovery & status.** `IProxmoxApiClient.ListQemuAsync` lists VMs via
+    `GET /nodes/{node}/qemu` (same resource fields as the LXC list — no extra
+    round-trips), and the scan checker maps each VM to a card. The live-status
+    sync endpoint (`POST …/lxc/sync`) now reads both guest lists so a VM
+    started/stopped outside Stashboard is reflected within the poll interval.
+  - **Lifecycle.** Start / stop / shutdown / reboot via
+    `POST /api/proxmox/connections/{id}/qemu/{vmId}/status/{verb}` →
+    `qemu/{vmid}/status/{action}`, reusing the LXC action UI (card buttons +
+    modal **Lifecycle** section).
+  - **Graceful shutdown no longer optimistically marks a guest "stopped."** A
+    `shutdown` is *asynchronous* — the guest OS / agent may take a while or ignore
+    it (a QEMU VM with no guest-agent in particular) — so the card now keeps
+    showing the guest as **running** and lets the live-status sync flip it to
+    stopped once the host actually stops it, instead of flipping immediately while
+    it's still running. Only a hard **Stop** (and Start / Reboot) updates the card
+    optimistically. This also fixes the same long-standing behaviour for LXC
+    (V6.4). The Proxmox card's running-state buttons are relabelled to match the
+    modal's Proxmox-accurate terminology — the graceful quick action is now
+    **Shutdown** (not "Stop") and **Reboot** (not "Restart"); a hard **Stop** lives
+    in the modal's Lifecycle section.
+  - **Stop / Shutdown now ask for confirmation, with an explanation.** Both
+    power-off verbs open a confirm dialog (reusing the destroy dialog's
+    `remove-confirm-*` surface) that spells out the difference: **Shutdown** is a
+    graceful ACPI / guest-agent request the guest OS handles cleanly (no data
+    loss; may take a moment or be ignored by a guest with no agent), while
+    **Stop** is a hard power-off — immediate, with possible data loss / a dirty
+    filesystem — so its confirm button is danger-styled. Start / Reboot still run
+    directly. Applies to both LXC and VM.
+  - **Stats & Tasks.** Live (`qemu/{vmid}/status/current`) + history
+    (`qemu/{vmid}/rrddata`) reuse the existing Stats tab + sparklines (identical
+    sample shape), and the Tasks tab reuses the vmid-scoped task listing
+    unchanged. The status / rrddata / lifecycle reads share a private `{kind}`
+    path helper with their LXC twins — one path segment differs.
+  - **Card + modal reuse the LXC surface.** VM cards render in the same guest grid
+    with a **VM `<vmid>`** subtitle, and a new **All / LXC / VM** type filter
+    appears on the page toolbar once a host has at least one VM. The modal exposes
+    only the VM-applicable tabs — **Overview · Config (read-only) · Tasks ·
+    Stats** — with the VM's disks / NICs surfaced on a read-only Config tab.
+  - **Destroy works for VMs.** The modal's Lifecycle **Destroy** action is reused
+    for a stopped VM under the **same triple gate** as LXC destroy (global
+    **Destroy LXC** switch + per-host **Allow destroy** + a stopped guest), routed
+    to `DELETE /nodes/{node}/qemu/{vmid}` (new `IProxmoxApiClient.DeleteQemuAsync`)
+    and recorded in the same destroy audit trail. The confirm dialog and Lifecycle
+    copy are VM-worded (**Destroy VM? · VM `<vmid>` · disks**).
+  - **Out of scope for the first cut (clearly marked LXC-only):** APT update
+    monitoring / "Update now" (a VM isn't necessarily Debian and may have no
+    SSH/guest-agent — the **Watch** tab is hidden for VMs), the **Console**
+    (SPICE/VNC, a different protocol from the LXC SSH shell), the **Logs** tab
+    (`pct`-backed), config **editing**, and **create** (LXC only). See the
+    [ROADMAP](./ROADMAP.md) Phase V6.14.
+
+## [6.13.1] — 2026-06-08
+
+### Added
+- **Create LXC (V6.13.1).** The Proxmox page's per-host block header gains a
+  **New LXC** button — provision a container from a template without dropping to
+  the Proxmox web UI, closing the last leg of full LXC lifecycle from Stashboard
+  (edit shipped in V6.5/V6.9, destroy in V6.13).
+  - **Wired to the Proxmox API.** A new `IProxmoxApiClient.CreateLxcAsync` calls
+    `POST /nodes/{node}/lxc`, then polls the returned task UPID
+    (`GET …/tasks/{upid}/status`) to a terminal state so the UI reports real
+    success/failure rather than "request accepted" (the client surfaces the
+    host's error / non-`OK` task exit verbatim). New endpoint
+    `POST /api/proxmox/connections/{id}/lxc`, plus reads for the form:
+    `GET …/lxc/nextid` (`/cluster/nextid`) and `GET …/lxc/templates`
+    (aggregated `vztmpl` content across template-capable storages).
+  - **A guided create form (`LxcCreateModal`)** that reuses the Docker
+    `container-modal-*` / `service-modal-*` styling (not a parallel form system),
+    with near-parity to the Proxmox "Create CT" wizard: identity (vmid defaulted
+    from next-free id, hostname, description, tags), an **editable template
+    combobox** (pick a discovered `vztmpl` or type any volid), root password /
+    SSH key, resources (cores / memory / swap / rootfs storage + size), a full
+    `net0` row (name / bridge / MAC / VLAN / rate / IPv4 + gw / IPv6 + gw /
+    firewall), **DNS** (nameserver + search domain), and options — **Unprivileged**
+    (default on), **Nesting**, onboot, **start after create**, and **Add to HA**
+    (best-effort `POST /cluster/ha/resources` after the container is created).
+  - **Double-gated, off by default — minus the running-guest check** (there is no
+    guest yet): a DB-backed server-wide master switch at **Settings → Create LXC**
+    (seeded from `Stashboard:AllowProxmoxCreate`) and a per-host **Allow create**
+    opt-in. Gate failures are deterministic and returned *before* any Proxmox
+    call (global off ⇒ 403, host opt-in off ⇒ 403); a vmid already on the host ⇒
+    409, a malformed spec ⇒ 400 (`ProxmoxLxcCreateValidator`, reusing the V6.9
+    network rules). Proxmox stays authoritative and relays its rejection as a 502.
+  - **Discovery.** On success the host's **Check now** scan is triggered so the
+    brand-new container appears as a card without waiting for the schedule.
+  - **Audited.** Every attempt that reaches the host records who / when / host /
+    node / vmid / hostname / template / result on **Settings → Audit → LXC
+    create** (`ProxmoxCreateAuditEntity`).
+  - **Out of scope:** cloning from an existing container/snapshot (planned for
+    V8.0), restoring from a backup (vzdump) (planned for V8.1), advanced
+    multi-mount rootfs at create time (edit afterwards via the Config tab), and
+    VM (QEMU) creation.
+
+### Fixed
+- **LXC cards now reflect state changed *outside* Stashboard.** Previously a card's
+  running state came only from the scheduled scan, so a container stopped/started
+  from the Proxmox UI, the CLI, or a crash showed stale until the next scan (up to
+  the host's schedule, e.g. 24h). The Proxmox page now polls a cheap live-status
+  endpoint (`POST …/lxc/sync` → one `GET /nodes/{node}/lxc`, no SSH) every ~20s
+  while open and updates each guest's running state / uptime / resources; it never
+  touches pending-update counts (still the scan's job) and never adds/removes
+  cards (discovery stays with the scan).
+- **LXC card stayed "running" after Stop (and stale after start/reboot).** A
+  lifecycle action only sent the command to Proxmox; the card's running state came
+  from the last *scan*, so it didn't change until the next scheduled scan (which
+  can be hours away). The action now optimistically updates the guest's persisted
+  running state from the verb (start/reboot ⇒ running, stop/shutdown ⇒ stopped) and
+  returns the refreshed host, so the card flips immediately; the next scan
+  reconciles edge cases. Added controller tests for the lifecycle action (it had
+  none — which is also why the 405 below went unnoticed).
+- **LXC lifecycle actions returned 405 (start / stop / shutdown / reboot).** The
+  route `POST …/lxc/{vmId}/status/{action}` used `{action}` — a **reserved** MVC
+  routing token that binds to the action *method name* — so the route never
+  matched a real URL value (`shutdown`, `start`, …) and fell through to the SPA
+  fallback as `405 Method Not Allowed`. Renamed the token to `{verb}` (the URL is
+  unchanged, `…/status/shutdown`). Added a reflection guard
+  (`RouteTemplateConventionsTests`) that fails the build if any controller route
+  template uses a reserved token, since controller unit tests bypass routing and
+  can't catch this class of bug.
+- **Proxmox node telemetry on non-US server locales (V6.13.1).** The Proxmox JSON
+  reader parsed dot-decimal *string* fields (e.g. `cpuinfo.mhz` `"3100.00"`)
+  culture-sensitively, so a host running under a comma-decimal locale read them as
+  `null` (a blank CPU MHz on the node card). `ReadDouble` now parses invariant,
+  matching the array-value reader.
+
+## [6.13.0] — 2026-06-08
+
+### Added
+- **Destroy / remove LXC (V6.13).** The LXC modal's **Lifecycle** section gains a
+  **Destroy** action — the container analogue of Docker's "Remove container",
+  closing the last LXC lifecycle gap (previously `start | stop | shutdown | reboot`
+  only).
+  - **Wired to the Proxmox API.** A new `IProxmoxApiClient.DeleteLxcAsync` calls
+    `DELETE /nodes/{node}/lxc/{vmid}` (the client surfaces the host's error body
+    verbatim, e.g. a permission error). New endpoint
+    `DELETE /api/proxmox/connections/{id}/lxc/{vmId}`.
+  - **Triple-gated, off by default — the same pattern as the console / "Update
+    now".** A DB-backed server-wide master switch at **Settings → Destroy LXC**
+    (seeded from `Stashboard:AllowProxmoxDestroy`), a per-host **Allow destroy**
+    opt-in, and a **stopped** guest. Gate failures are deterministic and returned
+    *before* any Proxmox call: global off ⇒ 403, host opt-in off ⇒ 403, running
+    guest ⇒ 409 (stop it first).
+  - **Double confirmation that names the exact guest.** The **Destroy** button
+    appears only for a stopped, gated container and opens a confirm dialog
+    (`LxcDestroyDialog`, a verbatim reuse of the Docker `remove-confirm-*`
+    markup/CSS) naming `CT <vmid> · <name>`. On success the card disappears
+    immediately and the modal closes.
+  - **Audited.** Every attempt that reaches the host records who triggered it,
+    when, against which host / node / guest, and the result — on the Audit page's
+    new **LXC destroy** tab.
+  - **Out of scope, as planned.** Purging associated backups / external storage
+    volumes (only the container and its root disk are removed) and bulk destroy.
+  - Migration `AddProxmoxDestroy` adds the `AllowDestroy` column, the
+    `ProxmoxDestroySettings` singleton table, and the `ProxmoxDestroyAudits` table.
+
+## [6.12.0] — 2026-06-08
+
+### Added
+- **LXC live logs (Logs tab) (V6.12).** The LXC modal gains a **Logs** tab (after
+  **Tasks**) that streams a guest's system journal in real time — the observability
+  surface the Docker modal already had, now for Proxmox containers.
+  - **Read-only live tail.** A new `ProxmoxLogsController` reuses the V6.6 console
+    transport *verbatim* — the same single-use ticket service, per-user/per-host
+    concurrency registry, SSH PTY connector, byte pump, and WebSocket adapter. It
+    SSHes to the Proxmox host and runs `pct exec <vmid> -- sh -c 'journalctl -f …'`,
+    falling back to `tail -F /var/log/syslog`/`messages` when the guest has no
+    journald. The remote command is built server-side and the stream carries no
+    input, so the surface is strictly read-only.
+  - **Same gate as the console.** Logs require the global **AllowProxmoxConsole**
+    switch, the per-host **Allow LXC console** opt-in, SSH credentials, and a running
+    guest — each blocked state showing the same calm hint as the rest of the modal.
+  - **Docker-parity UI.** The
+    [`LxcLogsPanel`](frontend/src/components/proxmox/LxcLogsPanel.tsx) renders into
+    the Docker logs toolbar/viewport (`docker-logs-*`) with **Pause / Resume / Stop /
+    Stream / Clear / Copy / Download** and autoscroll. **Download** pulls a one-shot
+    non-follow snapshot (`journalctl -n 5000`).
+  - **No reaping, no audit, no migration.** Unlike the interactive console the tail
+    runs with **no idle timeout** (a quiet guest's stream isn't closed after ten
+    silent minutes) and writes **no audit row** (nothing executes beyond a read-only
+    read). No new tables.
+
+### Changed
+- **LXC modal SSH sessions now survive tab switches.** The **Console** and **Logs**
+  tabs are kept mounted once opened, so switching to another tab (e.g. Overview) no
+  longer drops the live SSH session and reconnecting it on return — the terminal
+  refits/refocuses and the log view re-snaps to the bottom when you come back. The
+  session is torn down only when the **modal closes**. (Previously each tab switch
+  unmounted the panel and closed its SSH session.)
+
+### Fixed
+- **LXC Logs no longer leaks SSH sessions (showed "No log lines" after a few
+  opens).** The Logs tab auto-starts its stream on mount, and React StrictMode's
+  mount→unmount→remount could store the first (in-flight) socket's handle without
+  ever closing it — so each open leaked a live session until the per-user cap
+  (`MaxSessionsPerUser`, 3) was exhausted and every subsequent open was rejected
+  and fell silently to idle. The stream lifecycle now tracks a monotonic run id and
+  **closes any superseded in-flight handle** instead of storing it, and a
+  server-initiated close (e.g. the session-cap rejection) is now **surfaced** in the
+  panel instead of dropping silently to "idle".
+
+## [6.11.0] — 2026-06-06
+
+### Added
+- **Bulk LXC monitoring & update operations + audit (V6.11).** Host-wide controls
+  for operators with many guests, built on the existing per-LXC endpoints — no
+  parallel system.
+  - **Bulk monitoring toggle.** "Enable all" / "Disable all" on each host's section
+    header flips update monitoring for every LXC on the host in one call
+    (`PUT …/lxc/monitoring/bulk`) — one transaction, one audit row per actually-changed
+    guest, behind a confirmation dialog. The node row is never touched.
+  - **Bulk "Update now".** "Update all" reuses the V6.7.1 confirm → stream → result
+    flow over a **checklist** of eligible targets — the **node** and its containers
+    (running, monitored, not snoozed, with pending updates — pre-checked, uncheck any),
+    streaming each one's `apt` log in turn via `POST …/lxc/update/bulk`. Same triple
+    gate (global switch + per-host **Allow updates** + SSH), and one finalised audit
+    session per target. The node runs first and carries the usual reboot caveat.
+  - **Maintenance snooze.** A nullable `MonitoringSnoozedUntil` on the guest row lets
+    you skip a container for a window (1h / 6h / 24h / 7d, or clear) from the LXC
+    **Watch** tab. The scan service excludes snoozed guests from scheduled **and**
+    manual checks, then **auto-re-includes** them once the window passes (clearing the
+    field on the first scan at/after it). Monitoring stays on; the card shows a
+    **Snoozed** badge and mutes meanwhile.
+  - **Monitoring audit trail.** Every monitoring change (single toggle, bulk, snooze,
+    unsnooze) writes a `ProxmoxMonitoringAuditEntity` row — who / when / guest / new
+    state — surfaced read-only on **Settings → Audit → LXC monitoring**.
+  - **Update-check webhook.** An opt-in, off-by-default public endpoint
+    (`POST /api/proxmox/webhooks/{token}`) — the Proxmox analogue of the Docker watch
+    webhook — kicks off an immediate host scan, drained by the background service's
+    new scan queue. Rotate / remove the token from the host's edit modal; rotating
+    invalidates the old URL immediately.
+  - Migration `AddProxmoxBulkMonitoringAndWebhook` adds the snooze column, the host
+    webhook token (+ unique index) and last-received timestamp, and the
+    `ProxmoxMonitoringAudits` table.
+  - Out of scope (unchanged): scheduled / unattended bulk upgrades stay manual.
+
+## [6.10.0] — 2026-06-05
+
+### Added
+- **Proxmox page Docker-parity redesign (V6.10).** The Proxmox page now wears the
+  Docker instances page's `dock` shell, **reusing the `searchbox`, `segmented`,
+  `dock-summary`, and connection-`switcher` markup + CSS verbatim** — no parallel
+  system. A user with multiple hosts and many LXCs gets the same command-centre
+  affordances the Docker page already offers:
+  - **Search box** filtering LXC cards by name.
+  - **State filter** segmented control (`All / Running / Stopped`).
+  - **Monitoring filter** segmented control (`All / Enabled / Disabled / Updates`),
+    driven by the existing `monitoringEnabled` / `pendingUpdates` fields. `Updates`
+    requires monitoring **on** and a positive pending count.
+  - **Summary strip** aggregating cross-host totals — objects, running, stopped,
+    pending updates (`objects === running + stopped` always holds).
+  - **Connection switcher** (`All connections` + a chip per host with running/total
+    and update counts); hidden for a single host, like the Docker switcher.
+  - **Deep-link** into the LXC modal via `?connection=…&vmid=…` (the `vmid` param is
+    consumed and stripped once the modal opens), reusing the Docker page's deep-link
+    `useEffect` pattern.
+- **Grouping by PVE node** is satisfied by the existing per-connection sections:
+  each Proxmox connection already maps to exactly one node, so "grouping by node" is
+  the node card (host summary) with its LXC cards in the grid below. The phase stayed
+  UI-only — no `GET /pools` backend or database migration was needed.
+- The filter/aggregation predicates live in a pure
+  [`proxmox-page.ts`](frontend/src/lib/proxmox-page.ts) module with unit tests.
+
+## [6.9.0] — 2026-06-04
+
+### Added
+- **Edit LXC network interfaces & mount points (V6.9.0).** The LXC **Config**
+  tab finishes what V6.5 started: the read-only `net<n>` / `mp<n>` / `rootfs`
+  lines become guided **row editors** with explicit **Edit / Add / Remove**
+  affordances, reusing the Docker container modal surface (`container-modal-*`
+  styling, the same review/confirm pattern).
+  - **Network rows** expose structured fields — name, bridge, IPv4/IPv6
+    (`dhcp` / `manual` / static CIDR), gateway, VLAN tag, firewall, MTU, rate
+    limit, MAC, and link-down (disable) — with an advanced **raw** mode for
+    options Stashboard doesn't model.
+  - **Mount rows** expose storage/source, mount path, size, read-only, backup,
+    quota, ACL, shared, replicate and mount options, and support both
+    storage-backed volumes and bind mounts.
+  - **rootfs** gets a dedicated **edit-only** section (size + safe flags); it
+    cannot be removed, and storage migration stays out of scope.
+  - Unknown-but-valid options are **preserved verbatim** (never a lossy write);
+    every row has a raw expander showing the **exact** generated config line.
+  - New interfaces/mounts take the **next free key**; removals flow through
+    Proxmox **`delete=`**. The owner-scoped write path builds the exact Proxmox
+    payload server-side (numbered keys + `delete=` list) rather than trusting the
+    client to craft request strings.
+  - A **per-change review** classifies each edit conservatively (*applies live*
+    / *restart likely* / *destructive — naming the exact `net1` / `mp2` key*)
+    before a single write. Client + server both validate IP/CIDR, gateways,
+    MACs, sizes, duplicate names/paths and the rootfs-protect rule; Proxmox
+    permission/validation rejections are surfaced verbatim.
+- **Operator caveats.** Some changes may require a guest **restart** to fully
+  apply — the success state says so inline when the guest is running. Removing a
+  mount config entry **does not delete the underlying storage content**.
+
+## [6.8.2] — 2026-06-04
+
+### Fixed
+- **Node-alert re-notification spam.** The notification throttle keyed on the
+  metric *value*, so a steady deviation whose value wiggles every tick (CPU
+  96↔97 %, or the NIC error delta) re-sent the alert on every evaluation. The
+  signature now keys on **category + severity** only — a steady alert pings once;
+  only a severity change (warn↔crit), a new category, or a clear re-notifies.
+- **Noisy NIC alerts.** The Network category counted rx/tx *drops*, which climb
+  for entirely benign reasons on a bridged Proxmox node (frames not addressed to
+  the host) and fired a near-constant warning. It now counts true **errors**
+  (rx_errs + tx_errs) only.
+
+### Added
+- **PVE node deep telemetry (V6.8.2).** The node modal gains the host-side
+  metrics the Proxmox REST API doesn't expose, each read by an independent SSH
+  collector behind its own capability check — a missing source degrades to "not
+  available", never a hard failure (mirroring the V6.8 `sensors` path).
+  - **CPU — per-core utilisation + steal.** Two `/proc/stat` samples drive
+    per-core bars on the CPU/RAM tab and a steal indicator on Overview (the API
+    gives only aggregate CPU + iowait).
+  - **Memory — available.** `MemAvailable` from `/proc/meminfo` on Overview (the
+    API reports only `free`).
+  - **Storage — disk IO.** Two `/proc/diskstats` samples add a per-disk
+    read/write throughput · IOPS · await table to the Storage/SMART tab.
+  - **Storage — thin pools.** `lvs` data%/metadata% surfaces an LVM-thin pool
+    fill warning as a pool nears full.
+  - **Network — per-interface throughput + errors + link.** Two `/proc/net/dev`
+    samples plus `/sys/class/net` replace the node-aggregate-only view with
+    per-interface RX/TX rate, error/drop counters, and link speed/duplex/state.
+  - **SMART — last self-test + critical counters.** `smartctl -l selftest -A`
+    badges the last self-test result + age and the critical counters
+    (reallocated / pending / uncorrectable / power-on hours) on each disk row.
+  - **Sensors — voltage / power.** The `sensors -j` parser now also emits voltage
+    (`in*`) and power (`power*`) inputs alongside temperatures and fans.
+  - **Per-connection telemetry poll interval + failure backoff.** A configurable
+    refresh interval per host (default 20s, clamped 5–300s; new
+    `TelemetryPollSeconds` column) drives the node modal's live tabs, with
+    exponential backoff while a host is unreachable. The real-time 2s "Live" view
+    is unaffected.
+- **Proxmox Backup Server (PBS) support.** A Proxmox host now carries a
+  **server type** (PVE / PBS), selectable in the connection modal, so a PBS
+  appliance can be added and monitored with the same node card, modal, and
+  V6.8.1 alerting as a PVE node — just without LXC guests.
+  - **Auth + endpoints.** The API client picks the right token scheme per type
+    (`PVEAPIToken` joins id/secret with `=`; `PBSAPIToken` with `:` — the exact
+    mismatch that 401s when a PBS host is added as PVE) and branches the few
+    endpoints that differ: PBS has no LXC discovery (the node status doubles as
+    the auth probe), reads the kernel/version from its own status shape
+    (`root` filesystem + `info.kversion` + `/version`), and surfaces its
+    **datastores** (`/status/datastore-usage`) in place of PVE storage pools —
+    mapped onto the same storage shape so the Storage/SMART tab + the
+    storage-fullness alert work unchanged.
+  - **Parity.** Node status (CPU/RAM/swap/root), RRD history, disks + SMART,
+    network, `apt` updates, sensors (over SSH), node-health **alerts**, one-click
+    **Update now**, and the **node console** all work on PBS — it's Debian +
+    `apt` + SSH like PVE. SSH on a PBS host powers sensors, NIC-error alerts,
+    Update now, and the console (there are no per-LXC apt counts).
+  - Additive migration (a `ServerType` column on the Proxmox connection,
+    defaulting to PVE so every existing host is untouched).
+
+## [6.8.1] — 2026-06-04
+
+### Added
+- **PVE node alerting (V6.8.1).** The V6.8 node card becomes a *watch*: a new
+  **Alerts** tab on the node modal opts a node into critical-deviation
+  notifications, with explicit persisted state — the node analogue of a Docker
+  watch's `Enabled` flag — **off by default** (the additive migration leaves
+  every node muted until you enable it).
+  - **Thresholds + per-node overrides.** Reuses the V6.8 global defaults (CPU
+    80/95, RAM 85/95, storage 85/95) as the baseline; a per-node override row
+    lets a deliberately hot node be tuned without muting the fleet. Categories:
+    **CPU** saturation, **memory** pressure, **storage** fullness (worst of root
+    FS + active pools), **thermal** (vs the chip's own high/crit, falling back to
+    defaults), **SMART** degradation (health ≠ PASSED, or SSD wearout ≤
+    thresholds), and **NIC** error/drop spikes (rise in `/proc/net/dev` error +
+    drop counters between evaluations). Optional granular per-category toggles
+    (CPU / RAM / Storage / Thermal / SMART / Network) ship on by default.
+  - **Evaluation loop.** Folded into the existing
+    `ProxmoxUpdateBackgroundService` tick, but evaluated on **every tick**
+    (~5 min) for opted-in nodes — independent of the (often 24 h) per-host update
+    schedule — so saturation/thermal deviations are caught in minutes. Each tick
+    reads the same REST API / SSH sources the card uses and classifies them with
+    the same `ok / warn / crit` boundaries as the card (a shared backend port of
+    the frontend classifier), so the colour and the alert never disagree.
+  - **Debounce / hysteresis.** A deviation must persist across **N consecutive**
+    evaluations before it fires, and must read normal for N before "recovered"
+    is sent — suppressing flapping. A per-channel **state signature** throttle
+    (the same discipline as the update notifier) means a steady deviation never
+    re-pings; an escalation (warn→crit) or a clear re-sends once.
+  - **Channel reuse.** Active alerts route through the **existing email +
+    Telegram channels** — no new transport. An alert carries severity (warn /
+    crit), the metric + value + threshold, and a first-seen timestamp; the
+    Alerts tab lists current alerts live and the email/Telegram digest re-sends
+    only on a real change (with an "all clear" on full recovery).
+  - **Safety.** A source that's merely unavailable (no SSH / lm-sensors, API
+    field absent) is treated as **n/a and never alerts**. Degraded metrics on the
+    card keep the V6.8 tooltip with the root reason + suggested action.
+  - **Data / migration.** New `ProxmoxNodeAlertSettings` (per-connection: enabled,
+    category mask, threshold overrides, per-channel notification signatures) +
+    `ProxmoxNodeAlertState` (per-category debounce/hysteresis state with
+    first-seen). Additive migration; defaults keep every node opted out.
+
+## [6.8.0] — 2026-06-04
+
+### Added
+- **PVE node card (V6.8).** The node row on the Proxmox page becomes a live
+  hardware/health card and gains a detailed multi-tab modal — the node analogue
+  of the LXC card, reusing the same Docker `container-modal-*` shell and stat
+  tiles so the surfaces stay identical.
+  - **Live health summary on the card.** The node card follows the Docker page's
+    **`.host-card`** pattern (full-width host summary above the LXC grid),
+    reusing the shared status dot + `StateBadge` (online/offline). It polls the
+    node's status (~20s) and shows CPU % · RAM % · root-FS % as colour-coded
+    chips (ok / warn / crit by sane default thresholds — CPU 80/95, RAM 85/95,
+    storage 85/95) with a "Refreshed Xs ago" timestamp; **degraded chips expose
+    a tooltip with the root reason + suggested action**. The per-node **Check
+    now** rescan and **Update now** live on the node card (host **Edit** /
+    **Delete** stay in the connection header). Long CT names truncate with an
+    ellipsis instead of overlapping the badges. Click the card to open the modal.
+  - **Node modal tabs:** **Overview** (identity, uptime, kernel, PVE version,
+    subscription, CPU model/topology/frequency/virtualization, live CPU %, load
+    avg, IO wait, memory + swap, root FS), **CPU/RAM** (**Live** real-time view —
+    polls node status every 2s with Pause/Resume — plus a **History** toggle for
+    the RRD sparklines with hour/day/week, the same UX as the LXC Stats tab),
+    **Storage/SMART** (per-pool usage meters + physical disks with SMART
+    health/wearout badges, each expandable to its full SMART attribute table for
+    ATA or NVMe text, loaded on demand), **Network** (node throughput sparkline +
+    configured interfaces — type, link state, address, gateway, bridge ports /
+    bond slaves), **Sensors** (CPU/board temperatures + fan RPMs), and
+    **Console** (an SSH shell **on the node itself** — host login shell, not
+    `pct exec` — reusing the V6.6 console transport + audit, gated the same way).
+  - **Transport.** Base metrics come from the Proxmox REST API
+    (`/nodes/{node}/status`, `/rrddata`, `/storage`, `/disks/list`,
+    `/disks/smart`, `/network`, `/subscription`); CPU/board temperatures and fan
+    speeds — the one signal the API doesn't expose — are parsed from
+    `sensors -j` over SSH, with a clear "install lm-sensors / add SSH" state when
+    unavailable. Each source degrades independently: a missing source renders a
+    "not available" marker, never a hard failure.
+  - New read-only, owner-scoped endpoints:
+    `GET /api/proxmox/connections/{id}/node/status | /node/rrddata |
+    /node/storage | /node/disks | /node/disks/smart | /node/network |
+    /node/sensors`. No new tables or migrations.
+  - **Refactor.** The `StatTile` / `Sparkline` were extracted from the LXC modal
+    into `components/shared/StatTile.tsx` so the LXC and node modals share one
+    component instead of two copies.
+  - **Deferred:** threshold-based alerting → **V6.8.1**; the metric bullets the
+    Proxmox API doesn't expose (per-core CPU % + steal, memory `available`, disk
+    IO/IOPS/latency, thin-pool warnings, per-interface RX/TX + errors + link
+    speed/duplex, SMART last-self-test, PSU voltages) need host-side SSH
+    collectors and move to **V6.8.2** (along with configurable per-connection
+    polling). See ROADMAP.
+
+### Changed
+- **Deleting a Proxmox host now opens a confirmation modal** (host name, node,
+  object count, and an explicit "this does not touch the Proxmox host itself"
+  warning) instead of the easy-to-miss inline Confirm/Cancel buttons in the
+  connection header — matching the Docker remove-confirm dialog. Surfaces the
+  API error in-dialog on failure.
+
+## [6.7.1] — 2026-06-03
+
+### Added
+- **Proxmox "Update now" (V6.7.1).** The Docker analogue of one-click
+  **Update now**, now for Proxmox: a button on the node card and in each LXC's
+  **Watch** tab *applies* pending package updates over SSH.
+  - **What it runs.** `apt-get update && apt-get -y -o Dpkg::Options::=--force-confold
+    dist-upgrade`, either directly on the node (`vmId 0`) or via
+    `pct exec <vmid> -- …` inside an LXC. Non-interactive (keeps existing config
+    files on conflict) so it never hangs on a prompt; non-Debian guests are
+    detected and reported as "nothing to upgrade".
+  - **Live streamed output.** The apt log streams to the browser line-by-line as
+    NDJSON over fetch (the same transport the Docker log viewer uses), rendered
+    in a confirm → run → result dialog. Because a check is a single SSH sweep of
+    the node, a node-level run upgrades the **whole node** (a new kernel may need
+    a reboot) — the confirm step spells this out. The confirm step also shows the
+    **exact command** that will run (copyable), sourced from the backend so it
+    can't drift — the Proxmox analogue of the Docker "Update command" panel
+    (`GET …/update-command?vmId=`).
+  - **Triple-gated like the LXC console**, all required and **off by default**:
+    the `Stashboard:AllowProxmoxUpdates` master switch (DB-backed, managed at
+    **Settings → Proxmox updates**), a per-host **Allow apply updates** opt-in
+    (`ProxmoxConnection.AllowUpdates`), and SSH credentials on the host. Gate
+    failures return a deterministic 403 / 409 before any command runs.
+  - **Audited.** Every run writes a `ProxmoxUpdateSession` row (who, when, host /
+    node / guest, exit status, bytes streamed, end reason), surfaced read-only on
+    the Audit page's new **Proxmox updates** tab.
+  - New endpoints: `POST /api/proxmox/connections/{id}/node/update` and
+    `POST …/lxc/{vmId}/update` (NDJSON stream),
+    `GET|PUT /api/settings/proxmox-updates`, and
+    `GET /api/proxmox/updates/sessions`. Additive migration
+    (`AddProxmoxUpdateApply`): the `AllowUpdates` column, the settings singleton,
+    and the audit table. No new background worker — applying is on-demand only.
+
+## [6.7.0] — 2026-06-03
+
+### Added
+- **Per-LXC update monitoring toggle (V6.7).** Each discovered LXC now carries
+  its own `MonitoringEnabled` flag — the Proxmox analogue of enabling/disabling
+  a Docker watch. A **Monitoring enabled** switch in the LXC modal's **Watch**
+  tab turns update tracking off for a single container without disabling the
+  whole host, so noisy or intentionally unmanaged guests can be excluded.
+  - A disabled guest is **skipped by scheduled and manual checks**: the scan
+    passes its vmid to the checker, which short-circuits the per-guest IP lookup
+    and `pct exec` count entirely (the node row and other guests are still
+    checked). It is also **excluded from the notification signature**, so
+    turning monitoring off stops repeat email/Telegram alerts for it at once and
+    clears its stale pending count.
+  - **Discovery preserves the toggle**: a rediscovered LXC keeps the user's
+    chosen state (matched on connection + vmid); newly discovered LXCs default
+    to enabled, keeping the change backward-compatible.
+  - **Docker-parity UI**: the disabled card is muted (dashed, dimmed) with a
+    **Disabled** badge and no amber "updates pending" emphasis, the last-checked
+    timestamp stays visible, and the Watch tab reuses the same checkbox +
+    helper-text pattern as a Docker watch. The toggle is optimistic with
+    rollback on error.
+  - New owner-scoped endpoints under the existing route group:
+    `PUT /api/proxmox/connections/{id}/lxc/{vmId}/monitoring` (toggle) and
+    `POST …/lxc/{vmId}/check` (per-guest **Check now**). Because Proxmox has no
+    per-container probe, an enabled guest's Check now re-scans the **whole node**
+    (reusing the existing scan flow); a disabled guest returns a deterministic
+    disabled outcome without scanning. The node row (`vmId 0`) stays
+    host-controlled and is not toggleable.
+  - Additive, backward-compatible migration (`MonitoringEnabled` backfilled to
+    `true`); no new background worker — the existing
+    `ProxmoxUpdateBackgroundService` + scan pipeline are reused.
+
+## [6.6.0] — 2026-06-03
+
+### Added
+- **Browser LXC console (V6.6).** The Proxmox container modal gains a working
+  **Console** tab: an interactive `xterm.js` shell *inside* an LXC, opened by
+  SSHing to the Proxmox host and running `pct exec <vmid> -- /bin/bash`. It's the
+  Proxmox analogue of the Docker **Exec** tab and the natural follow-up to the
+  per-LXC update count ("LXC `pihole` has 7 updates pending" → `apt upgrade` it
+  without leaving the browser). The console button on each LXC card opens it too.
+  - **Reuses the shared shell transport** introduced in V5.3 / V5.7: the
+    authenticated `POST …/lxc/{vmid}/console/ticket` mints a single-use,
+    short-lived ticket (binding the chosen command server-side) and the socket
+    opens at `…/lxc/{vmid}/console/ws?ticket=…`. The SSH PTY connector
+    (`IHostShellConnector`), the byte pump, and the WebSocket adapter are the
+    same components the host terminal and container exec use — only an optional
+    initial command (`exec pct exec …`) was added to the connector.
+  - The command defaults to `/bin/bash` and is editable per session (e.g.
+    `/bin/sh` for an Alpine guest). As with the V5.3 SSH host terminal, live
+    terminal resize is unavailable over SSH — the PTY is sized on connect.
+  - **Off by default**, gated three ways (all required): the **Settings → LXC
+    console** master switch (DB-backed `ProxmoxConsoleSettingsEntity`, seeded
+    from the optional `Stashboard:AllowProxmoxConsole` config flag on first run),
+    a per-host **Allow LXC console** opt-in (`ProxmoxConnection.AllowConsole`),
+    and SSH credentials configured on the host. If any condition is missing the
+    ticket request is refused server-side — the gate isn't just a hidden button.
+  - **Audited start-to-finish.** Every session writes a row to the new
+    `ProxmoxConsoleSessions` table (who, when, host / node / guest, command,
+    duration, bytes in / out, end reason) and streams to the application log,
+    surfaced on the **Settings → Audit** page's new **LXC console** tab. Per-user
+    and per-host concurrency caps + a server-side idle timeout
+    (`Stashboard:ProxmoxConsole:*`) close idle / over-cap sessions regardless of
+    client state.
+  - Pure-additive migration `AddProxmoxConsole` (the per-host `AllowConsole`
+    column, the `ProxmoxConsoleSessions` audit table, the DB-backed master-switch
+    row). Tests: ticket service (single-use / expiry / vmid+command binding),
+    session-registry caps, the settings service (seed / persist), the mapper
+    `AllowConsole` round-trip, and the controller's two-way gate + command
+    binding.
+
+## [6.5.0] — 2026-06-03
+
+### Added
+- **Edit LXC parameters (V6.5).** The Proxmox container modal's **Config** tab is
+  no longer read-only for the scalar fields. An **Edit** button turns **Cores**,
+  **Memory (MiB)**, **Swap (MiB)**, **Hostname** and **Start at boot** into a
+  form; **Review changes** shows a per-field confirmation that classifies each
+  change as *applies live* (cores / memory / swap), *needs restart* (hostname)
+  or *next boot* (onboot) before anything is written. Saving calls a new
+  owner-scoped endpoint `PUT /api/proxmox/connections/{id}/lxc/{vmid}/config`,
+  which writes through to the Proxmox `PUT …/lxc/{vmid}/config` API. Requires the
+  API token to hold `VM.Config.*`; a permission / validation rejection from
+  Proxmox is surfaced verbatim. Only the fields the user actually changed are
+  sent (Proxmox merges them), and memory / swap are sent in MiB (Proxmox's native
+  config unit). Network interfaces (`net<n>`) and mount points (`mp<n>` /
+  `rootfs`) stay read-only this phase.
+
+## [6.4.0] — 2026-06-03
+
+### Added
+- **LXC lifecycle actions (V6.4).** Start / Stop / Shutdown / Reboot an LXC from
+  Stashboard. A new **Lifecycle** section on the modal's Overview tab (and the
+  card's Start / Stop / Restart buttons) call a new endpoint
+  `POST /api/proxmox/connections/{id}/lxc/{vmid}/status/{action}` over the
+  Proxmox `…/status/{start|stop|shutdown|reboot}` API. Requires the API token to
+  hold `VM.PowerMgmt`. The card's Stop = graceful shutdown, Restart = reboot.
+- **Real-time Stats (V6.4).** The Stats tab now defaults to a **Live** view that
+  polls `…/lxc/{vmid}/status/current` every 2 s (via a new
+  `GET /api/proxmox/connections/{id}/lxc/{vmid}/status` endpoint) and renders a
+  rolling window of CPU / memory / network / disk-I/O sparklines, with Pause /
+  Resume —
+  mirroring the Docker live-stats panel. Proxmox has no stats stream for LXC, so
+  this is polling, not a push stream. A **History** toggle keeps the V6.3 RRD
+  view (Hour / Day / Week).
+
+## [6.3.0] — 2026-06-02
+
+### Added
+- **LXC Stats + Tasks tabs (V6.3).** Two more Proxmox container-modal tabs go
+  live (read-only), bringing it closer to the Docker modal's Stats/Logs.
+  - **Stats** — RRD sparklines for CPU, memory, network (in/out), and disk I/O
+    (read/write), with an **Hour / Day / Week** timeframe switch. Backed by a new
+    endpoint `GET /api/proxmox/connections/{id}/lxc/{vmid}/rrddata` over the
+    Proxmox `…/lxc/{vmid}/rrddata` series; auto-refreshes every 30 s.
+  - **Tasks** — the recent node tasks scoped to this guest (type, OK / running /
+    error status, start time, duration), each expandable to a **per-task log
+    viewer**. Backed by `…/lxc/{vmid}/tasks` and a `…/tasks/log?upid=` endpoint
+    over the Proxmox tasks API.
+  - The card's **Stats** and **Tasks** action buttons are enabled accordingly;
+    Console and lifecycle stay disabled until V6.4 / V6.6. No schema changes —
+    both reads go straight to the Proxmox API.
+
+### Changed
+- **Unified the Proxmox LXC surfaces with the Docker container ones.** The LXC
+  **card** and **modal** now reuse the **exact** Docker components/styles instead
+  of parallel `lxc-*` / `proxmox-cc-*` systems:
+  - New shared **`EntityCard`** and **`StateBadge`** components — the Docker
+    `ContainerCard` and the Proxmox LXC card both compose `EntityCard`, so they
+    render literally the same DOM (`cc-*` / `docker-instances-card-*` classes,
+    same state pill). `ContainerStateBadge` is now a thin re-export of the shared
+    `StateBadge`, which also understands the `stopped` state (red, like a Docker
+    `exited` card).
+  - The LXC **modal** reuses the Docker modal shell (`container-modal-*`), the
+    `docker-stats-*` stat tiles / sparklines, and the shared `Button`.
+  - Tabs and card action buttons match the Docker order — Overview · Config
+    (≈Inspect) · Tasks (≈Logs) · Stats · **Watch** · Console (≈Exec) — with a new
+    **Watch** tab carrying the per-LXC update-tracking summary. Console + the
+    lifecycle buttons stay disabled until V6.6 / V6.4.
+  - The bespoke `lxc-*` and `proxmox-cc-*` styles were removed.
+
+## [6.2.0] — 2026-06-02
+
+### Added
+- **LXC Config tab (V6.2).** The Proxmox container modal's **Config** tab is now
+  live (read-only). It reads an LXC's full configuration straight from the
+  Proxmox REST API — `GET /nodes/{node}/lxc/{vmid}/config` merged with
+  `/status/current` — via a new owner-scoped endpoint
+  `GET /api/proxmox/connections/{id}/lxc/{vmid}/config`. The tab shows:
+  - **Resources** — configured cores / memory / swap plus live CPU %, memory
+    used / max, disk used / max, and uptime.
+  - **System** — hostname, OS type, arch, start-at-boot, unprivileged, features.
+  - **Mount points** (`rootfs` / `mp<n>`) and **Network** (`net<n>`) as their
+    raw Proxmox option lines.
+
+  The card's **Config** action button is enabled accordingly; Stats / Tasks /
+  Console / lifecycle stay disabled until V6.3–V6.6. Byte units are normalised
+  server-side (config reports memory/swap in MiB, status in bytes). No schema
+  changes — the read goes directly to the Proxmox API.
+
+## [6.1.0] — 2026-06-02
+
+### Added
+- **Proxmox LXC detail modal + Docker-style cards (V6.1).** First step of
+  bringing the Proxmox page to parity with the Docker instances page.
+  - **LXC cards restyled** to mirror the Docker container card — name + runtime
+    state badge, an amber **Update** badge when updates are pending, a monospace
+    `CT <vmid>` line, an `Up <uptime>` / `Stopped` status line, and the existing
+    **resources / IP / uptime** shown as chips. The card also carries the Docker
+    card's **action row** — tab-shortcut icons (Config / Stats / Tasks / Console)
+    on the left and **Start / Stop / Restart** on the right. These are laid out
+    and wired now but **disabled** until their backing phases land (Config V6.2,
+    Stats/Tasks V6.3, lifecycle V6.4, Console V6.6), so the card markup is final.
+    The Docker container card is unchanged; the LXC card uses its own
+    `proxmox-cc` styles (copied values, no cross-page coupling). The Proxmox
+    **node** card keeps its V6.0 layout.
+  - **Click-to-open LXC modal** (`LxcModal`) shaped like the Docker container
+    modal: header + tab navigation + body. The **Overview** tab is functional
+    (VMID, node, host, IP, status, uptime, resources, tags, pending-update
+    count, last-checked, errors), built from data already on the page. The
+    **Config / Stats / Tasks / Console** tabs are scaffolded (disabled, with a
+    "coming in a later version" hint) to show the target shape — they light up
+    in V6.2–V6.6 as the backing Proxmox endpoints land.
+  - No backend changes: V6.1 is presentation only.
+
+## [6.0.0] — 2026-06-02
+
+### Added
+- **Proxmox LXC update monitoring (V6.0).** A new top-level **Proxmox** page
+  (`/proxmox`) tracks pending package updates one layer below Docker — on the
+  LXC containers and the Proxmox node itself.
+  - **Hybrid transport.** The Proxmox **REST API** (authenticated with a
+    `PVEAPIToken`) lists LXC containers and reports the node's own pending
+    updates via `GET /nodes/{node}/apt/update`. **SSH** to the Proxmox host
+    runs `pct exec <vmid> -- apt list --upgradable` for the per-LXC count —
+    the Proxmox API has no command-exec endpoint for LXC, so SSH is the only
+    way to read it. (The roadmap's suggested `status/exec` REST path does not
+    exist for LXC.)
+  - **Auto-discovery.** Configure a host once; every scan discovers the node
+    + its LXCs and renders one card per object showing the pending-update
+    count, running state, and last-checked time. Cards for guests that
+    disappear from the host are pruned automatically.
+  - **Rich LXC cards.** Each container card also shows its **IPv4** (read from
+    the Proxmox `interfaces` API — no guest agent needed), **vCPU count**,
+    **memory limit**, **disk size**, **uptime**, and **Proxmox tags** — all
+    sourced from the API, so the cards are informative even when SSH isn't
+    configured. A host without SSH shows a calm "Updates n/a" hint on its LXC
+    cards rather than a red error (reading the per-container count is the only
+    thing SSH gates).
+  - **Reused scheduling + notifications.** The same V2.2 Hourly / Daily /
+    Weekly cadence model as Docker watches drives a dedicated background scan,
+    and new updates fire email + Telegram notifications through the existing
+    channels (throttled by a signature of the pending state so the same
+    un-applied updates aren't re-sent every tick).
+  - **Per-host management.** Create / edit / delete hosts, a **Test
+    connection** button that probes both API and SSH independently, and a
+    **Check now** button that runs an immediate scan bypassing the schedule.
+  - Self-signed Proxmox certificates are supported via a per-host
+    **Skip TLS verification** toggle (on by default).
+  - New tables `ProxmoxConnections` + `ProxmoxGuests` (migration
+    `AddProxmox`). Secrets (API token secret, SSH private key, passphrase)
+    are encrypted at rest via the existing `IEncryptionService`.
+
+### Notes
+- **Out of scope (follow-ups).** Triggering `apt upgrade` inside an LXC from
+  Stashboard (lands with the V6.1 browser-SSH story) and non-Debian LXC
+  templates (Alpine `apk`, Rocky `dnf`).
+
 ## [5.9.0] — 2026-05-30
 
 ### Changed

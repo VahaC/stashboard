@@ -91,6 +91,31 @@ public class BackupServiceTests
                     WebhookToken = "webhook-tok",
                 });
 
+                var pve = new ProxmoxConnectionEntity
+                {
+                    UserId = alice.Id, Name = "pve-home", ApiBaseUrl = "https://pve.lan:8006",
+                    NodeName = "pve", ServerType = ProxmoxServerType.Pve, ApiTokenId = "root@pam!stash",
+                    ApiTokenSecretEncrypted = enc.Encrypt("TOK-SECRET"),
+                    SshHost = "pve.lan", SshUsername = "root",
+                    SshPrivateKeyEncrypted = enc.Encrypt("PVE-SSH-KEY"),
+                    AllowConsole = true, AllowUpdates = true, Enabled = true,
+                    ScheduleType = CheckScheduleType.Weekly, CheckOnDayOfWeek = DayOfWeek.Monday,
+                    WebhookToken = "pve-webhook-tok",
+                };
+                ctx.ProxmoxConnections.Add(pve);
+                // A guest the user opted OUT of monitoring (intent worth backing up)…
+                ctx.ProxmoxGuests.Add(new ProxmoxGuestEntity
+                {
+                    ProxmoxConnectionId = pve.Id, VmId = 101, GuestType = ProxmoxGuestType.Lxc,
+                    Name = "vaultwarden", MonitoringEnabled = false, IsRunning = true,
+                });
+                // …and a default-monitored guest, which must NOT be exported (scan output).
+                ctx.ProxmoxGuests.Add(new ProxmoxGuestEntity
+                {
+                    ProxmoxConnectionId = pve.Id, VmId = 102, GuestType = ProxmoxGuestType.Lxc,
+                    Name = "jellyfin", MonitoringEnabled = true, IsRunning = true,
+                });
+
                 await ctx.SaveChangesAsync();
                 userA = alice.Id;
 
@@ -149,6 +174,27 @@ public class BackupServiceTests
                 Assert.Equal(CheckScheduleType.Daily, watch.ScheduleType);
                 Assert.Equal(new TimeOnly(12, 0), watch.CheckAtTime);
                 Assert.Equal("webhook-tok", watch.WebhookToken);
+
+                var pve = await ctx.ProxmoxConnections.AsNoTracking().SingleAsync(c => c.UserId == userB);
+                Assert.Equal("pve-home", pve.Name);
+                Assert.Equal("pve", pve.NodeName);
+                Assert.Equal(ProxmoxServerType.Pve, pve.ServerType);
+                Assert.Equal("root@pam!stash", pve.ApiTokenId);
+                Assert.Equal("TOK-SECRET", enc.Decrypt(pve.ApiTokenSecretEncrypted!));
+                Assert.Equal("PVE-SSH-KEY", enc.Decrypt(pve.SshPrivateKeyEncrypted!));
+                Assert.True(pve.AllowConsole);
+                Assert.True(pve.AllowUpdates);
+                Assert.Equal(CheckScheduleType.Weekly, pve.ScheduleType);
+                Assert.Equal(DayOfWeek.Monday, pve.CheckOnDayOfWeek);
+                Assert.Equal("pve-webhook-tok", pve.WebhookToken);
+
+                // Only the monitoring-off guest is restored; the default one is left
+                // for the next scan to rediscover.
+                var guest = await ctx.ProxmoxGuests.AsNoTracking().SingleAsync(g => g.ProxmoxConnectionId == pve.Id);
+                Assert.Equal(101, guest.VmId);
+                Assert.Equal(ProxmoxGuestType.Lxc, guest.GuestType);
+                Assert.Equal("vaultwarden", guest.Name);
+                Assert.False(guest.MonitoringEnabled);
             }
         }
         finally
@@ -156,6 +202,106 @@ public class BackupServiceTests
             foreach (var p in new[] { sourceDb, targetDb })
                 foreach (var f in new[] { p, p + "-wal", p + "-shm" })
                     if (File.Exists(f)) File.Delete(f);
+        }
+    }
+
+    [Fact]
+    public async Task Import_BackupWithoutProxmoxSection_SucceedsForBackCompat()
+    {
+        // A pre-V6.15 backup has no ProxmoxConnections property at all. It must
+        // still import cleanly (the field is optional / defaults to null).
+        var dbPath = Path.Combine(Path.GetTempPath(), $"backup-compat-{Guid.NewGuid():N}.db");
+        var enc = new FakeEncryption();
+        try
+        {
+            Guid userId;
+            await using (var ctx = NewContext(dbPath))
+            {
+                await ctx.Database.EnsureCreatedAsync();
+                var u = new UserEntity { Email = "u@x.com", NormalizedEmail = "U@X.COM", PasswordHash = "h" };
+                ctx.Users.Add(u);
+                await ctx.SaveChangesAsync();
+                userId = u.Id;
+            }
+
+            const string legacyJson = """
+            {
+              "exportedUtc": "2026-01-01T00:00:00Z",
+              "categories": [{ "id": "00000000-0000-0000-0000-000000000001", "name": "Media", "color": "#fff" }],
+              "tags": [],
+              "dockerConnections": [],
+              "services": [],
+              "dockerWatches": []
+            }
+            """;
+
+            await using (var ctx = NewContext(dbPath))
+            {
+                using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(legacyJson));
+                var imported = await new BackupService(ctx, enc).ImportAsync(userId, stream);
+                Assert.Equal(0, imported);
+            }
+
+            await using (var ctx = NewContext(dbPath))
+            {
+                Assert.Equal(0, await ctx.ProxmoxConnections.CountAsync());
+                Assert.Single(await ctx.Categories.Where(c => c.UserId == userId).ToListAsync());
+            }
+        }
+        finally
+        {
+            foreach (var f in new[] { dbPath, dbPath + "-wal", dbPath + "-shm" })
+                if (File.Exists(f)) File.Delete(f);
+        }
+    }
+
+    [Fact]
+    public async Task Import_ProxmoxConnection_MergesByNameWithoutDuplicating()
+    {
+        // Importing the same backup twice into the same instance must not create a
+        // second copy of a host that already exists (merge by name).
+        var dbPath = Path.Combine(Path.GetTempPath(), $"backup-merge-{Guid.NewGuid():N}.db");
+        var enc = new FakeEncryption();
+        try
+        {
+            Guid userId;
+            byte[] export;
+            await using (var ctx = NewContext(dbPath))
+            {
+                await ctx.Database.EnsureCreatedAsync();
+                var u = new UserEntity { Email = "u@x.com", NormalizedEmail = "U@X.COM", PasswordHash = "h" };
+                ctx.Users.Add(u);
+                ctx.ProxmoxConnections.Add(new ProxmoxConnectionEntity
+                {
+                    UserId = u.Id, Name = "pve-home", ApiBaseUrl = "https://pve.lan:8006",
+                    NodeName = "pve", ApiTokenId = "root@pam!stash",
+                    ApiTokenSecretEncrypted = enc.Encrypt("TOK"), WebhookToken = "tok-1",
+                });
+                await ctx.SaveChangesAsync();
+                userId = u.Id;
+                export = await new BackupService(ctx, enc).ExportAsync(userId);
+            }
+
+            // Re-import into the same instance — should be a no-op for the host.
+            await using (var ctx = NewContext(dbPath))
+            {
+                using var stream = new MemoryStream(export);
+                await new BackupService(ctx, enc).ImportAsync(userId, stream);
+            }
+
+            await using (var ctx = NewContext(dbPath))
+            {
+                var hosts = await ctx.ProxmoxConnections.Where(c => c.UserId == userId).ToListAsync();
+                Assert.Single(hosts);
+                Assert.Equal("pve-home", hosts[0].Name);
+                // Webhook token kept on the original; the re-import dropped its colliding copy.
+                Assert.Equal("tok-1", hosts[0].WebhookToken);
+            }
+        }
+        finally
+        {
+            foreach (var f in new[] { dbPath, dbPath + "-wal", dbPath + "-shm" })
+                if (File.Exists(f)) File.Delete(f);
         }
     }
 }

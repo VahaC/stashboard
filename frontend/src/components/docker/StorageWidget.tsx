@@ -103,51 +103,6 @@ export function StorageWidget({ connectionId, defaultPruneUnused, variant = 'pan
         {getApiErrorMessage(storage.error, 'Could not load image storage.')}
       </div>
     ) : (
-      // <dl className="docker-storage-widget__stats">
-      //   <div>
-      //     <dt>Total</dt>
-      //     <dd>
-      //       <button
-      //         type="button"
-      //         className="docker-storage-widget__stat-button"
-      //         disabled={!data}
-      //         onClick={() => setDetailScope('all')}
-      //       >
-      //         {data ? `${data.totalImageCount} images` : '…'}
-      //       </button>
-      //     </dd>
-      //   </div>
-      //   <div>
-      //     <dt>Dangling</dt>
-      //     <dd>
-      //       <button
-      //         type="button"
-      //         className="docker-storage-widget__stat-button"
-      //         disabled={!data}
-      //         onClick={() => setDetailScope('dangling')}
-      //       >
-      //         {danglingLine}
-      //       </button>
-      //     </dd>
-      //   </div>
-      //   <div>
-      //     <dt>Unused</dt>
-      //     <dd>
-      //       <button
-      //         type="button"
-      //         className="docker-storage-widget__stat-button"
-      //         disabled={!data}
-      //         onClick={() => setDetailScope('unused')}
-      //       >
-      //         {unusedLine}
-      //       </button>
-      //     </dd>
-      //   </div>
-      //   <div>
-      //     <dt>Last prune</dt>
-      //     <dd>{data?.lastPruneUtc ? new Date(data.lastPruneUtc).toLocaleString() : 'Never'}</dd>
-      //   </div>
-      // </dl>
       <div className="storage-metrics">
         <div>
           <div className="metric-k">Total</div>

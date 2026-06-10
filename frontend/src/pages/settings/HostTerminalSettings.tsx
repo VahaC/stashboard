@@ -48,7 +48,7 @@ export function HostTerminalSettings() {
 
   return (
     <div className="account-page account-stack">
-      <h1 className="text-2xl font-semibold">Host terminal</h1>
+      <h1 className="text-2xl font-semibold">Host terminal (Docker)</h1>
 
       <Card>
         <CardHeader>

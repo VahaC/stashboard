@@ -713,6 +713,20 @@ export interface StashboardFeatures {
   /** V5.7 — global master switch for the browser container-exec terminal. A
    *  connection's own `allowExec` opt-in is also required for the Exec tab. */
   allowContainerExec: boolean
+  /** V6.6 — global master switch for the browser Proxmox LXC console. A host's
+   *  own `allowConsole` opt-in + SSH credentials are also required for the
+   *  Console tab. */
+  allowProxmoxConsole: boolean
+  /** V6.7.1 — global master switch for one-click Proxmox "Update now". A host's
+   *  own `allowUpdates` opt-in + SSH credentials are also required for the
+   *  Update affordances. */
+  allowProxmoxUpdates: boolean
+  /** V6.13 — global master switch for destroying an LXC. A host's own
+   *  `allowDestroy` opt-in is also required, and the guest must be stopped. */
+  allowProxmoxDestroy: boolean
+  /** V6.13.1 — global master switch for creating an LXC. A host's own
+   *  `allowCreate` opt-in is also required. */
+  allowProxmoxCreate: boolean
 }
 
 /** V5.3 — app-wide host-terminal master switch, managed from Settings → Host terminal. */
@@ -722,6 +736,26 @@ export interface HostShellSettings {
 
 /** V5.7 — app-wide container-exec master switch, managed from Settings → Container exec. */
 export interface ContainerExecSettings {
+  enabled: boolean
+}
+
+/** V6.6 — app-wide LXC-console master switch, managed from Settings → LXC console. */
+export interface ProxmoxConsoleSettings {
+  enabled: boolean
+}
+
+/** V6.7.1 — app-wide Proxmox "Update now" master switch, managed from Settings → Proxmox updates. */
+export interface ProxmoxUpdateApplySettings {
+  enabled: boolean
+}
+
+/** V6.13 — app-wide destroy-LXC master switch, managed from Settings → Destroy LXC. */
+export interface ProxmoxDestroySettings {
+  enabled: boolean
+}
+
+/** V6.13.1 — app-wide create-LXC master switch, managed from Settings → Create LXC. */
+export interface ProxmoxCreateSettings {
   enabled: boolean
 }
 
@@ -822,4 +856,615 @@ export interface DockerContainerStatsSample {
   blockReadBytes: number
   blockWriteBytes: number
   onlineCpus: number
+}
+
+// ── V6.0 — Proxmox LXC update monitoring ────────────────────────────────────
+
+/** What a discovered Proxmox card represents. Mirrors the backend enum.
+ *  V6.14 added `'Qemu'` (value 2) for QEMU/KVM virtual machines. */
+export type ProxmoxGuestType = 'Node' | 'Lxc' | 'Qemu' | 0 | 1 | 2
+
+/** V6.11 — the kind of LXC monitoring change recorded in the audit trail.
+ *  Mirrors the backend `ProxmoxMonitoringChangeType` enum (serialised by name). */
+export type ProxmoxMonitoringChangeType = 'Enabled' | 'Disabled' | 'Snoozed' | 'SnoozeCleared'
+
+/** One auto-discovered node/LXC card on a Proxmox host. */
+export interface ProxmoxGuest {
+  vmId: number
+  name: string
+  guestType: ProxmoxGuestType
+  isRunning: boolean
+  /** Pending package updates, or `null` when it couldn't be determined
+   *  (guest stopped, not Debian-based, SSH/exec failed). */
+  pendingUpdates: number | null
+  lastError: string | null
+  /** Primary IPv4 of a running LXC (from the Proxmox interfaces API), or null. */
+  ipAddress: string | null
+  /** Seconds since the guest started (running guests), else null. */
+  uptimeSeconds: number | null
+  cpuCores: number | null
+  /** Memory limit in bytes. */
+  memoryBytes: number | null
+  /** Root disk size in bytes. */
+  diskBytes: number | null
+  tags: string[]
+  lastCheckedUtc: string | null
+  /** V6.7 — whether update monitoring is on for this LXC. Always `true` for the
+   *  node row. When `false` the guest is skipped by checks and excluded from
+   *  notifications, and the card drops its "updates pending" emphasis. */
+  monitoringEnabled: boolean
+  /** V6.11 — active maintenance-window snooze until this UTC instant, or `null`
+   *  when not snoozed. While set the guest is skipped by checks exactly like
+   *  monitoring-off, then auto-re-included once it passes. */
+  monitoringSnoozedUntil: string | null
+}
+
+/** V6.2 — one `net<n>` / `mp<n>` / `rootfs` line from an LXC config, kept as the
+ *  raw Proxmox option string plus its key. */
+export interface ProxmoxLxcConfigLine {
+  key: string
+  value: string
+}
+
+/** V6.2 — an LXC's static config merged with its live status, for the Config
+ *  tab. Byte fields are normalised to bytes server-side. */
+export interface ProxmoxLxcDetail {
+  vmId: number
+  status: string
+  cores: number | null
+  memoryBytes: number | null
+  swapBytes: number | null
+  hostname: string | null
+  osType: string | null
+  arch: string | null
+  onboot: boolean | null
+  unprivileged: boolean | null
+  features: string | null
+  networks: ProxmoxLxcConfigLine[]
+  mounts: ProxmoxLxcConfigLine[]
+  cpuFraction: number | null
+  memUsedBytes: number | null
+  memMaxBytes: number | null
+  diskUsedBytes: number | null
+  diskMaxBytes: number | null
+  uptimeSeconds: number | null
+}
+
+/** V6.3 — one RRD sample for an LXC. Rate fields are bytes/s averaged over the
+ *  bucket; `cpu` is a 0..1 fraction; any field may be null for an empty bucket. */
+export interface ProxmoxLxcRrdPoint {
+  time: number
+  cpu: number | null
+  memUsed: number | null
+  memMax: number | null
+  netIn: number | null
+  netOut: number | null
+  diskRead: number | null
+  diskWrite: number | null
+}
+
+/** V6.3 — one node task scoped to a guest. `status` is the exit status
+ *  (`OK` / error string) for finished tasks, null while running. */
+export interface ProxmoxTask {
+  upid: string
+  type: string
+  status: string | null
+  user: string | null
+  startTime: number | null
+  endTime: number | null
+}
+
+/** V6.4 — the live runtime snapshot polled for the real-time Stats view.
+ *  `netIn`/`netOut` are cumulative byte counters (the client derives rates). */
+export interface ProxmoxLxcStatus {
+  status: string
+  cpu: number | null
+  memUsed: number | null
+  memMax: number | null
+  diskUsed: number | null
+  diskMax: number | null
+  netIn: number | null
+  netOut: number | null
+  diskRead: number | null
+  diskWrite: number | null
+  uptimeSeconds: number | null
+}
+
+/** V6.4 — LXC lifecycle actions. */
+export type ProxmoxLxcAction = 'start' | 'stop' | 'shutdown' | 'reboot'
+
+// ── V6.8 — PVE node card ─────────────────────────────────────────────────────
+
+/** V6.8 — the node's own health snapshot (`GET …/node/status`), bytes-normalised.
+ *  Every field is nullable so a partial response still renders a useful card. */
+export interface ProxmoxNodeStatus {
+  cpuModel: string | null
+  sockets: number | null
+  cpus: number | null
+  cores: number | null
+  cpuMhz: number | null
+  hvm: boolean | null
+  cpuFraction: number | null
+  ioWaitFraction: number | null
+  load1: number | null
+  load5: number | null
+  load15: number | null
+  memTotal: number | null
+  memUsed: number | null
+  memFree: number | null
+  swapTotal: number | null
+  swapUsed: number | null
+  rootTotal: number | null
+  rootUsed: number | null
+  uptimeSeconds: number | null
+  kernelVersion: string | null
+  pveVersion: string | null
+  subscriptionStatus: string | null
+  subscriptionLevel: string | null
+}
+
+/** V6.8 — one storage pool (`GET …/node/storage`). */
+export interface ProxmoxNodeStorage {
+  storage: string
+  type: string | null
+  content: string | null
+  enabled: boolean
+  active: boolean
+  total: number | null
+  used: number | null
+  avail: number | null
+}
+
+/** V6.8 — one physical disk + its SMART health summary (`GET …/node/disks`). */
+export interface ProxmoxNodeDisk {
+  devPath: string
+  model: string | null
+  serial: string | null
+  vendor: string | null
+  type: string | null
+  size: number | null
+  health: string | null
+  wearoutPercent: number | null
+  rpm: number | null
+  used: string | null
+}
+
+/** V6.8 — one critical SMART attribute (ATA disks). */
+export interface ProxmoxSmartAttribute {
+  id: number
+  name: string
+  value: number | null
+  worst: number | null
+  threshold: number | null
+  raw: string | null
+}
+
+/** V6.8 — detailed SMART for one disk, loaded on demand (`GET …/node/disks/smart`). */
+export interface ProxmoxNodeDiskSmart {
+  health: string | null
+  type: string | null
+  attributes: ProxmoxSmartAttribute[]
+  text: string | null
+}
+
+/** V6.8 — one configured network interface (`GET …/node/network`). */
+export interface ProxmoxNodeNetworkInterface {
+  iface: string
+  type: string | null
+  active: boolean | null
+  autostart: boolean | null
+  method: string | null
+  address: string | null
+  cidr: string | null
+  gateway: string | null
+  bridgePorts: string | null
+  bondSlaves: string | null
+}
+
+/** V6.8 — one RRD sample for the node. Rate fields are bytes/s; `cpu`/`ioWait`
+ *  are 0..1; any field may be null for an empty bucket. */
+export interface ProxmoxNodeRrdPoint {
+  time: number
+  cpu: number | null
+  ioWait: number | null
+  loadAvg: number | null
+  memTotal: number | null
+  memUsed: number | null
+  netIn: number | null
+  netOut: number | null
+  rootTotal: number | null
+  rootUsed: number | null
+  swapUsed: number | null
+}
+
+/** V6.8 — one reading from `sensors -j` over SSH. V6.8.2 added voltage (`volts`)
+ *  and power (`watts`) inputs alongside the temperature / fan ones. */
+export interface ProxmoxSensorReading {
+  chip: string
+  label: string
+  tempC: number | null
+  highC: number | null
+  critC: number | null
+  rpm: number | null
+  volts: number | null
+  watts: number | null
+}
+
+/** V6.8 — the node's thermal/fan snapshot (`GET …/node/sensors`). `available`
+ *  is false (with a reason) when SSH or lm-sensors is missing. */
+export interface ProxmoxNodeSensors {
+  available: boolean
+  error: string | null
+  readings: ProxmoxSensorReading[]
+}
+
+// ── V6.8.2 — PVE node deep telemetry (SSH collectors) ─────────────────────────
+
+/** V6.8.2 — one logical CPU core's utilisation + steal between two /proc/stat
+ *  samples. */
+export interface ProxmoxCpuCoreStat {
+  core: number
+  utilPercent: number
+  stealPercent: number
+}
+
+/** V6.8.2 — per-core CPU utilisation + steal and MemAvailable over SSH
+ *  (`GET …/node/cpu`). `available` is false (with a reason) when SSH is missing. */
+export interface ProxmoxNodeCpuStats {
+  available: boolean
+  error: string | null
+  cores: ProxmoxCpuCoreStat[]
+  stealPercent: number | null
+  memAvailableBytes: number | null
+}
+
+/** V6.8.2 — one physical disk's IO between two /proc/diskstats samples. */
+export interface ProxmoxDiskIoStat {
+  device: string
+  readBytesPerSec: number
+  writeBytesPerSec: number
+  readIops: number
+  writeIops: number
+  readAwaitMs: number | null
+  writeAwaitMs: number | null
+}
+
+/** V6.8.2 — per-disk IO throughput / IOPS / latency over SSH (`GET …/node/diskio`). */
+export interface ProxmoxNodeDiskIo {
+  available: boolean
+  error: string | null
+  disks: ProxmoxDiskIoStat[]
+}
+
+/** V6.8.2 — one LVM-thin pool's fill level from `lvs`. */
+export interface ProxmoxThinPool {
+  name: string
+  volumeGroup: string
+  sizeBytes: number | null
+  dataPercent: number | null
+  metadataPercent: number | null
+}
+
+/** V6.8.2 — LVM-thin pool fill levels over SSH (`GET …/node/thinpools`).
+ *  `available` is false when SSH/lvs is missing or the host has no thin pools. */
+export interface ProxmoxNodeThinPools {
+  available: boolean
+  error: string | null
+  pools: ProxmoxThinPool[]
+}
+
+/** V6.8.2 — one interface's throughput + counters + link between two
+ *  /proc/net/dev samples and /sys/class/net. */
+export interface ProxmoxInterfaceStat {
+  iface: string
+  rxBytesPerSec: number
+  txBytesPerSec: number
+  rxErrors: number
+  txErrors: number
+  rxDropped: number
+  txDropped: number
+  speedMbps: number | null
+  duplex: string | null
+  operState: string | null
+}
+
+/** V6.8.2 — per-interface throughput / errors / link over SSH
+ *  (`GET …/node/interfaces`). */
+export interface ProxmoxNodeInterfaceStats {
+  available: boolean
+  error: string | null
+  interfaces: ProxmoxInterfaceStat[]
+}
+
+/** V6.8.2 — one disk's last SMART self-test + critical counters over SSH
+ *  (`GET …/node/disks/selftest`). Every field is nullable. */
+export interface ProxmoxDiskSelfTest {
+  available: boolean
+  error: string | null
+  lastTestType: string | null
+  lastTestStatus: string | null
+  lastTestPowerOnHours: number | null
+  powerOnHours: number | null
+  reallocatedSectors: number | null
+  pendingSectors: number | null
+  uncorrectableSectors: number | null
+}
+
+// ── V6.8.1 — PVE node alerting ────────────────────────────────────────────────
+
+/** V6.8.1 — which deviation categories are armed for a node. */
+export interface ProxmoxAlertCategoryToggles {
+  cpu: boolean
+  memory: boolean
+  storage: boolean
+  thermal: boolean
+  smart: boolean
+  network: boolean
+}
+
+/** V6.8.1 — a warn/crit threshold set. On `thresholds` a `null` means "use the
+ *  default"; on `defaults` every field is populated for placeholders. */
+export interface ProxmoxNodeAlertThresholdValues {
+  cpuWarn: number | null
+  cpuCrit: number | null
+  memWarn: number | null
+  memCrit: number | null
+  storageWarn: number | null
+  storageCrit: number | null
+  tempWarn: number | null
+  tempCrit: number | null
+}
+
+/** V6.8.1 — a node's alert configuration (`GET …/node/alerts/settings`). */
+export interface ProxmoxNodeAlertSettings {
+  enabled: boolean
+  categories: ProxmoxAlertCategoryToggles
+  thresholds: ProxmoxNodeAlertThresholdValues
+  defaults: ProxmoxNodeAlertThresholdValues
+  lastNotificationSentUtc: string | null
+}
+
+/** V6.8.1 — upsert payload for a node's alert configuration. */
+export interface ProxmoxNodeAlertSettingsUpdate {
+  enabled: boolean
+  categories: ProxmoxAlertCategoryToggles
+  thresholds: ProxmoxNodeAlertThresholdValues
+}
+
+/** V6.8.1 — one currently-active alert (`GET …/node/alerts`). */
+export interface ProxmoxNodeAlert {
+  category: string
+  severity: 'warn' | 'crit'
+  metric: string | null
+  value: number | null
+  threshold: number | null
+  firstSeenUtc: string | null
+}
+
+/** V6.9 — one intentful change to a `net<n>` interface. `key` empty ⇒ add (the
+ *  server assigns the next free `net<n>`); `remove` ⇒ the key goes into Proxmox's
+ *  `delete=` list. For an upsert either set the structured fields (the server
+ *  formats the exact option line) or `raw` to supply the whole option string
+ *  verbatim (advanced mode). `extra` carries unknown-but-valid options parsed off
+ *  the original line so a structured edit never drops them. */
+export interface ProxmoxLxcNetChange {
+  key: string
+  remove?: boolean
+  raw?: string | null
+  name?: string | null
+  bridge?: string | null
+  ip?: string | null      // 'dhcp' | 'manual' | 'x.x.x.x/nn'
+  gw?: string | null
+  ip6?: string | null     // 'dhcp' | 'auto' | 'manual' | 'xxxx::/nn'
+  gw6?: string | null
+  tag?: number | null
+  firewall?: boolean | null
+  rate?: number | null
+  mtu?: number | null
+  hwaddr?: string | null
+  linkDown?: boolean | null
+  extra?: string | null
+}
+
+/** V6.9 — one intentful change to a secondary mount point (`mp<n>`). `key` empty
+ *  ⇒ add; `remove` ⇒ `delete=mp<n>` (config entry only — storage content is not
+ *  touched). `volume` is the positional storage/source token. */
+export interface ProxmoxLxcMountChange {
+  key: string
+  remove?: boolean
+  raw?: string | null
+  volume?: string | null
+  mountPoint?: string | null
+  size?: string | null
+  readOnly?: boolean | null
+  backup?: boolean | null
+  quota?: boolean | null
+  acl?: boolean | null
+  shared?: boolean | null
+  replicate?: boolean | null
+  mountOptions?: string | null
+  extra?: string | null
+}
+
+/** V6.9 — an edit to the container's `rootfs`. No key, cannot be removed — only
+ *  the safe subset (size + selected flags) is editable. */
+export interface ProxmoxLxcRootfsChange {
+  raw?: string | null
+  volume?: string | null
+  size?: string | null
+  readOnly?: boolean | null
+  quota?: boolean | null
+  acl?: boolean | null
+  replicate?: boolean | null
+  mountOptions?: string | null
+  extra?: string | null
+}
+
+/** V6.5 / V6.9 — editable subset of an LXC's config. The scalar fields (V6.5)
+ *  are each optional — only the changed ones are sent, and a `null`/omitted field
+ *  leaves that Proxmox key untouched. Memory / swap are in MiB. V6.9 adds the
+ *  structured `networks` / `mounts` / `rootfs` add/update/remove operations (a
+ *  `null`/omitted list means "no changes here"). */
+export interface ProxmoxLxcConfigUpdate {
+  cores?: number | null
+  memoryMib?: number | null
+  swapMib?: number | null
+  hostname?: string | null
+  onboot?: boolean | null
+  networks?: ProxmoxLxcNetChange[] | null
+  mounts?: ProxmoxLxcMountChange[] | null
+  rootfs?: ProxmoxLxcRootfsChange | null
+}
+
+/** V6.13.1 — one container template (a `vztmpl` volume) for the create form's
+ *  template dropdown. `volid` is passed back as `ProxmoxLxcCreate.osTemplate`. */
+export interface ProxmoxTemplate {
+  volid: string
+  storage: string
+  size: number | null
+}
+
+/** V6.13.1 — the next free guest id from `GET /cluster/nextid`. */
+export interface ProxmoxNextId {
+  vmId: number
+}
+
+/** V6.13.1 — create-one-LXC-from-a-template payload (`POST …/lxc`). `net0` reuses
+ *  the V6.9 structured network model so the create and edit forms format an
+ *  interface identically. `password` / `sshPublicKeys` are write-only. */
+export interface ProxmoxLxcCreate {
+  vmId: number
+  osTemplate: string
+  rootfsStorage: string
+  rootfsSizeGib: number
+  hostname?: string | null
+  description?: string | null
+  tags?: string | null
+  password?: string | null
+  sshPublicKeys?: string | null
+  cores?: number | null
+  memoryMib?: number | null
+  swapMib?: number | null
+  net0?: ProxmoxLxcNetChange | null
+  unprivileged: boolean
+  onboot: boolean
+  start: boolean
+  /** Enable the `nesting=1` feature (Docker / nested LXC inside the container). */
+  nesting: boolean
+  /** DNS server(s) (`nameserver`); null ⇒ inherit the host's setting. */
+  nameserver?: string | null
+  /** DNS search domain (`searchdomain`); null ⇒ inherit. */
+  searchDomain?: string | null
+  /** Register the new container with the cluster HA manager after create. */
+  addToHa: boolean
+}
+
+/** A configured Proxmox host with its discovered guests inline. Never carries
+ *  decrypted secrets — only presence flags. */
+/** V6.8.3 — which Proxmox product a host points at (PVE vs Proxmox Backup
+ *  Server). Serialized as a string by the API's global enum converter. */
+export type ProxmoxServerType = 'Pve' | 'Pbs'
+
+export interface ProxmoxConnection {
+  id: string
+  name: string
+  apiBaseUrl: string
+  nodeName: string
+  /** V6.8.3 — PVE or PBS. */
+  serverType: ProxmoxServerType
+  apiTokenId: string
+  hasApiTokenSecret: boolean
+  skipTlsVerify: boolean
+  sshHost: string | null
+  sshPort: number | null
+  sshUsername: string | null
+  hasSshPrivateKey: boolean
+  hasSshPrivateKeyPassphrase: boolean
+  /** V6.6 — per-host opt-in to the browser LXC console (SSH + `pct exec`). The
+   *  server also requires the global `allowProxmoxConsole` switch and SSH
+   *  credentials before the Console tab goes live. */
+  allowConsole: boolean
+  /** V6.7.1 — per-host opt-in to one-click "Update now". The server also
+   *  requires the global `allowProxmoxUpdates` switch and SSH credentials. */
+  allowUpdates: boolean
+  /** V6.13 — per-host opt-in to destroying an LXC. The server also requires the
+   *  global `allowProxmoxDestroy` switch and a stopped guest. */
+  allowDestroy: boolean
+  /** V6.13.1 — per-host opt-in to creating an LXC. The server also requires the
+   *  global `allowProxmoxCreate` switch. */
+  allowCreate: boolean
+  enabled: boolean
+  updateNotificationsEnabled: boolean
+  telegramNotificationsEnabled: boolean
+  scheduleType: CheckScheduleType
+  checkEveryHours: number
+  checkAtTime: string | null
+  checkOnDayOfWeek: DayOfWeek | null
+  lastCheckedUtc: string | null
+  lastError: string | null
+  guests: ProxmoxGuest[]
+  /** V6.8.2 — node-modal telemetry poll interval (seconds); null = app default (20s). */
+  telemetryPollSeconds: number | null
+  /** V6.11 — the host's public update-check webhook token, or `null` when webhook
+   *  delivery isn't enabled. Full URL: `POST /api/proxmox/webhooks/{token}`. */
+  webhookToken: string | null
+  /** V6.11 — when the last webhook delivery was accepted, or `null`. */
+  lastWebhookReceivedUtc: string | null
+  createdUtc: string
+  updatedUtc: string
+}
+
+/** Create-or-update payload for a Proxmox host. Secret fields are tri-state. */
+export interface ProxmoxConnectionUpsert {
+  name: string
+  apiBaseUrl: string
+  nodeName: string
+  serverType: ProxmoxServerType
+  apiTokenId: string
+  apiTokenSecret: SecretValueUpsert | null
+  skipTlsVerify: boolean
+  sshHost: string | null
+  sshPort: number | null
+  sshUsername: string | null
+  sshPrivateKey: SecretValueUpsert | null
+  sshPrivateKeyPassphrase: SecretValueUpsert | null
+  /** V6.6 — opt this host in to the browser LXC console. */
+  allowConsole: boolean
+  /** V6.7.1 — opt this host in to one-click "Update now". */
+  allowUpdates: boolean
+  /** V6.13 — opt this host in to destroying an LXC. */
+  allowDestroy: boolean
+  /** V6.13.1 — opt this host in to creating an LXC. */
+  allowCreate: boolean
+  enabled: boolean
+  updateNotificationsEnabled: boolean
+  telegramNotificationsEnabled: boolean
+  scheduleType: CheckScheduleType
+  checkEveryHours: number
+  checkAtTime: string | null
+  checkOnDayOfWeek: DayOfWeek | null
+  /** V6.8.2 — node-modal telemetry poll interval (seconds), clamped 5..300 on the
+   *  server; null resets to the app default (20s). */
+  telemetryPollSeconds: number | null
+}
+
+export interface ProxmoxConnectionPingRequest {
+  apiBaseUrl: string
+  nodeName: string
+  serverType: ProxmoxServerType
+  apiTokenId: string
+  apiTokenSecret: SecretValueUpsert | null
+  skipTlsVerify: boolean
+  sshHost: string | null
+  sshPort: number | null
+  sshUsername: string | null
+  sshPrivateKey: SecretValueUpsert | null
+  sshPrivateKeyPassphrase: SecretValueUpsert | null
+}
+
+export interface ProxmoxConnectionPingResponse {
+  apiReachable: boolean
+  /** `null` when SSH wasn't configured (and therefore not tested). */
+  sshReachable: boolean | null
+  error: string | null
 }

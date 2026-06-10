@@ -5,6 +5,8 @@ using Stashboard.Api.Services.ContainerExec;
 using Stashboard.Api.Services.HealthCheckSettings;
 using Stashboard.Api.Services.HostShell;
 using Stashboard.Api.Services.ImagePrune;
+using Stashboard.Api.Services.Proxmox;
+using Stashboard.Api.Services.ProxmoxConsole;
 
 namespace Stashboard.Api.Controllers;
 
@@ -24,6 +26,10 @@ namespace Stashboard.Api.Controllers;
 public class SettingsController(
     IHostShellSettingsService hostShell,
     IContainerExecSettingsService containerExec,
+    IProxmoxConsoleSettingsService proxmoxConsole,
+    IProxmoxUpdateApplySettingsService proxmoxUpdates,
+    IProxmoxDestroySettingsService proxmoxDestroy,
+    IProxmoxCreateSettingsService proxmoxCreate,
     IImagePruneSettingsService imagePrune,
     IHealthCheckSettingsService healthCheck) : ControllerBase
 {
@@ -50,6 +56,58 @@ public class SettingsController(
         [FromBody] UpdateContainerExecSettingsRequest request, CancellationToken cancellationToken)
     {
         await containerExec.UpdateAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V6.6 — the LXC-console master switch (the global gate for V6.6).</summary>
+    [HttpGet("proxmox-console")]
+    public async Task<ActionResult<ProxmoxConsoleSettingsResponse>> GetProxmoxConsole(CancellationToken cancellationToken)
+        => Ok(await proxmoxConsole.GetAsync(cancellationToken));
+
+    [HttpPut("proxmox-console")]
+    public async Task<IActionResult> UpdateProxmoxConsole(
+        [FromBody] UpdateProxmoxConsoleSettingsRequest request, CancellationToken cancellationToken)
+    {
+        await proxmoxConsole.UpdateAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V6.7.1 — the Proxmox "Update now" master switch (the global gate for V6.7.1).</summary>
+    [HttpGet("proxmox-updates")]
+    public async Task<ActionResult<ProxmoxUpdateApplySettingsResponse>> GetProxmoxUpdates(CancellationToken cancellationToken)
+        => Ok(await proxmoxUpdates.GetAsync(cancellationToken));
+
+    [HttpPut("proxmox-updates")]
+    public async Task<IActionResult> UpdateProxmoxUpdates(
+        [FromBody] UpdateProxmoxUpdateApplySettingsRequest request, CancellationToken cancellationToken)
+    {
+        await proxmoxUpdates.UpdateAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V6.13 — the destroy-LXC master switch (the global gate for V6.13).</summary>
+    [HttpGet("proxmox-destroy")]
+    public async Task<ActionResult<ProxmoxDestroySettingsResponse>> GetProxmoxDestroy(CancellationToken cancellationToken)
+        => Ok(await proxmoxDestroy.GetAsync(cancellationToken));
+
+    [HttpPut("proxmox-destroy")]
+    public async Task<IActionResult> UpdateProxmoxDestroy(
+        [FromBody] UpdateProxmoxDestroySettingsRequest request, CancellationToken cancellationToken)
+    {
+        await proxmoxDestroy.UpdateAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V6.13.1 — the create-LXC master switch (the global gate for V6.13.1).</summary>
+    [HttpGet("proxmox-create")]
+    public async Task<ActionResult<ProxmoxCreateSettingsResponse>> GetProxmoxCreate(CancellationToken cancellationToken)
+        => Ok(await proxmoxCreate.GetAsync(cancellationToken));
+
+    [HttpPut("proxmox-create")]
+    public async Task<IActionResult> UpdateProxmoxCreate(
+        [FromBody] UpdateProxmoxCreateSettingsRequest request, CancellationToken cancellationToken)
+    {
+        await proxmoxCreate.UpdateAsync(request, cancellationToken);
         return NoContent();
     }
 

@@ -79,6 +79,147 @@ public class DockerAuditController(ApplicationDbContext db, IDockerWatchMapper w
         return Ok(rows.Select(MapExec).ToList());
     }
 
+    /// <summary>V6.6 — LXC-console sessions (the Proxmox analogue of
+    /// container-exec). Absolute route under <c>api/proxmox</c> since these are
+    /// scoped by Proxmox host, not Docker connection; surfaced on the same Audit
+    /// page so all session trails live in one place. Owner-scoped via the
+    /// denormalised <c>InitiatedByUserId</c>; <c>?connectionId=</c> narrows to a
+    /// single Proxmox host.</summary>
+    [HttpGet("/api/proxmox/console/sessions")]
+    public async Task<ActionResult<IReadOnlyList<ProxmoxConsoleSessionResponse>>> GetProxmoxConsoleSessions(
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = DefaultPageSize,
+        [FromQuery] Guid? connectionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = User.GetUserId();
+        var (s, t) = Page(skip, take);
+
+        var query = db.ProxmoxConsoleSessions.AsNoTracking()
+            .Where(x => x.InitiatedByUserId == userId);
+        if (connectionId is { } cid)
+            query = query.Where(x => x.ProxmoxConnectionId == cid);
+
+        var rows = await query
+            .OrderByDescending(x => x.StartedUtc)
+            .Skip(s).Take(t)
+            .ToListAsync(cancellationToken);
+
+        return Ok(rows.Select(MapProxmoxConsole).ToList());
+    }
+
+    /// <summary>V6.7.1 — Proxmox "Update now" runs (apply pending package
+    /// updates on the node or inside an LXC). Absolute route under
+    /// <c>api/proxmox</c> since these are scoped by Proxmox host; surfaced on the
+    /// same Audit page. Owner-scoped via the denormalised
+    /// <c>InitiatedByUserId</c>; <c>?connectionId=</c> narrows to a single host.</summary>
+    [HttpGet("/api/proxmox/updates/sessions")]
+    public async Task<ActionResult<IReadOnlyList<ProxmoxUpdateSessionResponse>>> GetProxmoxUpdateSessions(
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = DefaultPageSize,
+        [FromQuery] Guid? connectionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = User.GetUserId();
+        var (s, t) = Page(skip, take);
+
+        var query = db.ProxmoxUpdateSessions.AsNoTracking()
+            .Where(x => x.InitiatedByUserId == userId);
+        if (connectionId is { } cid)
+            query = query.Where(x => x.ProxmoxConnectionId == cid);
+
+        var rows = await query
+            .OrderByDescending(x => x.StartedUtc)
+            .Skip(s).Take(t)
+            .ToListAsync(cancellationToken);
+
+        return Ok(rows.Select(MapProxmoxUpdate).ToList());
+    }
+
+    /// <summary>V6.11 — LXC monitoring changes (enable / disable / snooze /
+    /// unsnooze, per guest). Absolute route under <c>api/proxmox</c> since these
+    /// are scoped by Proxmox host; surfaced on the same Audit page. Owner-scoped
+    /// via the denormalised <c>InitiatedByUserId</c>; <c>?connectionId=</c>
+    /// narrows to a single host.</summary>
+    [HttpGet("/api/proxmox/monitoring/sessions")]
+    public async Task<ActionResult<IReadOnlyList<ProxmoxMonitoringAuditResponse>>> GetProxmoxMonitoringAudits(
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = DefaultPageSize,
+        [FromQuery] Guid? connectionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = User.GetUserId();
+        var (s, t) = Page(skip, take);
+
+        var query = db.ProxmoxMonitoringAudits.AsNoTracking()
+            .Where(x => x.InitiatedByUserId == userId);
+        if (connectionId is { } cid)
+            query = query.Where(x => x.ProxmoxConnectionId == cid);
+
+        var rows = await query
+            .OrderByDescending(x => x.ChangedUtc)
+            .Skip(s).Take(t)
+            .ToListAsync(cancellationToken);
+
+        return Ok(rows.Select(MapProxmoxMonitoring).ToList());
+    }
+
+    /// <summary>V6.13 — LXC destroys (the irreversible
+    /// <c>DELETE …/lxc/{vmid}</c>). Absolute route under <c>api/proxmox</c> since
+    /// these are scoped by Proxmox host; surfaced on the same Audit page.
+    /// Owner-scoped via the denormalised <c>InitiatedByUserId</c>;
+    /// <c>?connectionId=</c> narrows to a single host.</summary>
+    [HttpGet("/api/proxmox/destroy/sessions")]
+    public async Task<ActionResult<IReadOnlyList<ProxmoxDestroyAuditResponse>>> GetProxmoxDestroyAudits(
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = DefaultPageSize,
+        [FromQuery] Guid? connectionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = User.GetUserId();
+        var (s, t) = Page(skip, take);
+
+        var query = db.ProxmoxDestroyAudits.AsNoTracking()
+            .Where(x => x.InitiatedByUserId == userId);
+        if (connectionId is { } cid)
+            query = query.Where(x => x.ProxmoxConnectionId == cid);
+
+        var rows = await query
+            .OrderByDescending(x => x.DestroyedUtc)
+            .Skip(s).Take(t)
+            .ToListAsync(cancellationToken);
+
+        return Ok(rows.Select(MapProxmoxDestroy).ToList());
+    }
+
+    /// <summary>V6.13.1 — LXC creates (the <c>POST …/lxc</c> provision-from-
+    /// template). Absolute route under <c>api/proxmox</c> since these are scoped by
+    /// Proxmox host; surfaced on the same Audit page. Owner-scoped via the
+    /// denormalised <c>InitiatedByUserId</c>; <c>?connectionId=</c> narrows to a
+    /// single host.</summary>
+    [HttpGet("/api/proxmox/create/sessions")]
+    public async Task<ActionResult<IReadOnlyList<ProxmoxCreateAuditResponse>>> GetProxmoxCreateAudits(
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = DefaultPageSize,
+        [FromQuery] Guid? connectionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = User.GetUserId();
+        var (s, t) = Page(skip, take);
+
+        var query = db.ProxmoxCreateAudits.AsNoTracking()
+            .Where(x => x.InitiatedByUserId == userId);
+        if (connectionId is { } cid)
+            query = query.Where(x => x.ProxmoxConnectionId == cid);
+
+        var rows = await query
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .Skip(s).Take(t)
+            .ToListAsync(cancellationToken);
+
+        return Ok(rows.Select(MapProxmoxCreate).ToList());
+    }
+
     [HttpGet("update-attempts")]
     public async Task<ActionResult<IReadOnlyList<DockerUpdateAttemptResponse>>> GetUpdateAttempts(
         [FromQuery] int skip = 0,
@@ -177,6 +318,72 @@ public class DockerAuditController(ApplicationDbContext db, IDockerWatchMapper w
         x.BytesToClient,
         x.EndReason,
         x.Error);
+
+    private static ProxmoxConsoleSessionResponse MapProxmoxConsole(ProxmoxConsoleSessionEntity x) => new(
+        x.Id,
+        x.ProxmoxConnectionId,
+        x.ConnectionName,
+        x.NodeName,
+        x.VmId,
+        x.GuestName,
+        x.Command,
+        x.StartedUtc,
+        x.EndedUtc,
+        x.BytesFromClient,
+        x.BytesToClient,
+        x.EndReason,
+        x.Error);
+
+    private static ProxmoxUpdateSessionResponse MapProxmoxUpdate(ProxmoxUpdateSessionEntity x) => new(
+        x.Id,
+        x.ProxmoxConnectionId,
+        x.ConnectionName,
+        x.NodeName,
+        x.TargetType,
+        x.VmId,
+        x.TargetName,
+        x.StartedUtc,
+        x.EndedUtc,
+        x.ExitStatus,
+        x.BytesToClient,
+        x.EndReason,
+        x.Error);
+
+    private static ProxmoxMonitoringAuditResponse MapProxmoxMonitoring(ProxmoxMonitoringAuditEntity x) => new(
+        x.Id,
+        x.ProxmoxConnectionId,
+        x.ConnectionName,
+        x.NodeName,
+        x.VmId,
+        x.GuestName,
+        x.ChangeType,
+        x.MonitoringEnabled,
+        x.SnoozedUntil,
+        x.Bulk,
+        x.ChangedUtc);
+
+    private static ProxmoxDestroyAuditResponse MapProxmoxDestroy(ProxmoxDestroyAuditEntity x) => new(
+        x.Id,
+        x.ProxmoxConnectionId,
+        x.ConnectionName,
+        x.NodeName,
+        x.VmId,
+        x.GuestName,
+        x.Success,
+        x.Error,
+        x.DestroyedUtc);
+
+    private static ProxmoxCreateAuditResponse MapProxmoxCreate(ProxmoxCreateAuditEntity x) => new(
+        x.Id,
+        x.ProxmoxConnectionId,
+        x.ConnectionName,
+        x.NodeName,
+        x.VmId,
+        x.Hostname,
+        x.Template,
+        x.Success,
+        x.Error,
+        x.CreatedAtUtc);
 
     private static DockerPruneRunResponse MapPruneRun(DockerPruneRunEntity run) => new(
         run.Id,

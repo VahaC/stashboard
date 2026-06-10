@@ -231,4 +231,22 @@ public sealed record StashboardFeaturesResponse(
     /// <summary>V5.7 — global master switch for the browser container-exec
     /// terminal. The UI uses it to decide whether the Exec tab can go live
     /// (a connection's own <c>AllowExec</c> opt-in is also required).</summary>
-    bool AllowContainerExec);
+    bool AllowContainerExec,
+    /// <summary>V6.6 — global master switch for the browser Proxmox LXC console.
+    /// The UI uses it to decide whether the Console tab can go live (a host's
+    /// own <c>AllowConsole</c> opt-in + SSH credentials are also required).</summary>
+    bool AllowProxmoxConsole,
+    /// <summary>V6.7.1 — global master switch for one-click Proxmox "Update now".
+    /// The UI uses it to decide whether the Update affordances can go live (a
+    /// host's own <c>AllowUpdates</c> opt-in + SSH credentials are also
+    /// required).</summary>
+    bool AllowProxmoxUpdates,
+    /// <summary>V6.13 — global master switch for destroying an LXC. The UI uses it
+    /// to decide whether the Destroy affordance can go live (a host's own
+    /// <c>AllowDestroy</c> opt-in is also required, and the guest must be
+    /// stopped).</summary>
+    bool AllowProxmoxDestroy,
+    /// <summary>V6.13.1 — global master switch for creating an LXC. The UI uses it
+    /// to decide whether the New LXC affordance can go live (a host's own
+    /// <c>AllowCreate</c> opt-in is also required).</summary>
+    bool AllowProxmoxCreate);

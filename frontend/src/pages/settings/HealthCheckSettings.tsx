@@ -62,7 +62,7 @@ export function HealthCheckSettings() {
 
   return (
     <div className="account-page account-stack">
-      <h1 className="text-2xl font-semibold">Health checks</h1>
+      <h1 className="text-2xl font-semibold">Health checks (Services)</h1>
 
       <Card>
         <CardHeader>
