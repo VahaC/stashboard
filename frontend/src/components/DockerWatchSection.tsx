@@ -503,11 +503,9 @@ export function DockerConnectionForm({
 
   const onDelete = async () => {
     if (!existing) return
-    if (existing.usageCount > 0) {
-      setError(`${existing.usageCount} service(s) use this connection. Reassign them first.`)
-      return
-    }
     if (!confirm(`Delete connection "${existing.name}"?`)) return
+    // A connection still used by services is refused server-side with a 409
+    // that names them — surfaced via extractError below.
     try {
       await remove.mutateAsync(existing.id)
       onCancel()

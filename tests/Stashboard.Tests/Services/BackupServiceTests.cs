@@ -310,6 +310,80 @@ public class BackupServiceTests
     }
 
     [Fact]
+    public async Task Import_Services_MergeByNameAndUrl_ReimportDoesNotDuplicate()
+    {
+        // V6.15.1 — importing a backup into an instance that already holds the
+        // same services (e.g. staging → prod) used to create a duplicate of every
+        // service. Now a service matching by name + main URL is reused; a service
+        // with the same name but a different URL is still treated as new.
+        var dbPath = Path.Combine(Path.GetTempPath(), $"backup-svc-merge-{Guid.NewGuid():N}.db");
+        var enc = new FakeEncryption();
+        try
+        {
+            Guid userId;
+            byte[] export;
+            await using (var ctx = NewContext(dbPath))
+            {
+                await ctx.Database.EnsureCreatedAsync();
+                var u = new UserEntity { Email = "u@x.com", NormalizedEmail = "U@X.COM", PasswordHash = "h" };
+                ctx.Users.Add(u);
+                var connection = new DockerConnectionEntity
+                {
+                    UserId = u.Id, Name = "DockerOMV", HostType = DockerHostType.LocalSocket,
+                };
+                ctx.DockerConnections.Add(connection);
+                ctx.WebResources.Add(new WebResourceEntity
+                {
+                    UserId = u.Id, Name = "OMV", MainUrl = "https://omv.local",
+                    DockerConnectionId = connection.Id,
+                });
+                await ctx.SaveChangesAsync();
+                userId = u.Id;
+                export = await new BackupService(ctx, enc).ExportAsync(userId);
+            }
+
+            // Re-import into the same instance — the service must merge, not duplicate.
+            await using (var ctx = NewContext(dbPath))
+            {
+                using var stream = new MemoryStream(export);
+                var imported = await new BackupService(ctx, enc).ImportAsync(userId, stream);
+                Assert.Equal(0, imported);
+            }
+
+            await using (var ctx = NewContext(dbPath))
+            {
+                var services = await ctx.WebResources.Where(s => s.UserId == userId).ToListAsync();
+                var svc = Assert.Single(services);
+                Assert.Equal("OMV", svc.Name);
+
+                // The single connection (merged by name) is deletable once that
+                // one service is reassigned — no hidden duplicate holds it.
+                Assert.Single(await ctx.DockerConnections.Where(c => c.UserId == userId).ToListAsync());
+            }
+
+            // Same name but a different URL is a different service — still imported.
+            await using (var ctx = NewContext(dbPath))
+            {
+                var existing = await ctx.WebResources.SingleAsync(s => s.UserId == userId);
+                existing.MainUrl = "https://omv.changed.local";
+                await ctx.SaveChangesAsync();
+            }
+            await using (var ctx = NewContext(dbPath))
+            {
+                using var stream = new MemoryStream(export);
+                var imported = await new BackupService(ctx, enc).ImportAsync(userId, stream);
+                Assert.Equal(1, imported);
+                Assert.Equal(2, await ctx.WebResources.CountAsync(s => s.UserId == userId));
+            }
+        }
+        finally
+        {
+            foreach (var f in new[] { dbPath, dbPath + "-wal", dbPath + "-shm" })
+                if (File.Exists(f)) File.Delete(f);
+        }
+    }
+
+    [Fact]
     public async Task Import_ProxmoxConnection_MergesByNameWithoutDuplicating()
     {
         // Importing the same backup twice into the same instance must not create a

@@ -1411,6 +1411,35 @@ merge-by-name (no duplicate host), and the no-Proxmox-section back-compat path.
 
 ---
 
+### ✅ Phase V6.15.1 — Idempotent service import + connection-delete diagnostics (image 6.15.1)
+
+**Complexity:** Low
+**Value:** Fixes the V6.15 backup flow's sharpest edge in practice: restoring a
+backup onto an instance that already held the same services (staging → prod)
+**duplicated every service**, because services — unlike categories, tags, Docker
+and Proxmox connections — were created fresh on every import. And the cleanup
+afterwards was needlessly painful: deleting a connection still referenced by a
+service refused with a **count-only** 409 ("1 service(s) use this connection"),
+leaving the user guessing which service held it — the assignment lives on the
+service (modal → Docker tab), not on the container links the Docker page shows.
+
+**Shipped (6.15.1):**
+
+- `BackupService.ImportAsync` now **merges services by name + main URL** — an
+  existing match is left untouched and only mapped so imported Docker watches
+  re-attach to it; re-importing the same backup is idempotent. A service with
+  the same name but a different URL still imports as new. The returned
+  `imported` count covers only newly created services.
+- `DELETE /api/docker/connections/{id}` refusal now **names the blocking
+  services** in the 409 error (plus a `services` array), and the connection
+  form surfaces the server message instead of composing a count-only one
+  client-side.
+- Tests: backup re-import does not duplicate services (and same-name /
+  different-URL still imports); connection delete 409 names the services;
+  unused connection deletes cleanly.
+
+---
+
 ### Phase V7.0 — Visual Compose viewer (foundation, read-only)
 
 **Complexity:** Medium

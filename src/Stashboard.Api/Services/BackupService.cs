@@ -270,10 +270,21 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
 
         await db.SaveChangesAsync(cancellationToken);
 
-        // ── Services (always created fresh) ──
+        // ── Services (merge by name + main URL) ──
+        // Re-importing a backup into an instance that already holds the same
+        // services used to duplicate every one of them (V6.15.1). An existing
+        // service is left untouched and only mapped so watches re-attach to it.
         var imported = 0;
         foreach (var s in dto.Services ?? [])
         {
+            var existingSvc = await db.WebResources
+                .FirstOrDefaultAsync(x => x.UserId == userId && x.Name == s.Name && x.MainUrl == s.MainUrl, cancellationToken);
+            if (existingSvc is not null)
+            {
+                idMap[s.Id] = existingSvc.Id;
+                continue;
+            }
+
             var svc = new WebResourceEntity
             {
                 UserId = userId,

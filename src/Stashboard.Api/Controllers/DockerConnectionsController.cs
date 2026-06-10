@@ -102,8 +102,8 @@ public class DockerConnectionsController(
     }
 
     /// <summary>
-    /// Delete the connection. Refuses with 409 if any services reference it —
-    /// the UI should prompt the user to reassign or unassign first.
+    /// Delete the connection. Refuses with 409 naming the services that still
+    /// reference it — the UI should prompt the user to reassign or unassign first.
     /// </summary>
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
@@ -111,13 +111,18 @@ public class DockerConnectionsController(
         var connection = await LoadOwnedAsync(id, tracking: false, cancellationToken);
         if (connection is null) return NotFound();
 
-        var usage = await CountUsageAsync(id, cancellationToken);
-        if (usage > 0)
+        var usedBy = await db.WebResources.AsNoTracking()
+            .Where(s => s.DockerConnectionId == id)
+            .OrderBy(s => s.Name)
+            .Select(s => s.Name)
+            .ToListAsync(cancellationToken);
+        if (usedBy.Count > 0)
         {
             return Conflict(new
             {
-                error = $"{usage} service(s) use this connection. Reassign them first.",
-                usageCount = usage,
+                error = $"{usedBy.Count} service(s) use this connection: {string.Join(", ", usedBy)}. Reassign them first.",
+                usageCount = usedBy.Count,
+                services = usedBy,
             });
         }
 
