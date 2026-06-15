@@ -33,12 +33,15 @@ public sealed record DockerProjectServiceTarget(
 public sealed record DockerProjectUpdateProfile(
     string ProjectName,
     DockerHostTransport HostTransport,
-    /// <summary>V5.2 — when set + local socket + compose CLI present, the
-    /// project is recreated via <c>docker compose pull</c> +
-    /// <c>docker compose up -d</c> in one shot. Otherwise the updater
-    /// falls back to per-service raw recreate in <see cref="Services"/>
-    /// order.</summary>
-    string? ComposeProjectPath,
+    /// <summary>V7.1 — the connection's optional Compose path mapping. The
+    /// updater resolves the project directory from the member containers'
+    /// <c>com.docker.compose.project.working_dir</c> labels via
+    /// <see cref="ComposeProjectPaths.Resolve"/>; when that yields a path +
+    /// local socket + compose CLI present, the project is recreated via
+    /// <c>docker compose pull</c> + <c>up -d</c> in one shot. Otherwise the
+    /// updater falls back to per-service raw recreate in
+    /// <see cref="Services"/> order.</summary>
+    ComposePathMapping? ComposePathMapping,
     IReadOnlyList<DockerProjectServiceTarget> Services);
 
 /// <summary>

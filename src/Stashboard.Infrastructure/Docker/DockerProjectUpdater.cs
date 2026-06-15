@@ -42,20 +42,39 @@ public sealed class DockerProjectUpdater(
                 $"No containers found for compose project '{profile.ProjectName}'.",
                 Array.Empty<DockerProjectServiceResult>());
 
+        // V7.1 — the project directory comes from the member containers' own
+        // working_dir labels (translated through the connection's path
+        // mapping), so each project on the host updates against its own
+        // directory instead of one connection-wide path.
+        var projectPath = ResolveProjectPath(profile);
         var useCompose =
             profile.HostTransport.HostType == DockerHostType.LocalSocket
-            && !string.IsNullOrWhiteSpace(profile.ComposeProjectPath)
+            && !string.IsNullOrWhiteSpace(projectPath)
             && await composeCommandRunner.IsAvailableAsync(cancellationToken);
 
         return useCompose
-            ? await UpdateViaComposeAsync(profile, cancellationToken)
+            ? await UpdateViaComposeAsync(profile, projectPath!, cancellationToken)
             : await UpdateViaRawRecreateAsync(profile, cancellationToken);
+    }
+
+    /// <summary>First member container that advertises the standard
+    /// <c>com.docker.compose.project.working_dir</c> label wins — Compose
+    /// writes the same value on every container of a project.</summary>
+    private static string? ResolveProjectPath(DockerProjectUpdateProfile profile)
+    {
+        foreach (var svc in profile.Services)
+        {
+            if (svc.Labels.TryGetValue(ComposeProjectPaths.WorkingDirLabel, out var workingDir)
+                && ComposeProjectPaths.Resolve(profile.HostTransport.HostType, profile.ComposePathMapping, workingDir) is { } path)
+                return path;
+        }
+        return null;
     }
 
     // ── compose path ─────────────────────────────────────────────────────────
 
     private async Task<DockerProjectUpdateResult> UpdateViaComposeAsync(
-        DockerProjectUpdateProfile profile, CancellationToken cancellationToken)
+        DockerProjectUpdateProfile profile, string projectPath, CancellationToken cancellationToken)
     {
         // Capture each container's pre-update digest so the per-service audit
         // rows can show before/after even though compose itself doesn't tell
@@ -66,7 +85,7 @@ public sealed class DockerProjectUpdater(
         try
         {
             run = await composeCommandRunner.RecreateProjectAsync(
-                new ComposeProjectRecreateRequest(profile.ComposeProjectPath!), cancellationToken);
+                new ComposeProjectRecreateRequest(projectPath), cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -86,8 +105,8 @@ public sealed class DockerProjectUpdater(
         if (run.Status == ComposeRunnerStatus.ProjectPathNotFound)
             return BuildAllServicesFailed(profile, previousDigests,
                 DockerUpdateAttemptStatus.RecreateFailed,
-                $"{run.Error} Verify the project directory is bind-mounted read-only into the Stashboard container "
-                + "and that ComposeProjectPath points at the in-container mount path.",
+                $"{run.Error} Verify the project directory is bind-mounted into the Stashboard container "
+                + "and that the connection's Compose path mapping translates the host path correctly.",
                 DockerProjectUpdateMode.Compose);
 
         if (!run.IsSuccess)

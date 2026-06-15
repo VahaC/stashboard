@@ -86,6 +86,72 @@ public class ComposeCommandRunnerTests
         Assert.Equal(1, probeCount);
     }
 
+    // ── V7.1 — config validation ──────────────────────────────────────────
+
+    [Fact]
+    public async Task ValidateConfig_HappyPath_RunsConfigQuietAgainstTheCandidateFile()
+    {
+        var calls = new List<ProcessRunSpec>();
+        var runner = NewRunner();
+        runner.DirectoryExists = _ => true;
+        runner.RunProcessAsync = (spec, _) =>
+        {
+            calls.Add(spec);
+            return Task.FromResult(new ProcessRunOutcome(true, 0, "", ""));
+        };
+
+        var result = await runner.ValidateConfigAsync(ProjectPath, "/compose-projects/home/docker-compose.yml.next");
+
+        Assert.True(result.IsSuccess);
+        // calls[0] is the detection probe; calls[1] the validation itself.
+        var validate = calls[1];
+        Assert.Equal("docker", validate.FileName);
+        Assert.Equal(new[] { "compose", "-f", "/compose-projects/home/docker-compose.yml.next", "config", "-q" },
+            validate.Arguments);
+        Assert.Equal(ProjectPath, validate.WorkingDirectory);
+    }
+
+    [Fact]
+    public async Task ValidateConfig_NonZeroExit_SurfacesStderrAsCommandFailed()
+    {
+        var runner = NewRunner();
+        runner.DirectoryExists = _ => true;
+        runner.RunProcessAsync = (spec, _) => Task.FromResult(
+            spec.Arguments.Contains("version")
+                ? new ProcessRunOutcome(true, 0, "", "")
+                : new ProcessRunOutcome(true, 15, "", "services.web.ports contains an invalid type"));
+
+        var result = await runner.ValidateConfigAsync(ProjectPath, "x.next");
+
+        Assert.Equal(ComposeRunnerStatus.CommandFailed, result.Status);
+        Assert.Contains("invalid type", result.Error);
+    }
+
+    [Fact]
+    public async Task ValidateConfig_CliMissing_ReturnsCliNotAvailable()
+    {
+        var runner = NewRunner();
+        runner.DirectoryExists = _ => true;
+        runner.RunProcessAsync = (_, _) =>
+            Task.FromException<ProcessRunOutcome>(new System.ComponentModel.Win32Exception("not found"));
+
+        var result = await runner.ValidateConfigAsync(ProjectPath, "x.next");
+
+        Assert.Equal(ComposeRunnerStatus.CliNotAvailable, result.Status);
+    }
+
+    [Fact]
+    public async Task ValidateConfig_MissingProjectDirectory_ReturnsProjectPathNotFound()
+    {
+        var runner = NewRunner();
+        runner.DirectoryExists = _ => false;
+        runner.RunProcessAsync = (_, _) => Task.FromResult(new ProcessRunOutcome(true, 0, "", ""));
+
+        var result = await runner.ValidateConfigAsync(ProjectPath, "x.next");
+
+        Assert.Equal(ComposeRunnerStatus.ProjectPathNotFound, result.Status);
+    }
+
     // ── recreate ──────────────────────────────────────────────────────────
 
     [Fact]
@@ -258,6 +324,117 @@ public class ComposeCommandRunnerTests
         var result = await runner.RecreateProjectAsync(new ComposeProjectRecreateRequest(ProjectPath));
 
         Assert.Equal(ComposeRunnerStatus.CliNotAvailable, result.Status);
+    }
+
+    // ── V7.4 — up (local + SSH) ────────────────────────────────────────────
+
+    private static readonly DockerSshCredentials Ssh =
+        new("vps.example.com", 22, "docker", "PEM", null, "/var/run/docker.sock");
+
+    [Fact]
+    public async Task UpProject_Local_RunsUpWithNoPullAndNoServiceArgument()
+    {
+        var calls = new List<ProcessRunSpec>();
+        var runner = NewRunner();
+        runner.DirectoryExists = _ => true;
+        runner.RunProcessAsync = (spec, _) =>
+        {
+            calls.Add(spec);
+            return Task.FromResult(new ProcessRunOutcome(true, 0, "", ""));
+        };
+
+        var result = await runner.UpProjectAsync(new ComposeUpRequest(ProjectPath, Ssh: null));
+
+        Assert.Equal(ComposeRunnerStatus.Success, result.Status);
+        // calls[0] = version probe, [1] = up. No pull anywhere.
+        Assert.DoesNotContain(calls, c => c.Arguments.Contains("pull"));
+        var up = calls[1];
+        Assert.Equal(new[] { "compose", "up", "-d" }, up.Arguments);
+        Assert.Equal(ProjectPath, up.WorkingDirectory);
+    }
+
+    [Fact]
+    public async Task UpProject_Local_NonZeroExit_SurfacesStderr()
+    {
+        var runner = NewRunner();
+        runner.DirectoryExists = _ => true;
+        runner.RunProcessAsync = (spec, _) => Task.FromResult(
+            spec.Arguments.Contains("version")
+                ? new ProcessRunOutcome(true, 0, "", "")
+                : new ProcessRunOutcome(true, 17, "", "port is already allocated"));
+
+        var result = await runner.UpProjectAsync(new ComposeUpRequest(ProjectPath, Ssh: null));
+
+        Assert.Equal(ComposeRunnerStatus.CommandFailed, result.Status);
+        Assert.Contains("already allocated", result.Error);
+    }
+
+    [Fact]
+    public async Task UpProject_Local_MissingProjectDirectory_ReturnsProjectPathNotFound()
+    {
+        var runner = NewRunner();
+        runner.DirectoryExists = _ => false;
+        runner.RunProcessAsync = (_, _) => Task.FromResult(new ProcessRunOutcome(true, 0, "", ""));
+
+        var result = await runner.UpProjectAsync(new ComposeUpRequest(ProjectPath, Ssh: null));
+
+        Assert.Equal(ComposeRunnerStatus.ProjectPathNotFound, result.Status);
+    }
+
+    [Fact]
+    public async Task UpProject_Ssh_RunsUpScriptOnRemoteHost()
+    {
+        string? script = null;
+        var runner = NewRunner();
+        runner.RunSshCommandAsync = (_, cmd, _) =>
+        {
+            script = cmd;
+            return Task.FromResult(new SshCommandOutcome(0, "Container web Started", ""));
+        };
+
+        var result = await runner.UpProjectAsync(new ComposeUpRequest(ProjectPath, Ssh));
+
+        Assert.Equal(ComposeRunnerStatus.Success, result.Status);
+        Assert.NotNull(script);
+        Assert.Contains($"cd '{ProjectPath}'", script);
+        Assert.Contains("$DC up -d", script);
+        // The local CLI is never probed for an SSH run.
+        Assert.Equal("Container web Started", result.Output);
+    }
+
+    [Fact]
+    public async Task UpProject_Ssh_DirectoryMissing_ReturnsProjectPathNotFound()
+    {
+        var runner = NewRunner();
+        runner.RunSshCommandAsync = (_, _, _) => Task.FromResult(new SshCommandOutcome(40, "", ""));
+
+        var result = await runner.UpProjectAsync(new ComposeUpRequest(ProjectPath, Ssh));
+
+        Assert.Equal(ComposeRunnerStatus.ProjectPathNotFound, result.Status);
+    }
+
+    [Fact]
+    public async Task UpProject_Ssh_NoCli_ReturnsCliNotAvailable()
+    {
+        var runner = NewRunner();
+        runner.RunSshCommandAsync = (_, _, _) => Task.FromResult(new SshCommandOutcome(42, "", ""));
+
+        var result = await runner.UpProjectAsync(new ComposeUpRequest(ProjectPath, Ssh));
+
+        Assert.Equal(ComposeRunnerStatus.CliNotAvailable, result.Status);
+    }
+
+    [Fact]
+    public async Task UpProject_Ssh_NonZeroExit_SurfacesStderr()
+    {
+        var runner = NewRunner();
+        runner.RunSshCommandAsync = (_, _, _) =>
+            Task.FromResult(new SshCommandOutcome(1, "", "no configuration file provided"));
+
+        var result = await runner.UpProjectAsync(new ComposeUpRequest(ProjectPath, Ssh));
+
+        Assert.Equal(ComposeRunnerStatus.CommandFailed, result.Status);
+        Assert.Contains("no configuration file", result.Error);
     }
 
     // ── fixtures ──────────────────────────────────────────────────────────

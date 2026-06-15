@@ -42,19 +42,7 @@
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  /* V6.11 — the bulk controls (Enable all / Disable all / Update all) live here
-     alongside Edit/Delete; let them wrap onto a second line instead of
-     overflowing the viewport on narrow screens. */
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  max-width: 100%;
-  min-width: 0;
-}
-
-/* On phones, collapse the bulk buttons to their icons (the Docker card pattern)
-   so the action row stays on one line. */
-@media (max-width: 560px) {
-  .proxmox-conn-actions .label-text { display: none; }
+  position: relative;
 }
 
 .proxmox-conn-error {

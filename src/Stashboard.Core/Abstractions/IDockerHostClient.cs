@@ -340,6 +340,19 @@ public interface IDockerHostClient
         DockerHostTransport transport,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// V7.2 — sums the CPU / memory a host's <em>running</em> containers already
+    /// reserve, from each container's <c>HostConfig</c> (<c>NanoCpus</c> /
+    /// <c>Memory</c>). Containers whose <c>com.docker.compose.project</c> label
+    /// equals <paramref name="excludeComposeProject"/> are skipped so the Compose
+    /// resources editor can show "allocated by <em>other</em> containers" without
+    /// double-counting the project being edited. Read-only.
+    /// </summary>
+    Task<DockerResourceAllocation> GetResourceAllocationAsync(
+        DockerHostTransport transport,
+        string? excludeComposeProject = null,
+        CancellationToken cancellationToken = default);
+
     /// <summary>V3.5 — <c>docker start &lt;container&gt;</c>.</summary>
     Task<DockerContainerActionResult> StartContainerAsync(
         DockerHostTransport transport,
@@ -397,7 +410,42 @@ public interface IDockerHostClient
         DockerHostTransport transport,
         bool includeUnused,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// V7.3 — lists the networks already defined on the host (name + driver +
+    /// declared subnets) so the Compose network editor can warn when a new
+    /// subnet overlaps one already in use. Read-only.
+    /// </summary>
+    Task<IReadOnlyList<DockerNetworkSummary>> ListNetworksAsync(
+        DockerHostTransport transport,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// V7.3 — on-disk usage of the host's named volumes (the Docker Engine
+    /// <c>/system/df</c> view) so the Compose volume editor can show "postgres_data
+    /// is 4.2 GiB" before the user considers deleting it. Best-effort: returns an
+    /// empty list when the transport can't reach <c>/system/df</c> (e.g. TCP+TLS,
+    /// older daemon). Read-only.
+    /// </summary>
+    Task<IReadOnlyList<DockerVolumeUsage>> GetVolumeUsageAsync(
+        DockerHostTransport transport,
+        CancellationToken cancellationToken = default);
 }
+
+/// <summary>V7.3 — one network on the host. <see cref="Subnets"/> are the CIDR
+/// blocks from the network's IPAM config (may be empty for driverless / default
+/// networks).</summary>
+public sealed record DockerNetworkSummary(
+    string Name,
+    string? Driver,
+    IReadOnlyList<string> Subnets);
+
+/// <summary>V7.3 — on-disk usage of one named volume. <see cref="SizeBytes"/> is
+/// <c>null</c> when the daemon did not report a size.</summary>
+public sealed record DockerVolumeUsage(
+    string Name,
+    long? SizeBytes,
+    int? RefCount);
 
 /// <summary>V5.5 — outcome of <see cref="IDockerHostClient.GetImageStorageAsync"/>.</summary>
 public sealed record DockerImageStorageResult(

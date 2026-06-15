@@ -1,8 +1,8 @@
-# Installing Stashboard (step by step)
+﻿# Installing Stashboard (step by step)
 
 This guide walks you through bringing up Stashboard as a single Docker container,
 from an empty host to a running dashboard. No source code, .NET, or Node.js is
-required — you run a prebuilt image from Docker Hub
+required вЂ” you run a prebuilt image from Docker Hub
 ([`vahac/stashboard`](https://hub.docker.com/r/vahac/stashboard)).
 
 If you just want the short version, see the [README quick start](./README.md#quick-start-docker-compose).
@@ -36,7 +36,7 @@ You need a host (Linux server, VM, Raspberry Pi, NAS, or your laptop) with:
 
 ## 2. Get the compose file
 
-Stashboard needs just **one** file in a directory of your choice — the
+Stashboard needs just **one** file in a directory of your choice вЂ” the
 `docker-compose.yml`. Create a folder and download it:
 
 ```bash
@@ -45,11 +45,11 @@ mkdir -p /opt/stashboard && cd /opt/stashboard
 curl -O https://raw.githubusercontent.com/VahaC/stashboard/main/docker-compose.yml
 ```
 
-(`/opt/stashboard` is just a suggestion — any directory works. On Windows, use a
+(`/opt/stashboard` is just a suggestion вЂ” any directory works. On Windows, use a
 folder like `C:\stashboard` and download the file with a browser or
 `Invoke-WebRequest`.)
 
-That's everything you need to start — skip straight to [§4](#4-start-the-container).
+That's everything you need to start вЂ” skip straight to [В§4](#4-start-the-container).
 There is **no `.env` to create** for a standard install; the compose file has a
 working default for every value and the app generates its own keys on first run.
 
@@ -57,7 +57,7 @@ working default for every value and the app generates its own keys on first run.
 
 ## 3. (Optional) override defaults with a `.env`
 
-You only need a `.env` file if you want to **change a default** — use a different
+You only need a `.env` file if you want to **change a default** вЂ” use a different
 port, pin a version, configure SMTP, or supply your own secrets. If none of that
 applies, skip this step entirely.
 
@@ -69,14 +69,14 @@ mv .env.example .env
 ```
 
 ```dotenv
-# Encryption key + JWT secret — leave BLANK to auto-generate (recommended).
+# Encryption key + JWT secret вЂ” leave BLANK to auto-generate (recommended).
 STASHBOARD_ENCRYPTION_KEY=
 STASHBOARD_JWT_SECRET=
 
 # Host port to expose the app on (default 8080).
 STASHBOARD_PORT=8080
 
-# Image version: `latest`, or pin one, e.g. 6.15.1.
+# Image version: `latest`, or pin one, e.g. 7.5.0.
 STASHBOARD_TAG=latest
 ```
 
@@ -84,12 +84,12 @@ What each setting does:
 
 | Setting | Need to set it? | Notes |
 |---|---|---|
-| `STASHBOARD_ENCRYPTION_KEY` | ❌ No | Leave blank. On first start the app generates a strong AES‑256 key and saves it on the data volume. See [§7](#7-how-secrets-are-handled). |
-| `STASHBOARD_JWT_SECRET` | ❌ No | Same — auto-generated and persisted if blank. |
+| `STASHBOARD_ENCRYPTION_KEY` | вќЊ No | Leave blank. On first start the app generates a strong AESвЂ‘256 key and saves it on the data volume. See [В§7](#7-how-secrets-are-handled). |
+| `STASHBOARD_JWT_SECRET` | вќЊ No | Same вЂ” auto-generated and persisted if blank. |
 | `STASHBOARD_PORT` | only to change it | Change if `8080` is taken, e.g. `9090`. |
-| `STASHBOARD_TAG` | only to pin | `latest` tracks the newest build. Pin (e.g. `6.15.1`) for a reproducible deploy. |
+| `STASHBOARD_TAG` | only to pin | `latest` tracks the newest build. Pin (e.g. `7.5.0`) for a reproducible deploy. |
 
-> **Feature toggles live in the app, not in `.env`.** Destructive / high-risk features are off by default and turned on inside Stashboard: the **Remove container** action is gated by `Stashboard:AllowContainerRemoval`, and the **host terminal** (V5.3 — an interactive SSH shell on the Docker host) is enabled at **Settings → Host terminal**, which spells out the conditions and risks. You don't set these in `.env`.
+> **Feature toggles live in the app, not in `.env`.** Destructive / high-risk features are off by default and turned on inside Stashboard: the **Remove container** action is gated by `Stashboard:AllowContainerRemoval`, and the **host terminal** (V5.3 вЂ” an interactive SSH shell on the Docker host) is enabled at **Settings в†’ Host terminal**, which spells out the conditions and risks. You don't set these in `.env`.
 
 > **When would you set the keys yourself?** Only if you manage secrets in an
 > external system, or you are **migrating an existing deployment** and must reuse
@@ -134,17 +134,17 @@ Generated a new JWT signing secret and persisted it.
 ## 5. Open the app and create your account
 
 1. Browse to **`http://<host-ip>:8080`** (or `http://localhost:8080` if local).
-2. Register the first account — this becomes your login.
+2. Register the first account вЂ” this becomes your login.
 3. Log in, then click **+ Add service** to start tracking your services.
 
-If the page doesn't load, see [§9 Troubleshooting](#9-troubleshooting).
+If the page doesn't load, see [В§9 Troubleshooting](#9-troubleshooting).
 
 ---
 
 ## 6. Updating to a newer version
 
-Updating is just pulling a newer image and recreating the container. Your data —
-**and your auto-generated keys** — live on Docker volumes and are preserved.
+Updating is just pulling a newer image and recreating the container. Your data вЂ”
+**and your auto-generated keys** вЂ” live on Docker volumes and are preserved.
 
 ```bash
 cd /opt/stashboard
@@ -161,7 +161,7 @@ chmod +x deploy.sh   # first time only
 
 To move to a specific version, set `STASHBOARD_TAG=6.8.1` in `.env` first, then
 run the commands above. The new image applies any pending schema migrations on
-startup — there is no separate migration step.
+startup вЂ” there is no separate migration step.
 
 ---
 
@@ -172,12 +172,12 @@ blank, Stashboard generates strong random values and writes them to
 `/app/Data/.secrets/` (owner-only permissions), which lives on the
 `stashboard-data` volume:
 
-- **First deploy** → fresh keys generated and saved.
-- **Every later start / update** → the same keys are read back, never overwritten,
+- **First deploy** в†’ fresh keys generated and saved.
+- **Every later start / update** в†’ the same keys are read back, never overwritten,
   so encrypted credentials stay decryptable.
 
-> ⚠️ **Back up the `stashboard-data` volume.** Losing the encryption key means
-> losing every stored credential — there is no recovery.
+> вљ пёЏ **Back up the `stashboard-data` volume.** Losing the encryption key means
+> losing every stored credential вЂ” there is no recovery.
 
 ---
 
@@ -214,19 +214,19 @@ docker compose logs --tail=100 app
 
 Look for the first error. Common causes:
 
-- **Port already in use** — change `STASHBOARD_PORT` in `.env` and re-run
+- **Port already in use** вЂ” change `STASHBOARD_PORT` in `.env` and re-run
   `docker compose up -d`.
-- **Permission denied writing the database/secrets** — ensure the
+- **Permission denied writing the database/secrets** вЂ” ensure the
   `stashboard-data` volume isn't bind-mounted to a host path the container user
   can't write. The default named volume "just works".
 
 **I need to start completely fresh (destroys all data)**
 
 ```bash
-docker compose down -v   # -v also deletes the volumes — irreversible
+docker compose down -v   # -v also deletes the volumes вЂ” irreversible
 ```
 
-**Enable Docker container update tracking** (optional) — to let Stashboard watch
+**Enable Docker container update tracking** (optional) вЂ” to let Stashboard watch
 other containers on the host for image updates, see the dedicated
 [DOCKER_UPDATE_MONITORING_GUIDE.md](./DOCKER_UPDATE_MONITORING_GUIDE.md).
 
@@ -240,5 +240,5 @@ The published image is recommended. If you want to build locally instead:
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
-See [PUBLISHING.md §5](./PUBLISHING.md#5-building-from-source-development) for
+See [PUBLISHING.md В§5](./PUBLISHING.md#5-building-from-source-development) for
 details.

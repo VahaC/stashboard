@@ -20,9 +20,8 @@ export function HelpDockerSsh() {
         <CardContent>
           <section className="host-shell-settings-section">
             <h3>Generate a key &amp; authorize it</h3>
-            <code className="help-code">ssh-keygen -t ed25519 -f ./stashboard_docker -C stashboard
-ssh-copy-id -i stashboard_docker.pub docker@&lt;host&gt;</code>
-
+            <code className="help-code">ssh-keygen -t ed25519 -f ./stashboard_docker -C stashboard<br />
+              ssh-copy-id -i stashboard_docker.pub docker@&lt;host&gt;</code>
             <h3>Give the user socket access</h3>
             <p>The SSH user must be in the <code>docker</code> group (or own the socket):</p>
             <code className="help-code">sudo usermod -aG docker docker   # then log out and back in</code>

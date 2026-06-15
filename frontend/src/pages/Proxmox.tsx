@@ -12,6 +12,7 @@ import {
   HardDrive,
   Info,
   MemoryStick,
+  MoreVertical,
   Network,
   Pencil,
   Play,
@@ -21,6 +22,7 @@ import {
   ScrollText,
   Search,
   Settings,
+  Square,
   SquareChevronRight,
   Thermometer,
   Trash2,
@@ -35,6 +37,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { EntityCard } from '@/components/shared/EntityCard'
+import { FloatingMenu } from '@/components/shared/FloatingMenu'
 import { StateBadge } from '@/components/shared/StateBadge'
 import { ProxmoxConnectionModal } from '@/components/ProxmoxConnectionModal'
 import { LxcModal, type LxcModalTab } from '@/components/proxmox/LxcModal'
@@ -60,6 +63,7 @@ import {
   levelFor,
   memPercent,
   rootPercent,
+  showConnectionError,
   worstNodeLevel,
   type HealthMetric,
 } from '@/lib/proxmox-node-health'
@@ -133,7 +137,9 @@ function GuestCard({ guest, onOpen, onAction, busy = false }: {
   const vm = isVm(guest.guestType)
   // V6.14 — the card's graceful Shutdown goes through a confirm dialog that
   // explains what it does (and how it differs from a hard Stop).
-  const [confirmShutdown, setConfirmShutdown] = useState(false)
+  const [confirmPower, setConfirmPower] = useState<'stop' | 'shutdown' | null>(null)
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null)
+  const openMenu = (e: { preventDefault(): void; stopPropagation(): void; clientX: number; clientY: number }) => { e.preventDefault(); e.stopPropagation(); setMenuPos({ x: e.clientX, y: e.clientY }) }
   const count = guest.pendingUpdates
   // V6.7 — monitoring off (LXC only) drops the "updates pending" emphasis and
   // mutes the card, mirroring a disabled Docker watch.
@@ -204,6 +210,7 @@ function GuestCard({ guest, onOpen, onAction, busy = false }: {
         : undefined}
       clickable={clickable}
       onActivate={() => onOpen?.('overview')}
+      onContextMenu={openMenu}
       actionsLeft={
         <>
           {diag('overview', 'Overview', Info)}
@@ -223,7 +230,7 @@ function GuestCard({ guest, onOpen, onAction, busy = false }: {
                 what it does and the modal's terminology (a hard "Stop" lives in
                 the modal's Lifecycle section). */}
             <Button type="button" variant="outline" size="sm" disabled={busy || !onAction}
-              title={`Gracefully shut down the ${vm ? 'VM' : 'container'}`} onClick={() => setConfirmShutdown(true)}>
+              title={`Gracefully shut down the ${vm ? 'VM' : 'container'}`} onClick={() => setConfirmPower('shutdown')}>
               <Power className="h-3.5 w-3.5" /><span className="label-text">Shutdown</span>
             </Button>
             <Button type="button" variant="outline" size="sm" disabled={busy || !onAction}
@@ -245,17 +252,38 @@ function GuestCard({ guest, onOpen, onAction, busy = false }: {
           Add SSH to this host (Edit) to read its update count.
         </p>
       )}
+      {menuPos && (
+        <FloatingMenu pos={menuPos} onClose={() => setMenuPos(null)}>
+          <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('overview') }}><Info className="h-3.5 w-3.5" /> Overview</button>
+          <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('config') }}><Settings className="h-3.5 w-3.5" /> Config</button>
+          <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('tasks') }}><FileText className="h-3.5 w-3.5" /> Tasks</button>
+          {!vm && <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('logs') }}><ScrollText className="h-3.5 w-3.5" /> Logs</button>}
+          <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('stats') }}><Activity className="h-3.5 w-3.5" /> Stats</button>
+          {!vm && <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('watch') }}><Bell className="h-3.5 w-3.5" /> Watch</button>}
+          {!vm && <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('console') }}><SquareChevronRight className="h-3.5 w-3.5" /> Console</button>}
+          <div className="cgroup-menu-sep" />
+          {guest.isRunning ? (
+            <>
+              <button className="cgroup-menu-item" disabled={busy || !onAction} onClick={() => { setMenuPos(null); setConfirmPower('shutdown') }}><Power className="h-3.5 w-3.5" /> Shutdown</button>
+              <button className="cgroup-menu-item" disabled={busy || !onAction} onClick={() => { setMenuPos(null); onAction?.('reboot') }}><RefreshCw className="h-3.5 w-3.5" /> Reboot</button>
+              <button className="cgroup-menu-item cgroup-menu-item--danger" disabled={busy || !onAction} onClick={() => { setMenuPos(null); setConfirmPower('stop') }}><Square className="h-3.5 w-3.5" /> Stop</button>
+            </>
+          ) : (
+            <button className="cgroup-menu-item" disabled={busy || !onAction} onClick={() => { setMenuPos(null); onAction?.('start') }}><Play className="h-3.5 w-3.5" /> Start</button>
+          )}
+        </FloatingMenu>
+      )}
     </EntityCard>
-    {confirmShutdown && (
+    {confirmPower && (
       <LxcPowerConfirmDialog
         open
-        action="shutdown"
+        action={confirmPower}
         vmId={guest.vmId}
         name={guest.name}
         isVm={vm}
         busy={busy}
-        onConfirm={() => { setConfirmShutdown(false); onAction?.('shutdown') }}
-        onCancel={() => setConfirmShutdown(false)}
+        onConfirm={() => { const a = confirmPower; setConfirmPower(null); onAction?.(a) }}
+        onCancel={() => setConfirmPower(null)}
       />
     )}
     </>
@@ -303,6 +331,7 @@ function NodeCard({ guest, connection, onOpen, onApplyUpdate, canApplyUpdates = 
 }) {
   const status = useProxmoxNodeStatus(connection.id)
   const now = useNowTick()   // so "Refreshed Xs ago" ticks live between polls
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null)
   const count = guest.pendingUpdates
   const hasUpdates = count != null && count > 0
   const sshGap = isSshGap(guest.lastError)
@@ -331,6 +360,7 @@ function NodeCard({ guest, connection, onOpen, onApplyUpdate, canApplyUpdates = 
       tabIndex={0}
       onClick={() => onOpen('overview')}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen('overview') } }}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMenuPos({ x: e.clientX, y: e.clientY }) }}
     >
       <div className="host-card-top">
         <span className="host-name">
@@ -402,6 +432,34 @@ function NodeCard({ guest, connection, onOpen, onApplyUpdate, canApplyUpdates = 
           )}
         </div>
       </div>
+      {menuPos && (
+        <FloatingMenu pos={menuPos} onClose={() => setMenuPos(null)}>
+          {([
+            ['overview',  'Overview',        Info],
+            ['cpuram',    'CPU / RAM',       Cpu],
+            ['storage',   'Storage / SMART', HardDrive],
+            ['network',   'Network',         Network],
+            ['sensors',   'Sensors',         Thermometer],
+            ['alerts',    'Alerts',          Bell],
+            ['console',   'Console',         SquareChevronRight],
+          ] as ReadonlyArray<[NodeModalTab, string, typeof Info]>).map(([tab, label, Icon]) => (
+            <button key={tab} className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen(tab) }}>
+              <Icon className="h-3.5 w-3.5" /> {label}
+            </button>
+          ))}
+          {(onCheckNow || canApplyUpdates) && <div className="cgroup-menu-sep" />}
+          {onCheckNow && (
+            <button className="cgroup-menu-item" disabled={checking} onClick={() => { setMenuPos(null); onCheckNow() }}>
+              <RefreshCw className={cn('h-3.5 w-3.5', checking && 'animate-spin')} /> Check now
+            </button>
+          )}
+          {canApplyUpdates && (
+            <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onApplyUpdate?.() }}>
+              <Download className="h-3.5 w-3.5" /> Update now
+            </button>
+          )}
+        </FloatingMenu>
+      )}
     </div>
   )
 }
@@ -430,6 +488,15 @@ function ConnectionBlock({
   // outside Stashboard is reflected within ~20s, not at the next scheduled scan).
   useSyncProxmoxLxcStatuses(connection.id, connection.enabled)
   const features = useFeatures()
+  // V7.2.1 — the live node-status poll doubles as the host's current-reachability
+  // signal. A connection-level scan error (e.g. a brief "API unreachable: No
+  // route to host" from a scan that ran while the host was momentarily down)
+  // lingers on `connection.lastError` until the next successful scan — but the
+  // node card polls independently and may already show the host green/online.
+  // When the live status currently succeeds, that banner is stale and
+  // contradicts the card, so we suppress it rather than show both at once.
+  const nodeReachable = !!useProxmoxNodeStatus(connection.id).data
+  const [connMenuPos, setConnMenuPos] = useState<{ x: number; y: number } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [open, setOpen] = useState<{ guest: ProxmoxGuest; tab: LxcModalTab } | null>(null)
@@ -467,7 +534,7 @@ function ConnectionBlock({
   const hasLxc = lxcGuests.length > 0
 
   return (
-    <section className="proxmox-conn">
+    <section className="proxmox-conn" onContextMenu={(e) => { e.preventDefault(); setConnMenuPos({ x: e.clientX, y: e.clientY }) }}>
       <div className="proxmox-conn-header">
         <div className="proxmox-conn-title">
           <h2>{connection.name}</h2>
@@ -479,68 +546,65 @@ function ConnectionBlock({
           </span>
         </div>
         <div className="proxmox-conn-actions">
-          {/* V6.13.1 — New LXC: provision a container from a template. Shown only
-              when the global switch + per-host opt-in are both on (the server
-              re-checks). */}
-          {canCreate && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCreateOpen(true)}
-              title="Create a new LXC from a template"
-            >
-              <Plus className="h-3.5 w-3.5" /> <span className="label-text">New LXC</span>
-            </Button>
-          )}
-          {/* V6.11 — host-wide bulk controls. Monitoring enable/disable always
-              available; "Update all" only when the host clears the update gates. */}
-          {hasLxc && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={bulkMonitoring.isPending}
-                onClick={() => setConfirmBulk('enable')}
-                title="Turn update monitoring on for every container on this host"
-              >
-                <Bell className="h-3.5 w-3.5" /> <span className="label-text">Enable all</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={bulkMonitoring.isPending}
-                onClick={() => setConfirmBulk('disable')}
-                title="Turn update monitoring off for every container on this host"
-              >
-                <BellOff className="h-3.5 w-3.5" /> <span className="label-text">Disable all</span>
-              </Button>
-              {canApplyUpdates && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setBulkUpdateOpen(true)}
-                  title="Apply pending updates across the host's containers"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" /> <span className="label-text">Update all</span>
-                </Button>
-              )}
-            </>
-          )}
-          <Button variant="ghost" size="icon" onClick={() => onEdit(connection)} aria-label="Edit host">
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
           <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => { setDeleteError(null); setConfirmDelete(true) }}
-            aria-label="Delete host"
+            variant="outline"
+            size="sm"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setConnMenuPos(p => p ? null : { x: r.left, y: r.bottom + 4 }) }}
+            title="Host actions"
+            className="cgroup-menu-trigger"
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <MoreVertical className="h-3.5 w-3.5" />
           </Button>
+          {connMenuPos && (
+            <FloatingMenu pos={connMenuPos} onClose={() => setConnMenuPos(null)}>
+              {canCreate && (
+                <>
+                  <button className="cgroup-menu-item" onClick={() => { setConnMenuPos(null); setCreateOpen(true) }}>
+                    <Plus className="h-3.5 w-3.5" /> New LXC
+                  </button>
+                  <div className="cgroup-menu-sep" />
+                </>
+              )}
+              {hasLxc && (
+                <>
+                  <button
+                    className="cgroup-menu-item"
+                    disabled={bulkMonitoring.isPending}
+                    onClick={() => { setConnMenuPos(null); setConfirmBulk('enable') }}
+                  >
+                    <Bell className="h-3.5 w-3.5" /> Enable all
+                  </button>
+                  <button
+                    className="cgroup-menu-item"
+                    disabled={bulkMonitoring.isPending}
+                    onClick={() => { setConnMenuPos(null); setConfirmBulk('disable') }}
+                  >
+                    <BellOff className="h-3.5 w-3.5" /> Disable all
+                  </button>
+                  {canApplyUpdates && (
+                    <button className="cgroup-menu-item" onClick={() => { setConnMenuPos(null); setBulkUpdateOpen(true) }}>
+                      <RefreshCw className="h-3.5 w-3.5" /> Update all
+                    </button>
+                  )}
+                  <div className="cgroup-menu-sep" />
+                </>
+              )}
+              <button className="cgroup-menu-item" onClick={() => { setConnMenuPos(null); onEdit(connection) }}>
+                <Pencil className="h-3.5 w-3.5" /> Edit
+              </button>
+              <button
+                className="cgroup-menu-item cgroup-menu-item--danger"
+                onClick={() => { setConnMenuPos(null); setDeleteError(null); setConfirmDelete(true) }}
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete
+              </button>
+            </FloatingMenu>
+          )}
         </div>
       </div>
 
-      {connection.lastError && <p className="proxmox-conn-error">{connection.lastError}</p>}
+      {showConnectionError(connection.lastError, nodeReachable) && <p className="proxmox-conn-error">{connection.lastError}</p>}
       {!connection.enabled && <p className="proxmox-conn-disabled">Scanning disabled — enable it from Edit.</p>}
 
       {connection.guests.length === 0 ? (

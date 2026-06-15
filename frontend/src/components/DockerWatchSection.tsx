@@ -355,8 +355,10 @@ interface ConnectionFormState {
   allowHostShell: boolean
   /** V5.7 — opt this connection in to the browser container-exec terminal (any host type). */
   allowExec: boolean
-  /** V5.2 — in-container Compose project directory (LocalSocket only). */
-  composeProjectPath: string
+  /** V7.1 — optional host→container Compose path mapping (LocalSocket only).
+   *  Project directories themselves come from the containers' working_dir labels. */
+  composePathHostPrefix: string
+  composePathContainerPrefix: string
   /** V5.5 — participate in the background image-prune sweep. */
   allowImagePrune: boolean
   /** V5.5 — also remove non-dangling "unused" images. */
@@ -393,7 +395,8 @@ export function DockerConnectionForm({
     sshRemoteSocketPath: existing?.sshRemoteSocketPath ?? '/var/run/docker.sock',
     allowHostShell: existing?.allowHostShell ?? false,
     allowExec: existing?.allowExec ?? false,
-    composeProjectPath: existing?.composeProjectPath ?? '',
+    composePathHostPrefix: existing?.composePathHostPrefix ?? '',
+    composePathContainerPrefix: existing?.composePathContainerPrefix ?? '',
     allowImagePrune: existing?.allowImagePrune ?? true,
     pruneUnusedImages: existing?.pruneUnusedImages ?? false,
   }))
@@ -433,7 +436,10 @@ export function DockerConnectionForm({
     sshRemoteSocketPath: isSsh ? (form.sshRemoteSocketPath.trim() || null) : null,
     allowHostShell: isSsh ? form.allowHostShell : false,
     allowExec: form.allowExec,
-    composeProjectPath: isLocalSocket ? (form.composeProjectPath.trim() || null) : null,
+    // V7.1 — Compose project directories come from container labels; the only
+    // connection-level knob left is the LocalSocket prefix mapping.
+    composePathHostPrefix: isLocalSocket ? (form.composePathHostPrefix.trim() || null) : null,
+    composePathContainerPrefix: isLocalSocket ? (form.composePathContainerPrefix.trim() || null) : null,
     allowImagePrune: form.allowImagePrune,
     pruneUnusedImages: form.pruneUnusedImages,
   })
@@ -499,7 +505,8 @@ export function DockerConnectionForm({
   // SSH host / port / username / key / passphrase errors are resolved inside
   // the shared <SshCredentialFields> from the same fieldErrors map.
   const sshRemoteSocketError = pickFieldError(fieldErrors, 'sshremotesocketpath', 'sshRemoteSocketPath')
-  const composeProjectPathError = pickFieldError(fieldErrors, 'composeprojectpath', 'composeProjectPath')
+  const composeHostPrefixError = pickFieldError(fieldErrors, 'composepathhostprefix', 'composePathHostPrefix')
+  const composeContainerPrefixError = pickFieldError(fieldErrors, 'composepathcontainerprefix', 'composePathContainerPrefix')
 
   const onDelete = async () => {
     if (!existing) return
@@ -552,20 +559,30 @@ export function DockerConnectionForm({
 
         {isLocalSocket && (
           <div className="service-modal-field docker-section-field-full">
-            <Label className="service-modal-label">Compose project path (optional)</Label>
-            <Input
-              placeholder="/compose-projects/home-server"
-              value={form.composeProjectPath}
-              onChange={(e) => setForm({ ...form, composeProjectPath: e.target.value })}
-              className={cn('font-mono text-[12px]', composeProjectPathError && 'border-destructive')}
-            />
-            {composeProjectPathError && <p className="service-modal-field-error">{composeProjectPathError}</p>}
+            <Label className="service-modal-label">Compose path mapping (optional)</Label>
+            <div className="compose-path-mapping-row">
+              <Input
+                placeholder="/opt/stacks (path on the host)"
+                value={form.composePathHostPrefix}
+                onChange={(e) => setForm({ ...form, composePathHostPrefix: e.target.value })}
+                className={cn('font-mono text-[12px]', composeHostPrefixError && 'border-destructive')}
+              />
+              <Input
+                placeholder="/compose (path inside Stashboard)"
+                value={form.composePathContainerPrefix}
+                onChange={(e) => setForm({ ...form, composePathContainerPrefix: e.target.value })}
+                className={cn('font-mono text-[12px]', composeContainerPrefixError && 'border-destructive')}
+              />
+            </div>
+            {composeHostPrefixError && <p className="service-modal-field-error">{composeHostPrefixError}</p>}
+            {composeContainerPrefixError && <p className="service-modal-field-error">{composeContainerPrefixError}</p>}
             <p className="text-xs text-[var(--muted-foreground)] mt-1">
-              In-container path to this host's <code>docker-compose.yml</code> directory. Bind-mount the host
-              project dir into Stashboard (e.g. <code>/srv/stack:/compose-projects/home-server:ro</code>) and set
-              this to the in-container path. When set, <strong>Update now</strong> runs <code>docker compose pull</code>
-              {' + '}<code>up&nbsp;-d</code> so <code>env_file</code>, <code>depends_on</code> ordering and profiles
-              are honoured. Leave blank for the raw recreate.
+              V7.1 — Compose projects are discovered automatically from each container's
+              {' '}<code>working_dir</code> label (a path on the host). Bind-mount your stacks root into
+              Stashboard; if the mount uses the <em>same</em> path on both sides
+              (e.g. <code>/opt/stacks:/opt/stacks</code>) leave this blank. If it differs
+              (e.g. <code>/opt/stacks:/compose</code>) enter both prefixes so Stashboard can translate
+              the label paths. Powers the Compose viewer/editor and the compose-aware <strong>Update now</strong>.
             </p>
           </div>
         )}

@@ -358,6 +358,50 @@ public sealed class DockerHostClient(
         }
     }
 
+    public async Task<DockerResourceAllocation> GetResourceAllocationAsync(
+        DockerHostTransport transport,
+        string? excludeComposeProject = null,
+        CancellationToken cancellationToken = default)
+    {
+        var client = CreateClient(transport);
+        using (client)
+        {
+            // Running containers only — a stopped container reserves no live capacity.
+            var listed = await client.Containers.ListContainersAsync(
+                new ContainersListParameters { All = false }, cancellationToken);
+
+            long reservedNanoCpus = 0;
+            long reservedMemory = 0;
+            var count = 0;
+            foreach (var c in listed)
+            {
+                if (string.IsNullOrEmpty(c.ID)) continue;
+                if (excludeComposeProject is not null
+                    && c.Labels is not null
+                    && c.Labels.TryGetValue("com.docker.compose.project", out var proj)
+                    && string.Equals(proj, excludeComposeProject, StringComparison.Ordinal))
+                    continue;
+                try
+                {
+                    var inspect = await client.Containers.InspectContainerAsync(c.ID, cancellationToken);
+                    if (inspect.HostConfig is null) continue;
+                    count++;
+                    reservedNanoCpus += inspect.HostConfig.NanoCPUs;
+                    reservedMemory += inspect.HostConfig.Memory;
+                }
+                catch (DockerApiException)
+                {
+                    // Container vanished between list and inspect — ignore.
+                }
+            }
+
+            return new DockerResourceAllocation(
+                ContainerCount: count,
+                ReservedCpus: reservedNanoCpus / 1_000_000_000d,
+                ReservedMemoryBytes: reservedMemory);
+        }
+    }
+
     public Task<DockerContainerActionResult> StartContainerAsync(
         DockerHostTransport transport, string containerName, CancellationToken cancellationToken = default) =>
         ExecuteActionAsync(transport, containerName, "Start", async (client, id, ct) =>
@@ -653,6 +697,129 @@ public sealed class DockerHostClient(
     {
         if (image.RepoTags is null || image.RepoTags.Count == 0) return true;
         return image.RepoTags.All(t => string.IsNullOrEmpty(t) || t == "<none>:<none>");
+    }
+
+    public async Task<IReadOnlyList<DockerNetworkSummary>> ListNetworksAsync(
+        DockerHostTransport transport, CancellationToken cancellationToken = default)
+    {
+        var client = CreateClient(transport);
+        using (client)
+        {
+            var networks = await client.Networks.ListNetworksAsync(
+                new NetworksListParameters(), cancellationToken);
+            return networks
+                .Select(n => new DockerNetworkSummary(
+                    Name: n.Name ?? string.Empty,
+                    Driver: string.IsNullOrEmpty(n.Driver) ? null : n.Driver,
+                    Subnets: (n.IPAM?.Config ?? new List<IPAMConfig>())
+                        .Select(c => c.Subnet)
+                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .Select(s => s!)
+                        .ToList()))
+                .Where(n => n.Name.Length > 0)
+                .OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+    }
+
+    public async Task<IReadOnlyList<DockerVolumeUsage>> GetVolumeUsageAsync(
+        DockerHostTransport transport, CancellationToken cancellationToken = default)
+    {
+        // Docker.DotNet 3.x exposes no /system/df, so this issues a raw GET over
+        // the same endpoint the client dials (the SSH tunnel's local port for SSH
+        // hosts, the unix socket for local). Best-effort: any failure (TCP+TLS
+        // https, older daemon, transport error) yields an empty list — the editor
+        // simply shows no size rather than erroring.
+        IDockerClient client;
+        try
+        {
+            client = CreateClient(transport);
+        }
+        catch (Exception ex) when (ex is NotSupportedException || IsSshConnectFailure(ex))
+        {
+            return Array.Empty<DockerVolumeUsage>();
+        }
+
+        using (client)
+        {
+            using var http = CreateRawEngineHttpClient(client.Configuration.EndpointBaseUri);
+            if (http is null) return Array.Empty<DockerVolumeUsage>();
+            try
+            {
+                using var response = await http.GetAsync("/system/df", cancellationToken);
+                if (!response.IsSuccessStatusCode) return Array.Empty<DockerVolumeUsage>();
+                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                return await ParseVolumeUsageAsync(stream, cancellationToken);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+                or IOException or System.Net.Sockets.SocketException or System.Text.Json.JsonException)
+            {
+                logger.LogDebug(ex, "Volume disk-usage lookup failed for {Host}", DescribeHost(transport));
+                return Array.Empty<DockerVolumeUsage>();
+            }
+        }
+    }
+
+    /// <summary>Builds a one-shot HttpClient bound to the Docker engine endpoint
+    /// the client dials. Returns <c>null</c> for schemes the raw call can't reach
+    /// (npipe, https/TCP+TLS).</summary>
+    private static HttpClient? CreateRawEngineHttpClient(Uri endpoint)
+    {
+        var timeout = TimeSpan.FromSeconds(15);
+        switch (endpoint.Scheme)
+        {
+            case "unix":
+                var socketPath = endpoint.LocalPath;
+                var handler = new SocketsHttpHandler
+                {
+                    ConnectCallback = async (_, ct) =>
+                    {
+                        var socket = new System.Net.Sockets.Socket(
+                            System.Net.Sockets.AddressFamily.Unix,
+                            System.Net.Sockets.SocketType.Stream,
+                            System.Net.Sockets.ProtocolType.Unspecified);
+                        await socket.ConnectAsync(
+                            new System.Net.Sockets.UnixDomainSocketEndPoint(socketPath), ct);
+                        return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                    },
+                };
+                return new HttpClient(handler) { BaseAddress = new Uri("http://localhost"), Timeout = timeout };
+            case "tcp":
+            case "http":
+                return new HttpClient { BaseAddress = new Uri($"http://{endpoint.Host}:{endpoint.Port}"), Timeout = timeout };
+            default:
+                return null;
+        }
+    }
+
+    private static async Task<IReadOnlyList<DockerVolumeUsage>> ParseVolumeUsageAsync(
+        Stream stream, CancellationToken cancellationToken)
+    {
+        using var doc = await System.Text.Json.JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+        if (!doc.RootElement.TryGetProperty("Volumes", out var volumes)
+            || volumes.ValueKind != System.Text.Json.JsonValueKind.Array)
+            return Array.Empty<DockerVolumeUsage>();
+
+        var result = new List<DockerVolumeUsage>();
+        foreach (var v in volumes.EnumerateArray())
+        {
+            if (!v.TryGetProperty("Name", out var nameEl)) continue;
+            var name = nameEl.GetString();
+            if (string.IsNullOrEmpty(name)) continue;
+
+            long? size = null;
+            int? refCount = null;
+            if (v.TryGetProperty("UsageData", out var usage)
+                && usage.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                if (usage.TryGetProperty("Size", out var sizeEl)
+                    && sizeEl.TryGetInt64(out var s) && s >= 0) size = s;
+                if (usage.TryGetProperty("RefCount", out var rcEl)
+                    && rcEl.TryGetInt32(out var rc) && rc >= 0) refCount = rc;
+            }
+            result.Add(new DockerVolumeUsage(name, size, refCount));
+        }
+        return result;
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

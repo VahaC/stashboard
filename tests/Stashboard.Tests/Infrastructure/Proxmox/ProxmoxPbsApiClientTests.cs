@@ -106,6 +106,55 @@ public class ProxmoxPbsApiClientTests
         Assert.Equal(100000000000L, ssd.Avail);
     }
 
+    // ── V7.2.1 — PBS disks/list uses disk-type / status, not type / health ────
+
+    [Fact]
+    public async Task GetNodeDisks_Pbs_ReadsDiskTypeAndStatus_ForHealthBadge()
+    {
+        // PBS names the SMART-health column "status" (e.g. "passed") and the disk
+        // type column "disk-type" (e.g. "hdd"), where PVE uses "health" / "type".
+        // Reading only the PVE keys left the type blank and the health "UNKNOWN".
+        const string disks = """
+            {"data":[
+              {"devpath":"/dev/sda","model":"ST1000DM010","size":1000204886016,"disk-type":"hdd","status":"passed"},
+              {"devpath":"/dev/sdb","model":"LITEONIT","size":128035676160,"disk-type":"ssd","status":"passed","wearout":100}
+            ]}
+            """;
+        var client = BuildClient(_ => Json(disks));
+
+        var result = await client.GetNodeDisksAsync(Profile(ProxmoxServerType.Pbs));
+
+        var sda = result.Single(d => d.DevPath == "/dev/sda");
+        Assert.Equal("hdd", sda.Type);          // from "disk-type"
+        Assert.Equal("passed", sda.Health);     // from "status", not the "unknown" fallback
+        var sdb = result.Single(d => d.DevPath == "/dev/sdb");
+        Assert.Equal("ssd", sdb.Type);
+        Assert.Equal("passed", sdb.Health);
+        Assert.Equal(100, sdb.WearoutPercent);
+    }
+
+    // ── V7.2.1 — PBS SMART disk param is the bare name, not /dev/sda ──────────
+
+    [Fact]
+    public async Task GetNodeDiskSmart_Pbs_StripsDevPrefix_FromDiskParam()
+    {
+        // PBS validates `disk` against its block-device name schema (bare name),
+        // and rejects the /dev/-prefixed path PVE accepts with a 400. We must send
+        // "sda", not "/dev/sda".
+        string? query = null;
+        var client = BuildClient(req =>
+        {
+            query = req.RequestUri!.Query;
+            return Json("""{"data":{"health":"PASSED","type":"text","text":"ok"}}""");
+        });
+
+        var smart = await client.GetNodeDiskSmartAsync(Profile(ProxmoxServerType.Pbs), "/dev/sda");
+
+        Assert.Contains("disk=sda", query);
+        Assert.DoesNotContain("%2Fdev%2F", query);   // no /dev/ prefix reaches PBS
+        Assert.Equal("ok", smart.Text);              // and the response still parses
+    }
+
     // ── PVE still uses the PVE storage endpoint ───────────────────────────────
 
     [Fact]

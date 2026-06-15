@@ -122,6 +122,16 @@ public static class DependencyInjection
         // Compose-aware recreate. Singleton so the CLI-availability probe is
         // cached for the process lifetime.
         services.AddSingleton<IComposeCommandRunner, ComposeCommandRunner>();
+        // V7.0 — read-only Compose viewer: locates + reads the bind-mounted
+        // Compose file and parses it into the viewer subset. Both stateless.
+        services.AddSingleton<IComposeProjectReader, ComposeProjectReader>();
+        services.AddSingleton<IComposeFileParser, ComposeFileParser>();
+        // V7.1 — surgical Compose editor: splices the raw YAML text at the
+        // edited keys only, so the rest of the file round-trips byte-for-byte.
+        services.AddSingleton<IComposeFileEditor, ComposeFileEditor>();
+        // V7.1 — atomic, validated save (.next + `compose config -q` + rename)
+        // for both transports. Stateless.
+        services.AddSingleton<IComposeProjectWriter, ComposeProjectWriter>();
         // V2.7 — one-click "Update now" pulls + recreates the target
         // container. Singleton: stateless, pulls the per-request transport
         // from the same factory the host client uses.

@@ -57,7 +57,8 @@ public sealed class DockerConnectionMapper(IEncryptionService encryption) : IDoc
             HasSshPrivateKey: !string.IsNullOrEmpty(entity.SshPrivateKeyEncrypted),
             HasSshPrivateKeyPassphrase: !string.IsNullOrEmpty(entity.SshPrivateKeyPassphraseEncrypted),
             SshRemoteSocketPath: entity.SshRemoteSocketPath,
-            ComposeProjectPath: entity.ComposeProjectPath,
+            ComposePathHostPrefix: entity.ComposePathHostPrefix,
+            ComposePathContainerPrefix: entity.ComposePathContainerPrefix,
             AllowHostShell: entity.AllowHostShell,
             AllowExec: entity.AllowExec,
             AllowImagePrune: entity.AllowImagePrune,
@@ -105,13 +106,22 @@ public sealed class DockerConnectionMapper(IEncryptionService encryption) : IDoc
             entity.AllowHostShell = false;
         }
 
-        // V5.2 — the Compose-aware recreate runs the local `docker compose`
-        // CLI, so the project path is only meaningful for a local socket.
-        // Clear it for remote transports so a stale path can't shadow a switch
-        // back to LocalSocket.
-        entity.ComposeProjectPath = request.HostType == DockerHostType.LocalSocket
-            ? NormalizeNullableString(request.ComposeProjectPath)
-            : null;
+        // V7.1 — Compose project directories are discovered per project from
+        // the containers' working_dir labels; the only connection-level setting
+        // left is the optional LocalSocket host→container prefix mapping. SSH
+        // hosts use the label path on the host directly and TcpTls has no file
+        // access, so the mapping is cleared for both to keep a stale value from
+        // shadowing a host-type switch.
+        if (request.HostType == DockerHostType.LocalSocket)
+        {
+            entity.ComposePathHostPrefix = NormalizeNullableString(request.ComposePathHostPrefix);
+            entity.ComposePathContainerPrefix = NormalizeNullableString(request.ComposePathContainerPrefix);
+        }
+        else
+        {
+            entity.ComposePathHostPrefix = null;
+            entity.ComposePathContainerPrefix = null;
+        }
 
         // V5.7 — container exec runs through the daemon, so it's available for
         // every host type (unlike the SSH-only host terminal above).

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Stashboard.Core.Abstractions;
+using Stashboard.Infrastructure.Docker.Ssh;
 
 namespace Stashboard.Infrastructure.Docker;
 
@@ -37,6 +38,18 @@ public sealed class ComposeCommandRunner(ILogger<ComposeCommandRunner> logger) :
 
     /// <summary>Test seam — checks whether the Compose project directory exists.</summary>
     public Func<string, bool> DirectoryExists { get; set; } = Directory.Exists;
+
+    /// <summary>V7.4 — remote-script exit codes for the SSH <c>up</c> path
+    /// (outside the shell-builtin range; mirrors the writer's convention).</summary>
+    private const int SshExitDirectoryNotFound = 40;
+    private const int SshExitCliNotAvailable = 42;
+
+    /// <summary>V7.4 — test seam — runs one command over SSH. Production runs
+    /// the shared <see cref="SshCommandExecutor"/> with a generous timeout so a
+    /// first-time image pull during <c>up -d</c> doesn't trip the short default
+    /// the read/write probes use.</summary>
+    public Func<DockerSshCredentials, string, CancellationToken, Task<SshCommandOutcome>> RunSshCommandAsync { get; set; }
+        = (ssh, cmd, ct) => SshCommandExecutor.RunAsync(ssh, cmd, ct, CommandTimeout);
 
     public async Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default) =>
         await ResolveInvocationAsync(cancellationToken) is not null;
@@ -108,6 +121,101 @@ public sealed class ComposeCommandRunner(ILogger<ComposeCommandRunner> logger) :
                 $"docker compose up -d failed: {Describe(up)}");
 
         return new ComposeRunResult(ComposeRunnerStatus.Success, 0, up.Stdout, null);
+    }
+
+    public async Task<ComposeRunResult> UpProjectAsync(
+        ComposeUpRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request.Ssh is not null)
+            return await UpOverSshAsync(request.Ssh, request.ProjectPath, cancellationToken);
+
+        var invocation = await ResolveInvocationAsync(cancellationToken);
+        if (invocation is null)
+            return new ComposeRunResult(ComposeRunnerStatus.CliNotAvailable, null, null,
+                "The docker compose CLI is not available inside the Stashboard container.");
+
+        if (!DirectoryExists(request.ProjectPath))
+            return new ComposeRunResult(ComposeRunnerStatus.ProjectPathNotFound, null, null,
+                $"Compose project directory '{request.ProjectPath}' was not found inside the container.");
+
+        // No pull: `up -d` creates/starts the freshly-added service (pulling its
+        // image if absent) and leaves unchanged siblings running.
+        var up = await RunComposeAsync(invocation, request.ProjectPath,
+            new[] { "up", "-d" }, cancellationToken);
+        if (!up.Started)
+            return new ComposeRunResult(ComposeRunnerStatus.CliNotAvailable, null, up.Stdout, up.Stderr);
+        if (up.ExitCode != 0)
+            return new ComposeRunResult(ComposeRunnerStatus.CommandFailed, up.ExitCode, up.Stdout,
+                $"docker compose up -d failed: {Describe(up)}");
+
+        return new ComposeRunResult(ComposeRunnerStatus.Success, 0, up.Stdout, null);
+    }
+
+    private async Task<ComposeRunResult> UpOverSshAsync(
+        DockerSshCredentials ssh, string projectPath, CancellationToken cancellationToken)
+    {
+        var dir = SshCommandExecutor.QuoteForShell(projectPath);
+        var script =
+            $"cd {dir} 2>/dev/null || exit {SshExitDirectoryNotFound}; " +
+            "if docker compose version >/dev/null 2>&1; then DC='docker compose'; " +
+            "elif command -v docker-compose >/dev/null 2>&1; then DC='docker-compose'; " +
+            $"else exit {SshExitCliNotAvailable}; fi; " +
+            "$DC up -d";
+
+        SshCommandOutcome outcome;
+        try
+        {
+            outcome = await RunSshCommandAsync(ssh, script, cancellationToken);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return new ComposeRunResult(ComposeRunnerStatus.CommandFailed, null, null,
+                $"SSH to {ssh.Host}:{ssh.Port} failed: {ex.Message}");
+        }
+
+        // `docker compose up` writes its progress to stderr even on success, so
+        // surface whichever stream carries content.
+        var output = string.IsNullOrWhiteSpace(outcome.Stdout) ? outcome.Stderr : outcome.Stdout;
+        return outcome.ExitStatus switch
+        {
+            0 => new ComposeRunResult(ComposeRunnerStatus.Success, 0, output, null),
+            SshExitDirectoryNotFound => new ComposeRunResult(ComposeRunnerStatus.ProjectPathNotFound,
+                SshExitDirectoryNotFound, null,
+                $"Compose project directory '{projectPath}' was not found on the host."),
+            SshExitCliNotAvailable => new ComposeRunResult(ComposeRunnerStatus.CliNotAvailable,
+                SshExitCliNotAvailable, null, "No docker compose CLI was found on the host."),
+            _ => new ComposeRunResult(ComposeRunnerStatus.CommandFailed, outcome.ExitStatus, outcome.Stdout,
+                string.IsNullOrWhiteSpace(outcome.Stderr)
+                    ? $"docker compose up -d failed (exit {outcome.ExitStatus})."
+                    : outcome.Stderr.Trim()),
+        };
+    }
+
+    public async Task<ComposeRunResult> ValidateConfigAsync(
+        string projectPath, string composeFilePath, CancellationToken cancellationToken = default)
+    {
+        var invocation = await ResolveInvocationAsync(cancellationToken);
+        if (invocation is null)
+            return new ComposeRunResult(ComposeRunnerStatus.CliNotAvailable, null, null,
+                "The docker compose CLI is not available inside the Stashboard container.");
+
+        if (!DirectoryExists(projectPath))
+            return new ComposeRunResult(ComposeRunnerStatus.ProjectPathNotFound, null, null,
+                $"Compose project directory '{projectPath}' was not found inside the container.");
+
+        // V7.1 — `config -q` parses + validates without touching the daemon.
+        // The explicit -f points at the editor's `.next` candidate; the
+        // project directory stays the working dir so env_file paths resolve.
+        var check = await RunComposeAsync(invocation, projectPath,
+            new[] { "-f", composeFilePath, "config", "-q" }, cancellationToken);
+        if (!check.Started)
+            return new ComposeRunResult(ComposeRunnerStatus.CliNotAvailable, null, check.Stdout, check.Stderr);
+        if (check.ExitCode != 0)
+            return new ComposeRunResult(ComposeRunnerStatus.CommandFailed, check.ExitCode, check.Stdout,
+                Describe(check));
+
+        return new ComposeRunResult(ComposeRunnerStatus.Success, 0, check.Stdout, null);
     }
 
     // ── detection ──────────────────────────────────────────────────────────────

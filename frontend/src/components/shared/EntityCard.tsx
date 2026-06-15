@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { StateBadge } from '@/components/shared/StateBadge'
@@ -30,6 +30,7 @@ export interface EntityCardProps {
    *  Proxmox LXC disabled state, the analogue of a disabled Docker watch). */
   dimmed?: boolean
   onActivate?: () => void
+  onContextMenu?: (e: MouseEvent<HTMLDivElement>) => void
   /** Diagnostics cluster (left of the action row). */
   actionsLeft?: ReactNode
   /** Lifecycle / overflow cluster (right of the action row). */
@@ -49,10 +50,10 @@ export interface EntityCardProps {
  */
 export function EntityCard({
   state, name, headerExtra, updateBadge, subtitle, subtitleTitle,
-  statusLine, chips, extraMeta, clickable = true, dimmed = false, onActivate, actionsLeft, actionsRight, error, children,
+  statusLine, chips, extraMeta, clickable = true, dimmed = false, onActivate, onContextMenu, actionsLeft, actionsRight, error, children,
 }: EntityCardProps) {
   return (
-    <div className={cn('cc docker-instances-card', dimmed && 'cc-dimmed')} data-container-state={state.toLowerCase()}>
+    <div className={cn('cc docker-instances-card', dimmed && 'cc-dimmed')} data-container-state={state.toLowerCase()} onContextMenu={onContextMenu}>
       <div
         className="cc-body docker-instances-card-body"
         role={clickable ? 'button' : undefined}

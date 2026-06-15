@@ -338,15 +338,30 @@ public class DockerWatchMapperTests
     }
 
     [Fact]
-    public void BuildUpdateProfile_CarriesComposeProjectPathFromConnection()
+    public void BuildUpdateProfile_CarriesComposePathMappingFromConnection()
     {
         var entity = SampleEntity(withRegistryCreds: false);
         var connection = SampleConnection(withTls: false);
-        connection.ComposeProjectPath = "/compose-projects/home";
+        connection.ComposePathHostPrefix = "/opt/stacks";
+        connection.ComposePathContainerPrefix = "/compose";
 
         var profile = _mapper.BuildUpdateProfile(entity, connection);
 
-        Assert.Equal("/compose-projects/home", profile.ComposeProjectPath);
+        Assert.Equal(new ComposePathMapping("/opt/stacks", "/compose"), profile.ComposePathMapping);
+    }
+
+    [Fact]
+    public void BuildUpdateProfile_HalfConfiguredMapping_BehavesAsNoMapping()
+    {
+        // V7.1 — both prefixes must be set together; a lone host prefix would
+        // otherwise silently swallow paths.
+        var entity = SampleEntity(withRegistryCreds: false);
+        var connection = SampleConnection(withTls: false);
+        connection.ComposePathHostPrefix = "/opt/stacks";
+
+        var profile = _mapper.BuildUpdateProfile(entity, connection);
+
+        Assert.Null(profile.ComposePathMapping);
     }
 
     [Fact]

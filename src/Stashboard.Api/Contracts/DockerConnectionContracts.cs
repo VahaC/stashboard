@@ -37,9 +37,12 @@ public sealed record DockerConnectionResponse(
     bool HasSshPrivateKeyPassphrase,
     /// <summary>V2.5 — remote socket path (default <c>/var/run/docker.sock</c>).</summary>
     string? SshRemoteSocketPath,
-    /// <summary>V5.2 — in-container path to the Compose project directory used
-    /// by the Compose-aware "Update now" recreate. <c>null</c> = raw recreate.</summary>
-    string? ComposeProjectPath,
+    /// <summary>V7.1 — host-side prefix of the optional Compose path mapping
+    /// (LocalSocket only). Project directories themselves are discovered from
+    /// the containers' <c>com.docker.compose.project.working_dir</c> labels.</summary>
+    string? ComposePathHostPrefix,
+    /// <summary>V7.1 — container-side prefix of the optional Compose path mapping.</summary>
+    string? ComposePathContainerPrefix,
     /// <summary>V5.3 — whether this connection has opted in to the browser host
     /// terminal. Only meaningful for SSH hosts; the server also requires the
     /// global <c>Stashboard:AllowHostShell</c> flag before honouring it.</summary>
@@ -86,11 +89,13 @@ public sealed record DockerConnectionUpsertRequest(
     /// <summary>V2.5 — remote socket path override (default
     /// <c>/var/run/docker.sock</c>; useful for rootless Docker).</summary>
     [MaxLength(200)] string? SshRemoteSocketPath = null,
-    /// <summary>V5.2 — absolute in-container path to the Compose project
-    /// directory (the bind-mount target of the host's project dir). Enables
-    /// the Compose-aware "Update now" recreate for <c>LocalSocket</c> hosts.
+    /// <summary>V7.1 — host-side prefix of the optional Compose path mapping
+    /// (LocalSocket only; both prefixes must be set together to take effect).
     /// Plaintext (not a secret).</summary>
-    [MaxLength(500)] string? ComposeProjectPath = null,
+    [MaxLength(500)] string? ComposePathHostPrefix = null,
+    /// <summary>V7.1 — container-side prefix of the optional Compose path
+    /// mapping (the bind-mount target of <c>ComposePathHostPrefix</c>).</summary>
+    [MaxLength(500)] string? ComposePathContainerPrefix = null,
     /// <summary>V5.3 — opt this connection in to the browser host terminal.
     /// Only honoured for SSH hosts (and only when the global
     /// <c>Stashboard:AllowHostShell</c> flag is on). Defaults to <c>false</c>.</summary>

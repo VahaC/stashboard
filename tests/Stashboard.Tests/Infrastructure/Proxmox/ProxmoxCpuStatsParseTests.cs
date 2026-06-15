@@ -52,6 +52,36 @@ public class ProxmoxCpuStatsParseTests
         Assert.All(cores, c => Assert.Equal(0.0, c.UtilPercent));
     }
 
+    // V7.2.1 — an idle 4-core host (only the idle column advances between the two
+    // samples) reports every core at exactly 0% — fully populated, not empty. This
+    // pins down that "#0..#3 all 0%" on a quiet PBS node is genuine idle, not a
+    // parse failure: the per-core grid still renders four cores, each at 0%.
+    [Fact]
+    public void ParseCpuStats_IdleHost_AllCoresZero_StillReportsEveryCore()
+    {
+        const string idle1 = """
+            cpu  0 0 0 400 0 0 0 0 0 0
+            cpu0 0 0 0 100 0 0 0 0 0 0
+            cpu1 0 0 0 100 0 0 0 0 0 0
+            cpu2 0 0 0 100 0 0 0 0 0 0
+            cpu3 0 0 0 100 0 0 0 0 0 0
+            """;
+        const string idle2 = """
+            cpu  0 0 0 800 0 0 0 0 0 0
+            cpu0 0 0 0 200 0 0 0 0 0 0
+            cpu1 0 0 0 200 0 0 0 0 0 0
+            cpu2 0 0 0 200 0 0 0 0 0 0
+            cpu3 0 0 0 200 0 0 0 0 0 0
+            """;
+
+        var (cores, steal) = ProxmoxSshGuestInspector.ParseCpuStats(idle1, idle2);
+
+        Assert.Equal(4, cores.Count);                       // all four cores present
+        Assert.Equal(new[] { 0, 1, 2, 3 }, cores.Select(c => c.Core));
+        Assert.All(cores, c => Assert.Equal(0.0, c.UtilPercent, 1));
+        Assert.Equal(0.0, steal!.Value, 1);                 // idle ⇒ no steal
+    }
+
     [Fact]
     public void ParseMemAvailable_ReadsKbAndConvertsToBytes()
     {

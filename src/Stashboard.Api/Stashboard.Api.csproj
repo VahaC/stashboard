@@ -32,4 +32,15 @@
     <InternalsVisibleTo Include="Stashboard.Tests" />
   </ItemGroup>
 
+  <!-- V7.5 — ship the starter-recipe catalogue with the app. The repo-root
+       templates/ folder is copied next to the binaries (dev + tests) and into
+       the publish output (the Docker image), so the catalogue loader finds it
+       under the app's base directory at runtime. -->
+  <ItemGroup>
+    <Content Include="..\..\templates\**\*.json"
+             Link="templates\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

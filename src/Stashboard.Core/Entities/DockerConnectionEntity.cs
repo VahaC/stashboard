@@ -66,17 +66,24 @@ public class DockerConnectionEntity : AuditableEntity
     public string? SshRemoteSocketPath { get; set; }
 
     /// <summary>
-    /// V5.2 — absolute path, as visible from inside the Stashboard container,
-    /// to the directory that holds this host's <c>docker-compose.yml</c>. The
-    /// operator bind-mounts the host's Compose project directory to this path
-    /// (e.g. <c>/compose-projects/home-server</c>) so the <c>docker compose</c>
-    /// CLI inside the container can resolve <c>env_file</c> paths,
-    /// <c>depends_on</c> ordering and profiles when "Update now" recreates a
-    /// container. <c>null</c> keeps the V2.7 raw <c>Docker.DotNet</c> recreate.
-    /// Only honoured for <see cref="DockerHostType.LocalSocket"/> connections.
+    /// V7.1 — optional host-side prefix of the Compose path mapping for
+    /// <see cref="DockerHostType.LocalSocket"/> connections. Compose project
+    /// directories are discovered per project from each container's
+    /// <c>com.docker.compose.project.working_dir</c> label (a host path);
+    /// when the operator bind-mounts the stacks root at a different path
+    /// inside the Stashboard container (host <c>/opt/stacks</c> → container
+    /// <c>/compose</c>) this pair translates the prefix. Both <c>null</c> when
+    /// the mount uses the same path on both sides (or for SSH hosts, where the
+    /// label path is used on the host directly). Replaces the V5.2
+    /// single-project <c>ComposeProjectPath</c>.
     /// </summary>
     [MaxLength(500)]
-    public string? ComposeProjectPath { get; set; }
+    public string? ComposePathHostPrefix { get; set; }
+
+    /// <summary>V7.1 — container-side prefix of the Compose path mapping; see
+    /// <see cref="ComposePathHostPrefix"/>.</summary>
+    [MaxLength(500)]
+    public string? ComposePathContainerPrefix { get; set; }
 
     /// <summary>
     /// V5.3 — opt-in switch for the browser host terminal (an interactive SSH

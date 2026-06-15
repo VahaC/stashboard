@@ -1,4 +1,4 @@
-.service-modal-content {
+﻿.service-modal-content {
   max-width: 720px;
   gap: 0;
   padding: 1.25rem;
@@ -568,6 +568,15 @@
   grid-column: 1 / -1;
 }
 
+/* V7.1 — host→container Compose path mapping: two prefix inputs side by side,
+   stacking on narrow screens. */
+.compose-path-mapping-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.compose-path-mapping-row > * { flex: 1; min-width: 180px; }
+
 .docker-release-schedule-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -1095,7 +1104,7 @@
 }
 .docker-logs-toolbar-status-dot[data-state='streaming'] { background: #22c55e; }
 .docker-logs-toolbar-status-dot[data-state='paused'] { background: #f59e0b; }
-.docker-logs-toolbar-status-dot[data-state='error'] { background: hsl(var(--destructive)); }
+.docker-logs-toolbar-status-dot[data-state='error'] { background: var(--destructive); }
 
 .docker-logs-toolbar-filter {
   display: inline-flex;

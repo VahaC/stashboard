@@ -5,6 +5,316 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [7.5.0] — 2026-06-15
+
+### Added
+- **Service templates / starter recipes (V7.5).** The New-project wizard gains a
+  **From template** tab: a searchable, category-grouped catalogue of **~126
+  well-known self-hosted images across 10 categories** (Databases & caches,
+  Networking & proxies, Monitoring & dashboards, Media servers, Media automation,
+  Files & productivity, Security & identity, Smart home & IoT, Developer & Git,
+  Communication) shown with their real dashboard-icons logos — Postgres, Redis,
+  Nginx, Traefik, Pi-hole, Jellyfin, the full *arr stack, Nextcloud, Immich,
+  Paperless-ngx, Vaultwarden, Home Assistant, Gitea, and many more, including
+  full multi-service stacks (app + database + cache). Picking one opens a project config panel pre-filled and
+  reduced to the per-deployment bits: project name, target directory, and the
+  template's declared **variables** (volume host paths, env values, exposed
+  ports) — each with a hint, and a one-click **generate** for secrets such as
+  database passwords and admin tokens. Filling them resolves the template's
+  `${KEY}` placeholders and posts the result to the same `create-project`
+  endpoint the from-scratch tab uses, so the file is still validated by
+  `docker compose config -q` and written atomically.
+- **Multi-service project bootstrap.** `create-project` now writes a list of
+  services (the first seeds the file, the rest are appended through the same
+  comment-preserving editor), so a template like WordPress + MariaDB comes up in
+  one action. The from-scratch tab is unchanged (it sends a single service).
+- **Extensible catalogue.** Templates ship as validated `templates/*.json` files
+  baked into the image; drop your own `*.json` into a mounted
+  `/app/Data/templates` to extend or override the built-ins (a recipe with the
+  same `id` wins). Malformed files are skipped, never fatal. Served read-only at
+  `GET /api/templates`.
+
+## [7.4.1] — 2026-06-14
+
+### Added
+- **Create a whole project from scratch (V7.4.1).** Completes the V7.4
+  bootstrapper: a **New project** button on every (non-TCP+TLS) host header opens
+  a dialog that writes a brand-new `docker-compose.yml` from nothing. You name
+  the project (validated to Compose's lowercase `^[a-z0-9][a-z0-9_-]*$` rule),
+  give a target **directory** (free-text path as the connection sees it — inside
+  the Stashboard container for a local socket, on the remote host for SSH, with
+  an opt-in `mkdir -p`), and define the first service with the same shared field
+  controls as the editor. The file is written with a top-level `name:` so the
+  project name is deterministic, validated by `docker compose config -q` and
+  written atomically. **Create and run** then runs `docker compose up -d`
+  (local or over SSH) and opens the new project's modal — where you can keep
+  adding services (V7.4); **Create only** just writes the file. The flow refuses
+  to clobber a directory that already holds a Compose file (open it and use
+  Add service instead).
+
+## [7.4.0] — 2026-06-14
+
+### Added
+- **Create a new service from scratch (V7.4).** The Compose modal gains an
+  **Add service** tab — a structured wizard that turns the editor from a
+  YAML-renderer into a project bootstrapper. It reuses the exact field controls
+  of the existing-service editor (image with the registry tag dropdown, ports,
+  volumes, env, labels, restart, command/entrypoint, user, working_dir, and the
+  V7.2 resource picker), plus a service-name field validated for uniqueness and
+  Compose key shape (`^[a-zA-Z0-9._-]+$`); an image is required. The new block is
+  appended at the end of the `services:` map by the same comment-preserving,
+  `docker compose config -q`-validated, atomic writer from V7.1 — so the rest of
+  the file survives byte-for-byte and the entry lands at the existing services'
+  indentation column (2- vs. 4-space). Adding/pasting several services supports
+  **multiple containers in one file**.
+- **Save and run.** After appending the block, the wizard runs
+  `docker compose up -d` against the whole project so the new container comes up
+  alongside its siblings — **LocalSocket** via the in-container Compose CLI (the
+  V5.2 path) **and SSH** on the remote host over the connection's existing
+  credentials. The modal then switches to the new service's tab, where every
+  field is editable just like an existing service. A **Save only** action writes
+  the file without starting anything.
+- **Raw YAML tab.** A plain-text editor for the project's whole Compose file —
+  write or paste by hand (handy for bulk edits or pasting a ready stack), with
+  the same validated, atomic save and an optional run. Available on existing
+  projects too, and the escape hatch for files the structured editor marks
+  read-only.
+
+## [7.3.0] — 2026-06-14
+
+### Added
+- **Top-level resources editor (V7.3).** The Compose modal gains a separate
+  **Shared resources** tab (alongside the per-container tabs) holding
+  four sections — **Networks · Volumes · Secrets · Configs** — each with a
+  plain-language "what is this / when do I need it" line at the top. This turns
+  the V7 editor from a per-container form filler into a real project editor.
+  Each section is a CRUD list backed by the same comment-preserving,
+  `docker compose config -q`-validated, atomic YAML writer introduced in V7.1,
+  now extended to splice **top-level** map entries one at a time: editing or
+  adding one network/volume/secret/config rewrites only that entry's lines, so
+  sibling entries, key order and comments survive byte-for-byte. The same safety
+  refusals apply (YAML anchors, flow-style or merge-key sections are left to
+  manual editing).
+  - **Network** editor — driver (`bridge` / `overlay` / `macvlan` / …), subnet,
+    gateway and driver options, plus an optional name override. Warns when a new
+    subnet **overlaps a network already defined on the host** (read live from the
+    Docker Engine network list, cached ~60 s).
+  - **Volume** editor — driver, driver options and name override, and surfaces
+    each named volume's **actual on-disk size** from the host's `/system/df`
+    (so `postgres_data` shows as 4.2 GiB before you consider deleting it).
+    Best-effort: the size is simply omitted when the daemon can't be reached for
+    `df`.
+  - **Secret / config** editor — external vs. host `file:` path, with a name
+    override.
+- The Compose viewer/parser now reads the **full options** of top-level
+  networks/volumes/secrets/configs (driver, driver_opts, ipam subnet/gateway,
+  external, name, file), where it previously surfaced only their names. A network
+  with more than one `ipam.config` entry is reported as an unsupported feature so
+  the read-only banner shows instead of the editor silently dropping subnets.
+
+### Notes
+- The secrets/configs editor manages the **Compose declarations** (external vs.
+  `file:` path); the file material itself is not stored in Stashboard. A built-in
+  encrypted-at-rest secret store was considered for this phase and deferred as a
+  larger, security-sensitive change.
+
+## [7.2.1] — 2026-06-14
+
+### Fixed
+- **Proxmox Backup Server (PBS) disk SMART + health (V7.2.1).** Three PBS-only
+  bugs surfaced on real PBS hardware, all rooted in PBS naming a field or
+  parameter differently from PVE:
+  - **Per-disk SMART returned 400 ("host unreachable").** The SMART read sent the
+    `/dev/`-prefixed path (`/dev/sda`) PVE accepts, but PBS validates `disk`
+    against its block-device name schema and wants the bare name (`sda`) — the
+    mismatch failed PBS's regex with a 400 that surfaced as a misleading "Proxmox
+    host unreachable" banner. The `/dev/` prefix is now stripped for PBS, so SMART
+    attributes load. As defence-in-depth, a genuine per-disk `smartctl` failure
+    (USB bridge, a disk that can't report SMART) now surfaces the host's own
+    reason inline under that disk instead of a 502 — the host is reachable, only
+    that one disk's read failed.
+  - **Disk type blank + SMART health shown as "UNKNOWN".** `disks/list` health
+    and type were read from the PVE keys `health` / `type`, but PBS names the same
+    columns `status` (`passed`) / `disk-type` (`hdd`/`ssd`). Both key spellings
+    are now read, so the health badge shows **PASSED** and the disk type shows on
+    PBS.
+  - **Stale "API unreachable" banner over an online card.** A connection-level
+    scan error (e.g. a brief "No route to host" from a scan that ran while the
+    host was momentarily down) lingered until the next successful scan, so the
+    node card could show the host green/online while a red "unreachable" banner
+    sat above it. The banner is now suppressed whenever the live node-status poll
+    currently succeeds.
+
+## [7.2.0] — 2026-06-11
+
+### Added
+- **Compose resource constraints editor (V7.2).** Each service tab now has a
+  resource-constraints section below the basic-fields form, folded into the
+  same atomic save (`ComposeResourcesForm`):
+  - **Nine fields editable:** `cpus`, `mem_limit`/`memory`, `mem_reservation`,
+    `pids_limit`, `cpu_shares`, `ulimits`, `oom_kill_disable`, `oom_score_adj`,
+    `shm_size`. cpu/mem/pids follow the file's convention —
+    `deploy.resources.limits`/`.reservations` (modern, default for new) **or**
+    legacy top-level `cpus`/`mem_limit`/… — detected per file and **never
+    mixed**; legacy mode disables CPU reservation (v2 has no such key). The
+    other knobs are always top-level, behind an "Advanced" disclosure.
+  - **Numeric inputs + sliders bounded by the host's real capacity** (CPU count
+    and RAM from the V3.5 `docker stats` stream — `onlineCpus` /
+    `memoryLimitBytes`), with a capacity panel — *"Host capacity … · allocated
+    by other containers … · this service draft …"* — and an inline over-commit
+    warning. The "allocated by others" figure sums the running containers'
+    `HostConfig` (`NanoCpus`/`Memory`) via `inspect` (the edited project's own
+    containers excluded), cached server-side (`IMemoryCache`, ~60 s per
+    connection).
+  - **Round-trip preserved (`ComposeFileEditor`):** the `deploy.resources`
+    subtree is rewritten as a unit, leaving sibling `deploy` keys (replicas /
+    placement / …) byte-for-byte; numeric/boolean values render unquoted;
+    untouched fields stay zero-diff. Anchored `deploy.resources` and GPU device
+    reservations are refused / flagged read-only rather than corrupted.
+
+## [7.1.1] — 2026-06-10
+
+### Changed
+- **Compose viewer/editor is now a modal, scoped to one project (V7.1.1).** The
+  V7.0/V7.1 surface was a standalone page reached from a whole-host **Compose**
+  button — which made little sense, since a host runs *many* projects plus
+  standalone containers. It's reworked into a focused modal:
+  - The **whole-host Compose button is gone**, and so are the
+    `/projects/{id}/compose` and `/projects/{id}/compose/{project}` routes (and
+    the project-picker page) — `ComposeProjectPage` is deleted.
+  - A **Compose** button now appears on **every Compose project's group header**.
+    Single-container projects are **no longer collapsed** into the "Other
+    containers" bucket (the v5.4 1-of-1 demotion is lifted) — each shows as its
+    own named group with the Compose / Update project actions. The "Other
+    containers" bucket is now only genuinely label-less containers, which carry
+    no Compose button. A non-compose container shows no button.
+  - The modal carries a **compact project header strip** (service / network /
+    volume / secret counts + the top-level networks / volumes / secrets / configs)
+    and then **one tab per service**, each tab wearing the matched live
+    container's runtime-state badge. The tab body is the same V7.1 editable
+    basic-fields form (image / ports / volumes / env / labels / restart /
+    command / entrypoint / user / working_dir) plus a read-only block for the
+    fields the form doesn't cover (depends_on / networks / limits / …). Files
+    using unsupported constructs stay **read-only** with the same "file uses X"
+    banner and a details-only view.
+  - No backend, contract, or round-trip change — the discovery endpoint, the
+    per-service edit endpoint, and the byte-for-byte YAML splicing are
+    untouched. This is a pure front-end UX rework.
+
+## [7.1.0] — 2026-06-10
+
+### Added
+- **Visual Compose editor — edit basic service fields (V7.1).** The V7.0 viewer
+  grows its write path: an **Edit** button on every service card opens a modal
+  covering the 80 % of Compose edits reached for daily — **image** (with a
+  registry **tag dropdown** + free text), **ports** (host / container /
+  protocol rows with live **collision checks** against the rest of the
+  project), **volumes** (named-volume suggestions + a warning on host paths
+  outside the project directory), **environment** (key/value table with a
+  password-style mask for `*_KEY` / `*_TOKEN` / `*_PASSWORD` / `*_SECRET`
+  names), **labels**, **restart policy**, **command / entrypoint** (string or
+  `["exec", "form"]`), **user** and **working_dir**.
+  - **Round-trip fidelity (the make-or-break bar).** Edits are applied by
+    *splicing the raw YAML text* at the exact token spans of the changed keys
+    (located via YamlDotNet's event stream) — comments, key order, quoting and
+    blank lines everywhere else survive **byte-for-byte**, and an untouched
+    field is a guaranteed zero-diff. Decision + alternatives documented in
+    [docs/adr/0001-compose-yaml-round-trip.md](./docs/adr/0001-compose-yaml-round-trip.md).
+  - **Atomic, validated save.** The backend writes `<file>.next`, runs
+    `docker compose -f <file>.next config -q`, and only on success renames it
+    over the original (same-directory rename — atomic). Validation is
+    **blocking**: no Compose CLI means the save is refused; a validation
+    failure rolls back and surfaces the CLI's raw stderr in the modal. Works
+    on **both transports** — inside the Stashboard container for LocalSocket
+    connections and over the connection's SSH credentials (upload + validate +
+    rename in one round trip) for SSH connections.
+  - **Safety refusals instead of silent damage:** files using `x-*` /
+    `extends` / YAML merge keys stay read-only (409 + the V7.0 banner);
+    flow-style service bodies and anchored (`&name`) values are refused with a
+    typed error (editing an `*alias` use-site is fine). Saving never touches
+    running containers — apply via **Update project** afterwards.
+  - `PUT /api/docker/connections/{id}/compose/{project}/services/{service}`
+    (422 + stderr on validation failure) and
+    `GET …/compose/image-tags?image=` (anonymous registry tag listing via the
+    V2.1 `IRegistryClient`).
+
+### Changed
+- **⚠️ Compose projects are now discovered per project from container labels
+  (V7.1) — the V7.0 per-connection "Compose project path" is gone.** One Docker
+  host runs many Compose projects plus standalone containers, so a single path
+  per connection was simply the wrong model. Stashboard now reads each
+  container's standard `com.docker.compose.project` +
+  `…project.working_dir` labels: the **Compose** button on a host header opens
+  a **project picker** (`/projects/{id}/compose`) listing every discovered
+  project, each project group header on the Docker page links straight to its
+  own viewer/editor (`/projects/{id}/compose/{project}`), and standalone
+  containers — which have no Compose file — correctly show no Compose
+  affordance at all.
+  - **SSH connections need zero configuration** — the label path is used on
+    the host as-is.
+  - **LocalSocket connections** get an optional **Compose path mapping**
+    (host prefix → container prefix) on the connection form for when the
+    stacks root is bind-mounted at a different path inside Stashboard
+    (e.g. `/opt/stacks` → `/compose`); mount it at the same path on both
+    sides and no mapping is needed.
+  - **Migration note:** the `ComposeProjectPath` column is dropped (its value
+    was one project's in-container path — wrong as a host-side prefix, so it
+    is not carried over). LocalSocket operators who relied on V5.2's
+    compose-aware updates should set the new mapping once (or re-mount at the
+    same path); pre-7.1 backups import cleanly with the old field ignored.
+
+### Fixed
+- **Compose-aware "Update now" / "Update project" now work per project
+  (V7.1).** V5.2/V5.4 resolved the project directory from the connection's
+  single configured path, so on a host with several Compose projects the
+  compose-aware update only ever worked for one of them (and could even run
+  against the wrong project root). Both updaters now resolve the directory
+  from the target containers' own `working_dir` labels (translated through
+  the connection's path mapping), so every project updates against its own
+  compose file.
+
+## [7.0.0] — 2026-06-10
+
+### Added
+- **Visual Compose viewer — read-only (V7.0).** The foundation of the V7 visual
+  Compose editor, with **no edit risk**: a Compose project Stashboard already
+  knows about (a V5.2 bind-mounted project directory on a Docker connection) can
+  now be **viewed** as a card-per-service grid. A new **Compose** button on the
+  connection's header on the Docker page opens `/projects/{id}/compose`.
+  - **Backend:** `GET /api/docker/connections/{id}/compose` locates the Compose
+    file in the connection's `ComposeProjectPath` (spec precedence:
+    `compose.yaml` → `compose.yml` → `docker-compose.yaml` →
+    `docker-compose.yml`), parses it with **YamlDotNet**, and returns a typed
+    `ComposeProjectResponse` mirroring the viewer subset of the Compose v3.x
+    spec: services (image, container name, restart policy, ports, mounts,
+    environment, env files, depends_on, networks, `deploy.resources`
+    limits/reservations) plus the top-level **networks / volumes / secrets /
+    configs** name lists. Long-form ports/volumes are normalised to the short
+    syntax. Owner-scoped; `400` when no project path is configured, `404` when
+    the directory/file is missing, `422` for unparseable YAML.
+  - **Two read transports.** For **Local socket** connections the path is the
+    V5.2 in-container bind mount. For **SSH** connections the **Compose project
+    path** field is now available too — there it is a directory **on the remote
+    Docker host**, and the viewer fetches the file over the connection's
+    existing SSH credentials in one probe-and-`cat` round trip (read-only —
+    nothing is executed beyond locating and printing the file; SSH failures
+    surface as `502`). The compose-aware **"Update now"** recreate stays
+    LocalSocket-only, exactly as in V5.2 — an SSH host keeps the raw recreate.
+    TCP+TLS connections expose no file access and keep no path.
+  - **Frontend:** one collapsible card per service reusing the **same**
+    `EntityCard` / state-pill family as the Docker page — each card wears the
+    **live runtime state** of the container matched by its compose-service
+    label (or a neutral *not deployed* pill). Cards expand into the
+    `container-modal-summary` detail list (mounts, environment, limits, …);
+    **Edit** affordances are rendered but disabled until V7.1.
+  - **Hard fail-safe:** files using constructs the future editor can't
+    round-trip yet — `x-*` extension fields, `extends`, YAML merge keys
+    (`<<:`) — surface a **"Read-only — file uses X"** banner naming each
+    construct instead of silently dropping data; plain anchor/alias pairs are
+    resolved normally. Purely additive on the read side: no `docker compose`
+    invocation, no write path, no entity-model changes.
+    See [ROADMAP](./ROADMAP.md) Phase V7.0.
+
 ## [6.15.1] — 2026-06-10
 
 ### Fixed

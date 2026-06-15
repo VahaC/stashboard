@@ -5,7 +5,10 @@ import {
   AlertCircle,
   ChevronRight,
   Download,
+  FileCode,
+  FolderPlus,
   Grid,
+  MoreVertical,
   Plus,
   RefreshCw,
   Search,
@@ -14,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { FloatingMenu } from '@/components/shared/FloatingMenu'
 import { api } from '@/lib/api'
 import {
   qk,
@@ -35,6 +39,8 @@ import { getApiErrorMessage } from '@/lib/utils'
 import { ContainerModal, type ContainerModalTab } from '@/components/ContainerModal'
 import { DockerConnectionForm } from '@/components/DockerWatchSection'
 import { ContainerCard } from '@/components/docker/ContainerCard'
+import { ComposeProjectModal } from '@/components/docker/ComposeProjectModal'
+import { ComposeNewProjectModal } from '@/components/docker/ComposeNewProjectModal'
 import { ProjectUpdateDialog } from '@/components/docker/atoms/ProjectUpdateDialog'
 import { HostTerminalDialog } from '@/components/docker/HostTerminalDialog'
 import { StorageWidget } from '@/components/docker/StorageWidget'
@@ -51,6 +57,20 @@ interface ModalState {
 type ConnectionModalState =
   | { mode: 'create' }
   | { mode: 'edit'; connection: DockerConnection }
+
+// V7.1.1 — the Compose viewer/editor is now a modal scoped to one discovered
+// project on one connection, opened from the project group header or a single
+// compose-managed container's card.
+interface ComposeModalState {
+  connectionId: string
+  project: string
+}
+
+// V7.4.1 — the "New project" dialog, scoped to one connection.
+interface NewProjectModalState {
+  connectionId: string
+  connectionName: string | null
+}
 
 // V5.9 — Per-user display preferences for the Docker instances page. We keep
 // them in localStorage rather than threading them through the server-side
@@ -171,6 +191,8 @@ export function DockerInstances() {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
   const [modal, setModal] = useState<ModalState | null>(null)
   const [connectionModal, setConnectionModal] = useState<ConnectionModalState | null>(null)
+  const [composeModal, setComposeModal] = useState<ComposeModalState | null>(null)
+  const [newProjectModal, setNewProjectModal] = useState<NewProjectModalState | null>(null)
   const [handledDeepLink, setHandledDeepLink] = useState<string | null>(null)
 
   const [layout, dockRef] = usePackLayout(prefs.density)
@@ -403,6 +425,8 @@ export function DockerInstances() {
           storagePref={prefs.storage}
           onOpenModal={(card, tab) => setModal({ connectionId: conn.id, card, tab })}
           onEditConnection={() => setConnectionModal({ mode: 'edit', connection: conn })}
+          onOpenCompose={(project) => setComposeModal({ connectionId: conn.id, project })}
+          onNewProject={() => setNewProjectModal({ connectionId: conn.id, connectionName: conn.name })}
         />
       ))}
 
@@ -414,6 +438,30 @@ export function DockerInstances() {
           connection={conns.find((c) => c.id === modal.connectionId) ?? null}
           onClose={() => setModal(null)}
           onCardRefresh={(card) => setModal((prev) => prev && prev.card.id === card.id ? { ...prev, card } : prev)}
+        />
+      )}
+
+      {composeModal && (
+        <ComposeProjectModal
+          connectionId={composeModal.connectionId}
+          project={composeModal.project}
+          onClose={() => setComposeModal(null)}
+        />
+      )}
+
+      {newProjectModal && (
+        <ComposeNewProjectModal
+          connectionId={newProjectModal.connectionId}
+          connectionName={newProjectModal.connectionName}
+          onClose={() => setNewProjectModal(null)}
+          onCreated={(project, started) => {
+            const connectionId = newProjectModal.connectionId
+            setNewProjectModal(null)
+            // Once it's up its containers carry the compose labels, so the
+            // project is discoverable — open its modal. Not started yet → leave
+            // the user on the page (the group appears after they start it).
+            if (started) setComposeModal({ connectionId, project })
+          }}
         />
       )}
 
@@ -518,17 +566,22 @@ interface HostSectionProps {
   storagePref: DockerPagePrefs['storage']
   onOpenModal: (card: DockerContainerCard, tab: ContainerModalTab) => void
   onEditConnection: () => void
+  onOpenCompose: (project: string) => void
+  onNewProject: () => void
 }
 
 function HostSection({
   connection, containers, containerQuery, search, stateFilter, layout, openGroups,
   onToggleGroup, allowRemoval, allowHostShellGlobal, storagePref, onOpenModal, onEditConnection,
+  onNewProject,
+  onOpenCompose,
 }: HostSectionProps) {
   const watches = useConnectionWatches(connection.id)
   const action = useDockerContainerAction(connection.id)
   const deleteWatch = useDeleteConnectionWatch(connection.id)
   const [hostTerminalOpen, setHostTerminalOpen] = useState(false)
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({})
+  const [hostMenuPos, setHostMenuPos] = useState<{ x: number; y: number } | null>(null)
   const isSsh = resolveDockerHostType(connection.hostType) === 'Ssh'
 
   const watchByContainer = useMemo(() => {
@@ -583,7 +636,7 @@ function HostSection({
 
   return (
     <section className="host-section">
-      <div className="host-card">
+      <div className="host-card" onContextMenu={(e) => { e.preventDefault(); setHostMenuPos({ x: e.clientX, y: e.clientY }) }}>
         <div className="host-card-top">
           <span className="host-name">
             <span className="host-dot" data-off={!online} />
@@ -595,27 +648,52 @@ function HostSection({
             <span className="host-count">· {total} container{total === 1 ? '' : 's'}</span>
           </span>
           <div className="host-actions">
-            {isSsh && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setHostTerminalOpen(true)}
-                title="Open an interactive shell on the Docker host (SSH)"
-              >
-                <TerminalSquare className="h-3.5 w-3.5" />
-                <span className="label-text">Terminal</span>
-              </Button>
-            )}
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={onEditConnection}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setHostMenuPos(p => p ? null : { x: r.left, y: r.bottom + 4 }) }}
+              title="Host actions"
+              className="cgroup-menu-trigger"
             >
-              <Settings className="h-3.5 w-3.5" />
-              <span className="label-text">Edit</span>
+              <MoreVertical className="h-3.5 w-3.5" />
             </Button>
+            {hostMenuPos && (
+              <FloatingMenu pos={hostMenuPos} onClose={() => setHostMenuPos(null)}>
+                {resolveDockerHostType(connection.hostType) !== 'TcpTls' && (
+                  <>
+                    <button
+                      className="cgroup-menu-item"
+                      onClick={() => { setHostMenuPos(null); onNewProject() }}
+                    >
+                      <FolderPlus className="h-3.5 w-3.5" />
+                      New project
+                    </button>
+                    <div className="cgroup-menu-sep" />
+                  </>
+                )}
+                {isSsh && (
+                  <>
+                    <button
+                      className="cgroup-menu-item"
+                      onClick={() => { setHostMenuPos(null); setHostTerminalOpen(true) }}
+                    >
+                      <TerminalSquare className="h-3.5 w-3.5" />
+                      Terminal
+                    </button>
+                    <div className="cgroup-menu-sep" />
+                  </>
+                )}
+                <button
+                  className="cgroup-menu-item"
+                  onClick={() => { setHostMenuPos(null); onEditConnection() }}
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  Edit
+                </button>
+              </FloatingMenu>
+            )}
           </div>
         </div>
 
@@ -636,6 +714,7 @@ function HostSection({
 
       <ProjectGroups
         connectionId={connection.id}
+        isComposable={resolveDockerHostType(connection.hostType) !== 'TcpTls'}
         containers={containers}
         containersError={containerError}
         filtered={filtered}
@@ -648,6 +727,7 @@ function HostSection({
         onToggleGroup={onToggleGroup}
         onCardAction={onCardAction}
         onOpenModal={onOpenModal}
+        onOpenCompose={onOpenCompose}
       />
     </section>
   )
@@ -657,6 +737,7 @@ function HostSection({
 
 interface ProjectGroupsProps {
   connectionId: string
+  isComposable: boolean
   containers: DockerContainerCard[] | null
   containersError: unknown
   filtered: DockerContainerCard[]
@@ -669,6 +750,7 @@ interface ProjectGroupsProps {
   onToggleGroup: (key: string) => void
   onCardAction: (card: DockerContainerCard, kind: 'start' | 'stop' | 'restart' | 'remove') => Promise<void>
   onOpenModal: (card: DockerContainerCard, tab: ContainerModalTab) => void
+  onOpenCompose: (project: string) => void
 }
 
 interface ProjectGroup {
@@ -678,12 +760,15 @@ interface ProjectGroup {
 }
 
 function ProjectGroups({
-  connectionId, containers, containersError, filtered, watchByContainer, allowRemoval,
-  actionPending, actionErrors, layout, openGroups, onToggleGroup, onCardAction, onOpenModal,
+  connectionId, isComposable, containers, containersError, filtered, watchByContainer, allowRemoval,
+  actionPending, actionErrors, layout, openGroups, onToggleGroup, onCardAction, onOpenModal, onOpenCompose,
 }: ProjectGroupsProps) {
-  // Same single-service-compose-collapse rule as v5.4: a project group with
-  // only one container would render a meaningless 1-of-1 header, so demote
-  // those into the trailing "Other containers" bucket.
+  // V7.1.1 — every Compose project gets its own group, even a single-container
+  // one. The v5.4 rule used to demote 1-of-1 projects into "Other" because a
+  // lone-container header looked meaningless — but a single-container project
+  // still carries a useful Compose / Update project action, so hiding it under
+  // "no compose project" was misleading. Only containers with no compose label
+  // land in the trailing "Other containers" bucket now.
   const groups = useMemo<ProjectGroup[]>(() => {
     const byProject = new Map<string, DockerContainerCard[]>()
     const other: DockerContainerCard[] = []
@@ -696,9 +781,7 @@ function ProjectGroups({
     }
     const result: ProjectGroup[] = []
     for (const project of order) {
-      const list = byProject.get(project)!
-      if (list.length < 2) { other.push(...list); continue }
-      result.push({ project, containers: list })
+      result.push({ project, containers: byProject.get(project)! })
     }
     if (other.length > 0) result.push({ project: null, containers: other })
     return result
@@ -732,6 +815,7 @@ function ProjectGroups({
           isOther={g.project === null}
           project={g.project}
           connectionId={connectionId}
+          isComposable={isComposable}
           containers={g.containers}
           watchByContainer={watchByContainer}
           allowRemoval={allowRemoval}
@@ -742,6 +826,7 @@ function ProjectGroups({
           onToggle={onToggleGroup}
           onCardAction={onCardAction}
           onOpenModal={onOpenModal}
+          onOpenCompose={onOpenCompose}
         />
       ))}
     </div>
@@ -753,6 +838,7 @@ interface PackedGroupProps {
   isOther: boolean
   project: string | null
   connectionId: string
+  isComposable: boolean
   containers: DockerContainerCard[]
   watchByContainer: Map<string, DockerWatch>
   allowRemoval: boolean
@@ -763,14 +849,16 @@ interface PackedGroupProps {
   onToggle: (key: string) => void
   onCardAction: (card: DockerContainerCard, kind: 'start' | 'stop' | 'restart' | 'remove') => Promise<void>
   onOpenModal: (card: DockerContainerCard, tab: ContainerModalTab) => void
+  onOpenCompose: (project: string) => void
 }
 
 function PackedGroup({
-  groupKey, isOther, project, connectionId, containers, watchByContainer, allowRemoval,
-  actionPending, actionErrors, layout, open, onToggle, onCardAction, onOpenModal,
+  groupKey, isOther, project, connectionId, isComposable, containers, watchByContainer, allowRemoval,
+  actionPending, actionErrors, layout, open, onToggle, onCardAction, onOpenModal, onOpenCompose,
 }: PackedGroupProps) {
   const projectUpdate = useDockerProjectUpdate(connectionId)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null)
 
   const cols = Math.min(containers.length, layout.maxCols)
   const groupWidth = cols * layout.cardW + (cols - 1) * layout.gap
@@ -822,13 +910,37 @@ function PackedGroup({
               type="button"
               size="sm"
               variant="outline"
-              onClick={(e) => { e.stopPropagation(); setUpdateDialogOpen(true) }}
-              disabled={projectUpdate.isPending}
-              title="Pull every image in this project and recreate the services in dependency order"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setMenuPos(p => p ? null : { x: r.left, y: r.bottom + 4 }) }}
+              title="Project actions"
+              className="cgroup-menu-trigger"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${projectUpdate.isPending ? 'animate-spin' : ''}`} />
-              {projectUpdate.isPending ? 'Updating…' : 'Update project'}
+              <MoreVertical className="h-3.5 w-3.5" />
             </Button>
+            {menuPos && (
+              <FloatingMenu pos={menuPos} onClose={() => setMenuPos(null)}>
+                {isComposable && (
+                  <>
+                    <button
+                      className="cgroup-menu-item"
+                      onClick={() => { setMenuPos(null); onOpenCompose(project!) }}
+                    >
+                      <FileCode className="h-3.5 w-3.5" />
+                      Compose
+                    </button>
+                    <div className="cgroup-menu-sep" />
+                  </>
+                )}
+                <button
+                  className="cgroup-menu-item"
+                  disabled={projectUpdate.isPending}
+                  onClick={() => { setMenuPos(null); setUpdateDialogOpen(true) }}
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${projectUpdate.isPending ? 'animate-spin' : ''}`} />
+                  {projectUpdate.isPending ? 'Updating…' : 'Update project'}
+                </button>
+              </FloatingMenu>
+            )}
           </span>
         )}
       </div>

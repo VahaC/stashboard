@@ -87,7 +87,8 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 Dec(c.TlsCaCertEncrypted), Dec(c.TlsClientCertEncrypted), Dec(c.TlsClientKeyEncrypted),
                 c.SshHost, c.SshPort, c.SshUsername,
                 Dec(c.SshPrivateKeyEncrypted), Dec(c.SshPrivateKeyPassphraseEncrypted), c.SshRemoteSocketPath,
-                c.ComposeProjectPath, c.AllowImagePrune, c.PruneUnusedImages)).ToList(),
+                c.ComposePathHostPrefix, c.ComposePathContainerPrefix,
+                c.AllowImagePrune, c.PruneUnusedImages)).ToList(),
             Services: services.Select(s => new ServiceDto(
                 s.Id, s.Name, s.MainUrl, s.MainUrlHealthCheckEnabled, s.AdditionalUrl, s.AdditionalUrlHealthCheckEnabled,
                 s.OfflineNotificationsEnabled, s.HealthCheckUrl, s.HealthCheckMethod, s.ExpectedStatusRange,
@@ -186,7 +187,11 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                     SshPrivateKeyEncrypted = Enc(dc.SshPrivateKey),
                     SshPrivateKeyPassphraseEncrypted = Enc(dc.SshPrivateKeyPassphrase),
                     SshRemoteSocketPath = dc.SshRemoteSocketPath,
-                    ComposeProjectPath = dc.ComposeProjectPath,
+                    // V7.1 — project paths are discovered from labels now; only
+                    // the optional LocalSocket prefix mapping is persisted. The
+                    // pre-7.1 ComposeProjectPath key in old backups is ignored.
+                    ComposePathHostPrefix = dc.ComposePathHostPrefix,
+                    ComposePathContainerPrefix = dc.ComposePathContainerPrefix,
                     AllowImagePrune = dc.AllowImagePrune,
                     PruneUnusedImages = dc.PruneUnusedImages,
                 };
@@ -404,7 +409,8 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         string? TlsCaCert, string? TlsClientCert, string? TlsClientKey,
         string? SshHost, int? SshPort, string? SshUsername,
         string? SshPrivateKey, string? SshPrivateKeyPassphrase, string? SshRemoteSocketPath,
-        string? ComposeProjectPath = null,
+        string? ComposePathHostPrefix = null,
+        string? ComposePathContainerPrefix = null,
         bool AllowImagePrune = true,
         bool PruneUnusedImages = false);
 

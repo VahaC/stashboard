@@ -37,13 +37,26 @@ public class DockerProjectUpdaterTests
         AwsAccessKeyId: null,
         AwsSecretAccessKey: null,
         AwsRegion: null,
-        ComposeProjectPath: "/compose-projects/home");
+        ComposePathMapping: null);
 
     private static DockerProjectServiceTarget Target(string serviceName, string container, string image,
         IReadOnlyDictionary<string, string>? labels = null) =>
         new(serviceName, container, MakeProfile(image, container),
             WatchId: null, WebResourceId: null,
             Labels: labels ?? new Dictionary<string, string>(StringComparer.Ordinal));
+
+    /// <summary>V7.1 — compose-managed containers advertise their project
+    /// directory via the standard working_dir label; the updater reads it
+    /// from the targets instead of a connection-wide path.</summary>
+    private static Dictionary<string, string> WithWorkingDir(
+        string dir, Dictionary<string, string>? extra = null)
+    {
+        var labels = extra is null
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : new Dictionary<string, string>(extra, StringComparer.Ordinal);
+        labels["com.docker.compose.project.working_dir"] = dir;
+        return labels;
+    }
 
     // ── compose-aware project recreate ──────────────────────────────────────
 
@@ -66,8 +79,12 @@ public class DockerProjectUpdaterTests
             NullLogger<DockerProjectUpdater>.Instance);
 
         var profile = new DockerProjectUpdateProfile(
-            "myproject", LocalSocket(), "/compose-projects/home",
-            new[] { Target("web", "web", "nginx:1.27"), Target("db", "db", "postgres:16") });
+            "myproject", LocalSocket(), null,
+            new[]
+            {
+                Target("web", "web", "nginx:1.27", WithWorkingDir("/compose-projects/home")),
+                Target("db", "db", "postgres:16", WithWorkingDir("/compose-projects/home")),
+            });
 
         var result = await updater.UpdateProjectAsync(profile);
 
@@ -76,9 +93,68 @@ public class DockerProjectUpdaterTests
         Assert.Equal(2, result.ServiceResults.Count);
         Assert.All(result.ServiceResults, r => Assert.Equal(DockerUpdateAttemptStatus.Success, r.Status));
 
+        // V7.1 — the project path comes from the containers' working_dir label.
         compose.Verify(r => r.RecreateProjectAsync(
             It.Is<ComposeProjectRecreateRequest>(req => req.ProjectPath == "/compose-projects/home"),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateProject_PathMapping_TranslatesHostPrefixIntoContainerPath()
+    {
+        var compose = new Mock<IComposeCommandRunner>();
+        compose.Setup(r => r.IsAvailableAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        compose.Setup(r => r.RecreateProjectAsync(It.IsAny<ComposeProjectRecreateRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComposeRunResult(ComposeRunnerStatus.Success, 0, "OK", null));
+
+        var (factory, _, _) = BuildClientFactory(
+            preStateByContainer: ("web", BuildInspect(running: true, healthy: true, imageId: OldImageId)),
+            postStateByContainer: ("web", BuildInspect(running: true, healthy: true, imageId: NewImageId)));
+
+        var updater = new DockerProjectUpdater(
+            compose.Object, Mock.Of<IDockerImageUpdater>(), factory.Object, new ImageReferenceParser(),
+            NullLogger<DockerProjectUpdater>.Instance);
+
+        // Host stacks live in /opt/stacks; Stashboard mounts them at /compose.
+        var profile = new DockerProjectUpdateProfile(
+            "myproject", LocalSocket(),
+            new ComposePathMapping("/opt/stacks", "/compose"),
+            new[] { Target("web", "web", "nginx:1.27", WithWorkingDir("/opt/stacks/myproject")) });
+
+        var result = await updater.UpdateProjectAsync(profile);
+
+        Assert.Equal(DockerProjectUpdateMode.Compose, result.Mode);
+        compose.Verify(r => r.RecreateProjectAsync(
+            It.Is<ComposeProjectRecreateRequest>(req => req.ProjectPath == "/compose/myproject"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateProject_NoWorkingDirLabel_FallsBackToRawRecreate()
+    {
+        // Without the working_dir label there is no project directory to run
+        // compose in — even with the CLI available the updater must fall back.
+        var compose = new Mock<IComposeCommandRunner>();
+        compose.Setup(r => r.IsAvailableAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var imageUpdater = new Mock<IDockerImageUpdater>();
+        imageUpdater
+            .Setup(u => u.UpdateAsync(It.IsAny<DockerUpdateProfile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DockerUpdateResult(DockerUpdateAttemptStatus.Success, OldDigest, NewDigest, null));
+
+        var updater = new DockerProjectUpdater(
+            compose.Object, imageUpdater.Object, Mock.Of<IDockerClientFactory>(), new ImageReferenceParser(),
+            NullLogger<DockerProjectUpdater>.Instance);
+
+        var profile = new DockerProjectUpdateProfile(
+            "myproject", LocalSocket(), null,
+            new[] { Target("web", "web", "nginx:1.27") });
+
+        var result = await updater.UpdateProjectAsync(profile);
+
+        Assert.Equal(DockerProjectUpdateMode.Recreate, result.Mode);
+        compose.Verify(r => r.RecreateProjectAsync(
+            It.IsAny<ComposeProjectRecreateRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -98,8 +174,8 @@ public class DockerProjectUpdaterTests
             NullLogger<DockerProjectUpdater>.Instance);
 
         var profile = new DockerProjectUpdateProfile(
-            "myproject", LocalSocket(), "/compose-projects/home",
-            new[] { Target("web", "web", "nginx:1.27") });
+            "myproject", LocalSocket(), null,
+            new[] { Target("web", "web", "nginx:1.27", WithWorkingDir("/compose-projects/home")) });
 
         var result = await updater.UpdateProjectAsync(profile);
 
@@ -135,8 +211,12 @@ public class DockerProjectUpdaterTests
             NullLogger<DockerProjectUpdater>.Instance);
 
         var profile = new DockerProjectUpdateProfile(
-            "myproject", LocalSocket(), "/compose-projects/home",
-            new[] { Target("web", "web", "nginx:1.27"), Target("db", "db", "postgres:16") });
+            "myproject", LocalSocket(), null,
+            new[]
+            {
+                Target("web", "web", "nginx:1.27", WithWorkingDir("/compose-projects/home")),
+                Target("db", "db", "postgres:16", WithWorkingDir("/compose-projects/home")),
+            });
 
         var result = await updater.UpdateProjectAsync(profile);
 
@@ -168,8 +248,12 @@ public class DockerProjectUpdaterTests
             NullLogger<DockerProjectUpdater>.Instance);
 
         var profile = new DockerProjectUpdateProfile(
-            "myproject", LocalSocket(), "/compose-projects/home",
-            new[] { Target("web", "web", "nginx:1.27"), Target("db", "db", "postgres:16") });
+            "myproject", LocalSocket(), null,
+            new[]
+            {
+                Target("web", "web", "nginx:1.27", WithWorkingDir("/compose-projects/home")),
+                Target("db", "db", "postgres:16", WithWorkingDir("/compose-projects/home")),
+            });
 
         var result = await updater.UpdateProjectAsync(profile);
 
@@ -198,8 +282,8 @@ public class DockerProjectUpdaterTests
         var profile = new DockerProjectUpdateProfile(
             "myproject",
             new DockerHostTransport(DockerHostType.TcpTls, "tcp://remote:2376", null),
-            "/compose-projects/home",
-            new[] { Target("web", "web", "nginx:1.27") });
+            null,
+            new[] { Target("web", "web", "nginx:1.27", WithWorkingDir("/compose-projects/home")) });
 
         var result = await updater.UpdateProjectAsync(profile);
 
@@ -290,7 +374,7 @@ public class DockerProjectUpdaterTests
             NullLogger<DockerProjectUpdater>.Instance);
 
         var profile = new DockerProjectUpdateProfile(
-            "myproject", LocalSocket(), "/compose-projects/home",
+            "myproject", LocalSocket(), null,
             Array.Empty<DockerProjectServiceTarget>());
 
         var result = await updater.UpdateProjectAsync(profile);

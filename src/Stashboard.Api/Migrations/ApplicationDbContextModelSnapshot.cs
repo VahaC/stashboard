@@ -463,7 +463,11 @@ namespace Stashboard.Api.Migrations
                     b.Property<bool>("AllowImagePrune")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("ComposeProjectPath")
+                    b.Property<string>("ComposePathContainerPrefix")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ComposePathHostPrefix")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 

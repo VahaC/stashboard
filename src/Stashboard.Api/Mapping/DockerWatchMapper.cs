@@ -201,9 +201,11 @@ public sealed class DockerWatchMapper(
             SafeDecrypt(watch.AwsAccessKeyIdEncrypted),
             SafeDecrypt(watch.AwsSecretAccessKeyEncrypted),
             watch.AwsRegion,
-            // V5.2 — only honoured for local-socket hosts; the updater enforces
-            // that, but passing it unconditionally keeps the mapper simple.
-            connection.ComposeProjectPath);
+            // V7.1 — the updater resolves the project directory per container
+            // from its working_dir label; the mapping (only honoured for
+            // local-socket hosts) translates the host path into the
+            // Stashboard container's mount path.
+            BuildComposePathMapping(connection));
     }
 
     public DockerUpdateAttemptResponse ToResponse(DockerUpdateAttemptEntity entity) =>
@@ -278,6 +280,14 @@ public sealed class DockerWatchMapper(
     }
 
     // ── private helpers ──────────────────────────────────────────────────────
+
+    /// <summary>V7.1 — both prefixes must be set for the mapping to exist;
+    /// half-configured pairs behave like "no mapping" (label path used as-is).</summary>
+    internal static ComposePathMapping? BuildComposePathMapping(DockerConnectionEntity connection) =>
+        !string.IsNullOrWhiteSpace(connection.ComposePathHostPrefix)
+        && !string.IsNullOrWhiteSpace(connection.ComposePathContainerPrefix)
+            ? new ComposePathMapping(connection.ComposePathHostPrefix, connection.ComposePathContainerPrefix)
+            : null;
 
     private string? ApplySecret(string? existingEncrypted, SecretValueUpsert? upsert)
     {

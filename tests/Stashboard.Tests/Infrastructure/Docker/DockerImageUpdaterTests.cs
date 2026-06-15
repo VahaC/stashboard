@@ -378,13 +378,15 @@ public class DockerImageUpdaterTests
 
     // ── V5.2 — true Compose-aware recreate ───────────────────────────────────
 
-    private static DockerUpdateProfile ComposeProfile() =>
-        NginxProfile() with { ComposeProjectPath = "/compose-projects/home" };
+    // V7.1 — the project directory now comes from the container's own
+    // working_dir label; the profile only carries the optional path mapping.
+    private static DockerUpdateProfile ComposeProfile() => NginxProfile();
 
     private static Dictionary<string, string> ComposeLabels() => new()
     {
         ["com.docker.compose.project"] = "myproject",
         ["com.docker.compose.service"] = "web",
+        ["com.docker.compose.project.working_dir"] = "/compose-projects/home",
     };
 
     [Fact]
@@ -413,6 +415,27 @@ public class DockerImageUpdaterTests
             It.IsAny<string>(), It.IsAny<ContainerRemoveParameters>(), It.IsAny<CancellationToken>()), Times.Never);
         harness.Containers.Verify(c => c.CreateContainerAsync(
             It.IsAny<CreateContainerParameters>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_ComposePathMapping_TranslatesHostPrefixIntoContainerPath()
+    {
+        // V7.1 — host stacks live in /compose-projects; Stashboard mounts them
+        // at /mnt/stacks. The working_dir label is a host path and must be
+        // translated before the compose CLI (running inside Stashboard) sees it.
+        var compose = Harness.SucceedingCompose();
+        var harness = Harness.BuildComposeHappyPath(compose);
+        var profile = ComposeProfile() with
+        {
+            ComposePathMapping = new ComposePathMapping("/compose-projects", "/mnt/stacks"),
+        };
+
+        var result = await harness.Updater.UpdateAsync(profile);
+
+        Assert.Equal(DockerUpdateAttemptStatus.Success, result.Status);
+        compose.Verify(r => r.RecreateServiceAsync(
+            It.Is<ComposeRecreateRequest>(req => req.ProjectPath == "/mnt/stacks/home" && req.ServiceName == "web"),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -762,6 +785,8 @@ public class DockerImageUpdaterTests
                     {
                         ["com.docker.compose.project"] = "myproject",
                         ["com.docker.compose.service"] = "web",
+                        // V7.1 — the updater reads the project directory from here.
+                        ["com.docker.compose.project.working_dir"] = "/compose-projects/home",
                     },
                 },
                 HostConfig = new HostConfig { NetworkMode = "bridge" },

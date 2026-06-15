@@ -24,13 +24,16 @@ public sealed record DockerUpdateProfile(
     string? AwsAccessKeyId,
     string? AwsSecretAccessKey,
     string? AwsRegion,
-    /// <summary>V5.2 — absolute path inside the Stashboard container to the
-    /// connection's Compose project directory. When set (and the host is a
-    /// local socket and the container carries the <c>com.docker.compose.service</c>
-    /// label and the compose CLI is present) the updater shells out
-    /// <c>docker compose</c> instead of doing the raw <c>Docker.DotNet</c>
-    /// recreate. <c>null</c> keeps the V2.7 raw recreate.</summary>
-    string? ComposeProjectPath = null);
+    /// <summary>V7.1 — the connection's optional Compose path mapping
+    /// (LocalSocket only). The updater resolves the actual project directory
+    /// per container from its <c>com.docker.compose.project.working_dir</c>
+    /// label via <see cref="ComposeProjectPaths.Resolve"/>; when that yields a
+    /// path (and the host is a local socket and the compose CLI is present)
+    /// the updater shells out <c>docker compose</c> instead of doing the raw
+    /// <c>Docker.DotNet</c> recreate. Replaces the V5.2 per-connection
+    /// <c>ComposeProjectPath</c>, which broke on hosts running more than one
+    /// Compose project.</summary>
+    ComposePathMapping? ComposePathMapping = null);
 
 /// <summary>
 /// V2.7 — outcome of <see cref="IDockerImageUpdater.UpdateAsync"/>.

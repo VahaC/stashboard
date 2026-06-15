@@ -274,7 +274,7 @@ public class DockerInstancesController(
                 // running container's image string. The compose path doesn't
                 // use this for anything other than depends_on inference; the
                 // raw fallback uses it to attempt the anonymous pull.
-                var profile = BuildAnonymousProfile(c, transport, connection.ComposeProjectPath);
+                var profile = BuildAnonymousProfile(c, transport, DockerWatchMapper.BuildComposePathMapping(connection));
                 target = new DockerProjectServiceTarget(
                     serviceName, c.Name, profile, WatchId: null, WebResourceId: null, c.Labels);
             }
@@ -284,7 +284,7 @@ public class DockerInstancesController(
         var profileToRun = new DockerProjectUpdateProfile(
             projectName,
             transport,
-            connection.ComposeProjectPath,
+            DockerWatchMapper.BuildComposePathMapping(connection),
             services);
 
         var result = await projectUpdater.UpdateProjectAsync(profileToRun, cancellationToken);
@@ -387,7 +387,7 @@ public class DockerInstancesController(
     /// path uses it for the anonymous pull.
     /// </summary>
     private DockerUpdateProfile BuildAnonymousProfile(
-        DockerContainerDetail container, DockerHostTransport transport, string? composeProjectPath)
+        DockerContainerDetail container, DockerHostTransport transport, ComposePathMapping? composePathMapping)
     {
         var image = string.IsNullOrEmpty(container.Image) ? "scratch:latest" : container.Image;
         // Parse on a best-effort basis; if the image string is malformed we
@@ -417,7 +417,7 @@ public class DockerInstancesController(
             AwsAccessKeyId: null,
             AwsSecretAccessKey: null,
             AwsRegion: null,
-            ComposeProjectPath: composeProjectPath);
+            ComposePathMapping: composePathMapping);
     }
 
     // ── V5.5 — image storage + prune ────────────────────────────────────────

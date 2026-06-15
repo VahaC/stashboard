@@ -138,6 +138,9 @@ public class Program
         builder.Services.AddScoped<IProxmoxConnectionMapper, ProxmoxConnectionMapper>();
         builder.Services.AddSingleton<IStashboardMapper, StashboardMapper>();
         builder.Services.AddScoped<IServiceStatusNotificationService, ServiceStatusNotificationService>();
+        // V7.5 — starter-recipe catalogue, loaded once from templates/ (+ optional
+        // user override dir) at startup.
+        builder.Services.AddSingleton<Services.Templates.IServiceTemplateCatalog, Services.Templates.ServiceTemplateCatalog>();
         builder.Services.AddScoped<IDockerUpdateNotificationService, DockerUpdateNotificationService>();
         builder.Services.Configure<DockerUpdateOptions>(builder.Configuration.GetSection(DockerUpdateOptions.SectionName));
         // V3.5 — top-level app feature flags (Docker instances page,

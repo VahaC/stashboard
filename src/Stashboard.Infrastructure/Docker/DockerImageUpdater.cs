@@ -94,20 +94,26 @@ public sealed class DockerImageUpdater(
                 client, previousImageId, profile.RegistryHost, profile.Repository, cancellationToken);
 
             // V5.2 — true Compose-aware recreate. When the connection is a
-            // local socket, a Compose project path is configured, the running
-            // container carries the standard com.docker.compose.service label,
-            // and the compose CLI is present inside the Stashboard container,
-            // delegate the pull + recreate to `docker compose` so the full
-            // Compose lifecycle (env_file resolution, depends_on ordering,
-            // profiles, Compose's own network / subnet allocation) is honoured
-            // — none of which the raw Docker.DotNet recreate below can
-            // replicate. A missing binary degrades gracefully to the raw path.
+            // local socket, the running container carries the standard
+            // com.docker.compose.service label, and the compose CLI is present
+            // inside the Stashboard container, delegate the pull + recreate to
+            // `docker compose` so the full Compose lifecycle (env_file
+            // resolution, depends_on ordering, profiles, Compose's own
+            // network / subnet allocation) is honoured — none of which the raw
+            // Docker.DotNet recreate below can replicate. V7.1 — the project
+            // directory comes from the container's own working_dir label
+            // (translated through the connection's path mapping), so every
+            // project on the host updates against its own directory. A missing
+            // binary degrades gracefully to the raw path.
             var composeService = TryGetComposeService(inspect);
-            if (ShouldUseCompose(profile, composeService)
+            var composeProjectPath = ComposeProjectPaths.Resolve(
+                profile.HostTransport.HostType, profile.ComposePathMapping,
+                TryGetLabel(inspect, ComposeProjectPaths.WorkingDirLabel));
+            if (ShouldUseCompose(profile, composeService, composeProjectPath)
                 && await composeCommandRunner.IsAvailableAsync(cancellationToken))
             {
                 return await RecreateViaComposeAsync(
-                    client, profile, composeService!, previousDigest, cancellationToken);
+                    client, profile, composeService!, composeProjectPath!, previousDigest, cancellationToken);
             }
 
             // 1) Pull the new image. Failure here leaves the original
@@ -253,19 +259,23 @@ public sealed class DockerImageUpdater(
     /// <summary>
     /// Whether this update should go through <c>docker compose</c> rather than
     /// the raw recreate. Local-socket only (the CLI inside the container talks
-    /// to the local daemon); requires a configured project path and a
-    /// Compose-managed container (one carrying <see cref="ComposeServiceLabel"/>).
+    /// to the local daemon); requires a Compose-managed container (one carrying
+    /// <see cref="ComposeServiceLabel"/>) whose project directory resolved from
+    /// the working_dir label (V7.1).
     /// </summary>
-    private static bool ShouldUseCompose(DockerUpdateProfile profile, string? composeService) =>
+    private static bool ShouldUseCompose(DockerUpdateProfile profile, string? composeService, string? composeProjectPath) =>
         profile.HostTransport.HostType == DockerHostType.LocalSocket
-        && !string.IsNullOrWhiteSpace(profile.ComposeProjectPath)
+        && !string.IsNullOrWhiteSpace(composeProjectPath)
         && !string.IsNullOrWhiteSpace(composeService);
 
     private static string? TryGetComposeService(ContainerInspectResponse inspect) =>
+        TryGetLabel(inspect, ComposeServiceLabel);
+
+    private static string? TryGetLabel(ContainerInspectResponse inspect, string label) =>
         inspect.Config?.Labels is { } labels
-        && labels.TryGetValue(ComposeServiceLabel, out var service)
-        && !string.IsNullOrWhiteSpace(service)
-            ? service
+        && labels.TryGetValue(label, out var value)
+        && !string.IsNullOrWhiteSpace(value)
+            ? value
             : null;
 
     /// <summary>
@@ -277,6 +287,7 @@ public sealed class DockerImageUpdater(
         IDockerClient client,
         DockerUpdateProfile profile,
         string composeService,
+        string composeProjectPath,
         string? previousDigest,
         CancellationToken cancellationToken)
     {
@@ -284,7 +295,7 @@ public sealed class DockerImageUpdater(
         try
         {
             run = await composeCommandRunner.RecreateServiceAsync(
-                new ComposeRecreateRequest(profile.ComposeProjectPath!, composeService), cancellationToken);
+                new ComposeRecreateRequest(composeProjectPath, composeService), cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -303,8 +314,8 @@ public sealed class DockerImageUpdater(
 
         if (run.Status == ComposeRunnerStatus.ProjectPathNotFound)
             return new DockerUpdateResult(DockerUpdateAttemptStatus.RecreateFailed, previousDigest, null,
-                $"{run.Error} Verify the project directory is bind-mounted read-only into the Stashboard container "
-                + "and that ComposeProjectPath points at the in-container mount path.");
+                $"{run.Error} Verify the project directory is bind-mounted into the Stashboard container "
+                + "and that the connection's Compose path mapping translates the host path correctly.");
 
         if (!run.IsSuccess)
             return new DockerUpdateResult(DockerUpdateAttemptStatus.RecreateFailed, previousDigest, null,

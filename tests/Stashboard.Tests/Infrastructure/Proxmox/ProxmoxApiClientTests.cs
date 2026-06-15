@@ -1083,6 +1083,43 @@ public class ProxmoxApiClientTests
         Assert.Equal("SMART overall-health: PASSED", smart.Text);
     }
 
+    // ── V7.2.1 — a per-disk SMART failure is NOT host-unreachable ─────────────
+
+    [Fact]
+    public async Task GetNodeDiskSmart_HostReturns400_SurfacesPerDiskMessage_DoesNotThrow()
+    {
+        // PBS/PVE relay a `smartctl` failure for one disk as a 4xx (e.g. a
+        // USB-bridged disk, or the PBS 3.2.9 regression) — the host is reachable,
+        // so this must surface as the disk's SMART text, never bubble up as the
+        // "Proxmox host unreachable" 502 the shared GetJsonAsync path would cause.
+        const string body = """command "smartctl" "-H" "-A" "-j" "/dev/sdb" failed - status code: 4""";
+        var client = BuildClient(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
+        });
+
+        var smart = await client.GetNodeDiskSmartAsync(Profile(), "/dev/sdb");
+
+        Assert.Null(smart.Health);
+        Assert.Empty(smart.Attributes);
+        Assert.NotNull(smart.Text);
+        Assert.Contains("/dev/sdb", smart.Text);     // names the affected disk
+        Assert.Contains("400", smart.Text);          // carries the host's status
+        Assert.Contains("smartctl", smart.Text);     // ... and its real reason
+    }
+
+    [Fact]
+    public async Task GetNodeDiskSmart_TransportFailure_StillThrows()
+    {
+        // A genuinely unreachable host (connection refused / no route) must still
+        // throw so the controller maps it to a 502 "host unreachable" — only a
+        // real HTTP *response* with a 4xx is treated as a per-disk condition.
+        var client = BuildClient(_ => throw new HttpRequestException("No route to host (192.168.1.110:8007)"));
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.GetNodeDiskSmartAsync(Profile(), "/dev/sda"));
+    }
+
     // ── V6.8 — GetNodeNetworkInterfacesAsync ─────────────────────────────────
 
     [Fact]

@@ -1,7 +1,7 @@
 services:
   app:
     # Pull the published image from Docker Hub. Pin a version with STASHBOARD_TAG
-    # in .env (e.g. STASHBOARD_TAG=6.15.1); defaults to the latest release.
+    # in .env (e.g. STASHBOARD_TAG=7.2.1); defaults to the latest release.
     # If your Docker Hub namespace differs, change "vahac" here.
     # To build from source instead, see docker-compose.build.yml.
     image: vahac/stashboard:${STASHBOARD_TAG:-latest}
@@ -57,14 +57,17 @@ services:
       # - /var/run/docker.sock:/var/run/docker.sock:ro    # tracking only (V1..V2.6)
       # - /var/run/docker.sock:/var/run/docker.sock       # tracking + Update now (V2.7)
       #
-      # ─── V5.2 Compose-aware "Update now" (optional) ──────────────────────
-      # Bind-mount each LocalSocket host's Compose project directory so the
-      # bundled `docker compose` CLI can run `pull` + `up -d` for the recreate
-      # — preserving env_file resolution, depends_on ordering and profiles that
-      # the raw recreate can't. Then set the connection's "Compose project path"
-      # to the IN-CONTAINER path below. Read-only is enough. Local socket only;
-      # remote (TCP/SSH) connections stay on the raw recreate.
-      # - /srv/my-stack:/compose-projects/home-server:ro
+      # ─── V5.2/V7.1 Compose-aware "Update now" + visual editor (optional) ──
+      # Bind-mount your Compose stacks root — ideally at the SAME path on both
+      # sides — so the bundled `docker compose` CLI can run `pull` + `up -d`
+      # for the recreate (preserving env_file resolution, depends_on ordering
+      # and profiles), and the V7 visual Compose viewer/editor can read and
+      # edit the files. Projects are discovered automatically from each
+      # container's compose labels; if the in-container path differs from the
+      # host path, set the connection's "Compose path mapping" in the UI.
+      # Writable mount needed for the V7.1 editor (read-only still works for
+      # viewing + updates). SSH connections need no mount at all.
+      # - /opt/stacks:/opt/stacks
 
 volumes:
   stashboard-data:

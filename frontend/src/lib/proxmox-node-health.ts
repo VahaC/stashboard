@@ -67,6 +67,16 @@ export function tempLevel(tempC: number | null, highC: number | null, critC: num
   return 'ok'
 }
 
+/** V7.2.1 — whether to show the connection-level scan-error banner. A
+ *  connection-level error (e.g. "API unreachable: No route to host" from a scan
+ *  that ran while the host was momentarily down) lingers on `lastError` until
+ *  the next successful scan, but the node card polls independently and may
+ *  already show the host online. When the live node status currently succeeds
+ *  (`nodeReachable`), that banner is stale and contradicts the card, so it is
+ *  suppressed — the host clearly responds right now. */
+export const showConnectionError = (lastError: string | null | undefined, nodeReachable: boolean): boolean =>
+  !!lastError && !nodeReachable
+
 export type HealthMetric = 'cpu' | 'mem' | 'root' | 'storage' | 'disk' | 'temp'
 
 /** The "root reason + suggested action" tooltip text for a degraded metric.

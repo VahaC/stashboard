@@ -246,10 +246,10 @@ public class DockerConnectionMapperTests
         Assert.Null(transport.HostUrl);
     }
 
-    // ── V5.2 — Compose project path ──────────────────────────────────────────
+    // ── V7.1 — Compose path mapping ──────────────────────────────────────────
 
     [Fact]
-    public void ApplyUpsert_LocalSocketWithComposeProjectPath_PersistsTrimmedPath()
+    public void ApplyUpsert_LocalSocketWithComposePathMapping_PersistsTrimmedPrefixes()
     {
         var entity = new DockerConnectionEntity { Name = "x" };
         var request = new DockerConnectionUpsertRequest(
@@ -257,39 +257,74 @@ public class DockerConnectionMapperTests
             HostType: DockerHostType.LocalSocket,
             HostUrl: null,
             TlsCaCert: null, TlsClientCert: null, TlsClientKey: null,
-            ComposeProjectPath: "  /compose-projects/home  ");
+            ComposePathHostPrefix: "  /opt/stacks  ",
+            ComposePathContainerPrefix: "  /compose  ");
 
         _mapper.ApplyUpsert(entity, request);
 
         Assert.Equal(DockerHostType.LocalSocket, entity.HostType);
-        Assert.Equal("/compose-projects/home", entity.ComposeProjectPath);
+        Assert.Equal("/opt/stacks", entity.ComposePathHostPrefix);
+        Assert.Equal("/compose", entity.ComposePathContainerPrefix);
     }
 
     [Fact]
-    public void ApplyUpsert_SwitchToRemoteHost_ClearsComposeProjectPath()
+    public void ApplyUpsert_SwitchToRemoteHost_ClearsComposePathMapping()
     {
-        // Compose-aware recreate runs the *local* CLI, so a project path is
-        // meaningless on a remote transport and must not shadow the switch.
+        // The mapping translates host paths into the Stashboard container's
+        // bind-mount paths, so it's meaningless on a remote transport (SSH
+        // uses the label path directly; TcpTls has no file access) and must
+        // not shadow the switch.
         var entity = new DockerConnectionEntity
         {
             Name = "x",
             HostType = DockerHostType.LocalSocket,
-            ComposeProjectPath = "/compose-projects/home",
+            ComposePathHostPrefix = "/opt/stacks",
+            ComposePathContainerPrefix = "/compose",
         };
         var request = new DockerConnectionUpsertRequest(
             Name: "home",
             HostType: DockerHostType.TcpTls,
             HostUrl: "tcp://h:2376",
             TlsCaCert: null, TlsClientCert: null, TlsClientKey: null,
-            ComposeProjectPath: "/should-be-ignored");
+            ComposePathHostPrefix: "/should-be-ignored",
+            ComposePathContainerPrefix: "/also-ignored");
 
         _mapper.ApplyUpsert(entity, request);
 
-        Assert.Null(entity.ComposeProjectPath);
+        Assert.Null(entity.ComposePathHostPrefix);
+        Assert.Null(entity.ComposePathContainerPrefix);
     }
 
     [Fact]
-    public void ApplyUpsert_BlankComposeProjectPath_NormalizesToNull()
+    public void ApplyUpsert_SshHost_ClearsComposePathMapping()
+    {
+        // V7.1 — SSH connections read the working_dir label path on the host
+        // directly; no mapping is stored for them.
+        var entity = new DockerConnectionEntity
+        {
+            Name = "x",
+            HostType = DockerHostType.LocalSocket,
+            ComposePathHostPrefix = "/opt/stacks",
+            ComposePathContainerPrefix = "/compose",
+        };
+        var request = new DockerConnectionUpsertRequest(
+            Name: "vps-prod",
+            HostType: DockerHostType.Ssh,
+            HostUrl: null,
+            TlsCaCert: null, TlsClientCert: null, TlsClientKey: null,
+            SshHost: "vps", SshPort: 22, SshUsername: "docker",
+            SshPrivateKey: new SecretValueUpsert(SecretValueAction.Set, "PEM"),
+            ComposePathHostPrefix: "/should-be-ignored",
+            ComposePathContainerPrefix: "/also-ignored");
+
+        _mapper.ApplyUpsert(entity, request);
+
+        Assert.Null(entity.ComposePathHostPrefix);
+        Assert.Null(entity.ComposePathContainerPrefix);
+    }
+
+    [Fact]
+    public void ApplyUpsert_BlankComposePathPrefixes_NormalizeToNull()
     {
         var entity = new DockerConnectionEntity { Name = "x" };
         var request = new DockerConnectionUpsertRequest(
@@ -297,11 +332,13 @@ public class DockerConnectionMapperTests
             HostType: DockerHostType.LocalSocket,
             HostUrl: null,
             TlsCaCert: null, TlsClientCert: null, TlsClientKey: null,
-            ComposeProjectPath: "   ");
+            ComposePathHostPrefix: "   ",
+            ComposePathContainerPrefix: "   ");
 
         _mapper.ApplyUpsert(entity, request);
 
-        Assert.Null(entity.ComposeProjectPath);
+        Assert.Null(entity.ComposePathHostPrefix);
+        Assert.Null(entity.ComposePathContainerPrefix);
     }
 
     // ── V5.3 — host terminal opt-in ──────────────────────────────────────────
@@ -401,18 +438,20 @@ public class DockerConnectionMapperTests
     }
 
     [Fact]
-    public void ToResponse_SurfacesComposeProjectPath()
+    public void ToResponse_SurfacesComposePathMapping()
     {
         var entity = new DockerConnectionEntity
         {
             Name = "home",
             HostType = DockerHostType.LocalSocket,
-            ComposeProjectPath = "/compose-projects/home",
+            ComposePathHostPrefix = "/opt/stacks",
+            ComposePathContainerPrefix = "/compose",
         };
 
         var response = _mapper.ToResponse(entity, usageCount: 0);
 
-        Assert.Equal("/compose-projects/home", response.ComposeProjectPath);
+        Assert.Equal("/opt/stacks", response.ComposePathHostPrefix);
+        Assert.Equal("/compose", response.ComposePathContainerPrefix);
     }
 
     // ── Fixtures ────────────────────────────────────────────────────────────

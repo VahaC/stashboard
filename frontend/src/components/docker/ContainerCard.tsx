@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Activity, Bell, FileText, MoreHorizontal, Search, Trash2, SquareChevronRight, Info } from 'lucide-react'
+import { Activity, Bell, FileText, Info, MoreHorizontal, Play, RefreshCw, Search, Square, SquareChevronRight, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { DockerContainerCard, DockerWatch } from '@/lib/types'
 import { EntityCard } from '@/components/shared/EntityCard'
+import { FloatingMenu } from '@/components/shared/FloatingMenu'
 import { UpdateStatusBadge } from './atoms/UpdateStatusBadge'
 import { ContainerLifecycleActions } from './atoms/ContainerLifecycleActions'
 import { RemoveConfirmDialog } from './atoms/RemoveConfirmDialog'
@@ -42,7 +43,7 @@ export type ContainerCardProps = {
  * - Inspect / Remove live behind the `⋯` overflow menu.
  */
 export function ContainerCard({
-  card, linkedWatch = null, variant, allowRemoval, busy, error, onOpen, onAction, 
+  card, linkedWatch = null, variant, allowRemoval, busy, error, onOpen, onAction,
 }: ContainerCardProps) {
   const stateLower = card.state.toLowerCase()
   const running = stateLower === 'running'
@@ -50,6 +51,8 @@ export function ContainerCard({
   const notFound = stateLower === 'not found'
   const defaultTab: ContainerModalTab = notFound ? 'watch' : variant === 'service-modal' ? 'watch' : 'overview'
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null)
+  const openMenu = (e: { preventDefault(): void; stopPropagation(): void; clientX: number; clientY: number }) => { e.preventDefault(); e.stopPropagation(); setMenuPos({ x: e.clientX, y: e.clientY }) }
 
   const requestRemove = () => setRemoveDialogOpen(true)
   const confirmRemove = async () => {
@@ -91,6 +94,7 @@ export function ContainerCard({
         ))
         : undefined}
       onActivate={() => onOpen(defaultTab)}
+      onContextMenu={openMenu}
       actionsLeft={!notFound && (
         <>
           <Button type="button" variant="ghost" size="sm" onClick={() => onOpen('overview')} title="Overview">
@@ -169,6 +173,32 @@ export function ContainerCard({
         onConfirm={confirmRemove}
         onCancel={() => setRemoveDialogOpen(false)}
       />
+      {menuPos && (
+        <FloatingMenu pos={menuPos} onClose={() => setMenuPos(null)}>
+          {!notFound && (
+            <>
+              <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen('overview') }}><Info className="h-3.5 w-3.5" /> Overview</button>
+              <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen('inspect') }}><Search className="h-3.5 w-3.5" /> Inspect</button>
+              <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen('logs') }}><FileText className="h-3.5 w-3.5" /> Logs</button>
+              <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen('stats') }}><Activity className="h-3.5 w-3.5" /> Stats</button>
+              <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen('watch') }}><Bell className="h-3.5 w-3.5" /> Watch</button>
+              <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen('exec') }}><SquareChevronRight className="h-3.5 w-3.5" /> Exec</button>
+              <div className="cgroup-menu-sep" />
+              {running && <>
+                <button className="cgroup-menu-item" disabled={busy} onClick={() => { setMenuPos(null); void onAction('stop') }}><Square className="h-3.5 w-3.5" /> Stop</button>
+                <button className="cgroup-menu-item" disabled={busy} onClick={() => { setMenuPos(null); void onAction('restart') }}><RefreshCw className="h-3.5 w-3.5" /> Restart</button>
+              </>}
+              {stopped && <button className="cgroup-menu-item" disabled={busy} onClick={() => { setMenuPos(null); void onAction('start') }}><Play className="h-3.5 w-3.5" /> Start</button>}
+            </>
+          )}
+          {(stopped || notFound || (running && allowRemoval)) && (
+            <>
+              {!notFound && <div className="cgroup-menu-sep" />}
+              <button className="cgroup-menu-item cgroup-menu-item--danger" disabled={busy} onClick={() => { setMenuPos(null); requestRemove() }}><Trash2 className="h-3.5 w-3.5" /> Remove</button>
+            </>
+          )}
+        </FloatingMenu>
+      )}
     </EntityCard>
   )
 }

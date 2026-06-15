@@ -751,7 +751,11 @@ raw recreate:
 
 1. The connection is a **Local socket** (the CLI runs against the local
    daemon; remote TCP+TLS / SSH connections stay on the raw recreate).
-2. The connection has a **Compose project path** set (see below).
+2. The container's **project directory resolves** (V7.1): the project path
+   comes from the container's own `com.docker.compose.project.working_dir`
+   label — a host path — translated through the connection's optional
+   **Compose path mapping** (see below). One host can run many projects;
+   each resolves to its own directory.
 3. The tracked container is **Compose-managed** — it carries the
    `com.docker.compose.service` label (i.e. it was originally started by
    `docker compose`).
@@ -760,21 +764,29 @@ raw recreate:
 
 #### Setting it up
 
-1. **Bind-mount the host's Compose project directory** (the folder
-   containing your `docker-compose.yml`, plus any `.env` / `env_file` paths
-   it references) read-only into the Stashboard container:
+> **V7.1 change:** the per-connection *Compose project path* field is gone —
+> project directories are **discovered automatically** from each container's
+> compose labels. You only mount the stacks root and (if the paths differ)
+> set a prefix mapping once per connection.
+
+1. **Bind-mount your Compose stacks root** (the folder whose subfolders hold
+   your projects' `docker-compose.yml` files, plus any `.env` / `env_file`
+   paths they reference) into the Stashboard container — **ideally at the
+   same path on both sides**, which makes step 2 unnecessary:
 
    ```yaml
    services:
      app:
        volumes:
          - /var/run/docker.sock:/var/run/docker.sock   # writable — Update now needs it
-         - /srv/my-stack:/compose-projects/home-server:ro
+         - /opt/stacks:/opt/stacks                     # same path on both sides
    ```
 
-2. **Set the connection's "Compose project path"** (the field appears on the
-   connection form for Local socket hosts) to the **in-container** path —
-   `/compose-projects/home-server` in the example above, *not* the host path.
+2. **Only if the in-container path differs** (e.g.
+   `- /opt/stacks:/compose:ro`): set the connection's **Compose path
+   mapping** (Local socket connection form) to `host prefix = /opt/stacks`,
+   `container prefix = /compose` so Stashboard can translate the label
+   paths.
 
 3. Recreate Stashboard (`docker compose up -d --force-recreate app`) and click
    **Update now** on a Compose-managed watch. The Update history row is
@@ -789,14 +801,17 @@ requires:
 |---|---|---|
 | Digest tracking + email/Telegram notifications (V1–V2.6) | `:ro` is enough | — |
 | "Update now" — **raw** recreate (V2.7) | **writable** (drop `:ro`) | — |
-| "Update now" — **Compose-aware** recreate (V5.2) | **writable** (drop `:ro`) | bind-mount the project dir `:ro` **+** set the connection's *Compose project path* to the in-container path |
+| "Update now" — **Compose-aware** recreate (V5.2/V7.1) | **writable** (drop `:ro`) | bind-mount the stacks root (`:ro` is enough for updates) — same path on both sides, or set the connection's *Compose path mapping* |
+| **Visual Compose editor** (V7.1) | as above | the stacks-root mount must be **writable** so edited files can be saved |
 
 So for the Compose-aware path the only additions over the V2.7 setup are:
-**(a)** one read-only volume line pointing at the host's Compose project
-directory, and **(b)** the *Compose project path* field in the connection
+**(a)** one volume line pointing at the host's stacks root, and **(b)** —
+only when the paths differ — the *Compose path mapping* on the connection
 form. No environment variables, no image change (the `docker compose` binary
-is already baked in). `docker-compose.yml` in this repo ships both lines as
-commented-out examples — uncomment and adjust the host path.
+is already baked in). `docker-compose.yml` in this repo ships the line as a
+commented-out example — uncomment and adjust the host path. **SSH
+connections need no mount at all**: the viewer/editor reads and writes the
+files on the remote host over the connection's SSH credentials.
 
 > **Heads-up on the socket:** the Compose-aware path still needs the **writable**
 > socket — `docker compose up -d` issues the same create/start writes the raw
@@ -852,12 +867,12 @@ ungrouped layout, so nothing about the non-Compose workflow changes.
 
 | Condition | Update project does |
 |---|---|
-| **Local socket** + **Compose project path** set + `docker compose` available | One `docker compose pull` + `docker compose up -d` against the project root — Compose handles `depends_on` ordering itself. |
-| Anything else (remote host, no project path, no CLI) | Per-service raw recreate, ordered by a topological sort of the `com.docker.compose.depends_on` labels Compose v2 writes on every container. Each service goes through the same V2.7 pull + stop + remove + create + start + V3.2 health verification the per-watch "Update now" uses. |
+| **Local socket** + project directory resolves from the containers' `working_dir` labels (V7.1; plus the connection's *Compose path mapping* when the mount path differs) + `docker compose` available | One `docker compose pull` + `docker compose up -d` against **that project's own root** — Compose handles `depends_on` ordering itself, and each project on the host uses its own directory. |
+| Anything else (remote host, no resolvable project directory, no CLI) | Per-service raw recreate, ordered by a topological sort of the `com.docker.compose.depends_on` labels Compose v2 writes on every container. Each service goes through the same V2.7 pull + stop + remove + create + start + V3.2 health verification the per-watch "Update now" uses. |
 
 The response carries a `mode` field (`"Compose"` or `"Recreate"`) so the
 UI can hint at which path ran. Setting up the Compose-aware path is the
-same one-liner as V5.2 — see [§5.1a](#51a-compose-aware-recreate-v52).
+same one-liner as V5.2/V7.1 — see [§5.1a](#51a-compose-aware-recreate-v52).
 
 **UX — the same confirm/progress modal as per-watch *Update now*.**
 Clicking *Update project* (or, since V5.4, clicking *Update now* on a

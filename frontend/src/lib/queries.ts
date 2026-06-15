@@ -3,6 +3,22 @@ import { api } from './api'
 import { accountApi } from './account-api'
 import type {
   Category,
+  ComposeAllocation,
+  ComposeFile,
+  ComposeFileSaveResponse,
+  ComposeImageTags,
+  ComposeHostNetwork,
+  ComposeProject,
+  ComposeProjectCreateRequest,
+  ComposeProjectCreateResponse,
+  ComposeResourceEditRequest,
+  ComposeResourceEditResponse,
+  ComposeResourceKind,
+  ComposeServiceCreateRequest,
+  ComposeServiceEditRequest,
+  ComposeServiceEditResponse,
+  ComposeUpResponse,
+  ComposeVolumeUsage,
   DockerConnection,
   DockerConnectionPingRequest,
   DockerConnectionPingResponse,
@@ -22,6 +38,7 @@ import type {
   DockerWatchUpdateResponse,
   DockerWatchUpsert,
   Service,
+  ServiceTemplate,
   ServiceUpsert,
   StashboardFeatures,
   Tag,
@@ -31,6 +48,7 @@ import type {
 export const qk = {
   services: ['services'] as const,
   service: (id: string) => ['services', id] as const,
+  serviceTemplates: ['service-templates'] as const,
   categories: ['categories'] as const,
   tags: ['tags'] as const,
   dockerConnections: ['docker', 'connections'] as const,
@@ -54,6 +72,24 @@ export const qk = {
   /** V5.5 — storage / prune summary for the V3.5 Storage widget. */
   dockerImageStorage: (connectionId: string) =>
     ['docker', 'connections', connectionId, 'instance', 'images', 'storage'] as const,
+  /** V7.0 — parsed Compose file for the viewer (project-scoped since V7.1). */
+  composeProject: (connectionId: string, project: string) =>
+    ['docker', 'connections', connectionId, 'compose', project] as const,
+  /** V7.1 — registry tag list for the image dropdown in the edit modal. */
+  composeImageTags: (connectionId: string, image: string) =>
+    ['docker', 'connections', connectionId, 'compose-image-tags', image] as const,
+  /** V7.2 — host capacity already reserved by other containers. */
+  composeAllocation: (connectionId: string, project: string) =>
+    ['docker', 'connections', connectionId, 'compose-allocation', project] as const,
+  /** V7.3 — networks already defined on the host (subnet-overlap warning). */
+  composeHostNetworks: (connectionId: string, project: string) =>
+    ['docker', 'connections', connectionId, 'compose-host-networks', project] as const,
+  /** V7.3 — on-disk usage of the host's named volumes. */
+  composeVolumeUsage: (connectionId: string, project: string) =>
+    ['docker', 'connections', connectionId, 'compose-volume-usage', project] as const,
+  /** V7.4 — the project's raw Compose file text for the "Raw YAML" tab. */
+  composeFile: (connectionId: string, project: string) =>
+    ['docker', 'connections', connectionId, 'compose-file', project] as const,
   features: ['features'] as const,
   telegramSettings: ['account', 'telegram'] as const,
 }
@@ -194,6 +230,217 @@ export const useDockerConnection = (id: string | null) =>
     enabled: id !== null,
     queryFn: async (): Promise<DockerConnection> =>
       (await api.get<DockerConnection>(`/api/docker/connections/${id}`)).data,
+  })
+
+/** V7.0 — parsed Compose file of one discovered project, for the V7.1.1
+ *  Compose modal (project-scoped since V7.1). */
+export const useComposeProject = (connectionId: string | null, project: string | null) =>
+  useQuery({
+    queryKey: connectionId && project ? qk.composeProject(connectionId, project) : ['compose-project-disabled'],
+    enabled: connectionId !== null && project !== null,
+    retry: false, // 400 / 404 / 422 are stable config states, not transient errors
+    queryFn: async (): Promise<ComposeProject> =>
+      (await api.get<ComposeProject>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project!)}`)).data,
+  })
+
+/** V7.1 — saves one service's edited fields (atomic, compose-validated). On
+ *  success the query cache is primed with the re-parsed project the backend
+ *  returned, so the page refreshes without a second GET. */
+export const useEditComposeService = (connectionId: string, project: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: { serviceName: string; data: ComposeServiceEditRequest }) =>
+      (await api.put<ComposeServiceEditResponse>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/services/${encodeURIComponent(args.serviceName)}`,
+        args.data)).data,
+    onSuccess: (response) => {
+      qc.setQueryData<ComposeProject>(qk.composeProject(connectionId, project), response.project)
+    },
+  })
+}
+
+/** V7.4 — appends a brand-new service to the project's Compose file (the "Add
+ *  service" wizard). Same atomic, compose-validated save path as the editor;
+ *  the re-parsed project is primed into the cache on success so the new service
+ *  shows up as a normal tab. */
+export const useCreateComposeService = (connectionId: string, project: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: ComposeServiceCreateRequest) =>
+      (await api.post<ComposeServiceEditResponse>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/services`,
+        data)).data,
+    onSuccess: (response) => {
+      qc.setQueryData<ComposeProject>(qk.composeProject(connectionId, project), response.project)
+      // The raw-file tab's cached text is now stale.
+      qc.invalidateQueries({ queryKey: qk.composeFile(connectionId, project) })
+    },
+  })
+}
+
+/** V7.4.1 — bootstrap a brand-new Compose project from scratch (the "New project"
+ *  dialog on the Docker page). On success the container list is invalidated so
+ *  the new project's group appears (after `up`) without waiting for a poll. */
+export const useCreateComposeProject = (connectionId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: ComposeProjectCreateRequest): Promise<ComposeProjectCreateResponse> =>
+      (await api.post<ComposeProjectCreateResponse>(
+        `/api/docker/connections/${connectionId}/compose/create-project`, data)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.dockerInstanceContainers(connectionId) })
+    },
+  })
+}
+
+/** V7.5 — the starter-recipe catalogue for the "From template" wizard tab. The
+ *  catalogue is static per server run, so it is cached aggressively and shared
+ *  across connections. */
+export const useServiceTemplates = (enabled: boolean) =>
+  useQuery({
+    queryKey: qk.serviceTemplates,
+    queryFn: async (): Promise<ServiceTemplate[]> =>
+      (await api.get<ServiceTemplate[]>('/api/templates')).data,
+    enabled,
+    staleTime: Infinity,
+  })
+
+/** V7.4 — the project's raw Compose file text, fetched lazily (enabled) when
+ *  the user opens the "Raw YAML" tab. */
+export const useComposeFile = (connectionId: string, project: string, enabled: boolean) =>
+  useQuery({
+    queryKey: qk.composeFile(connectionId, project),
+    enabled,
+    retry: false,
+    queryFn: async (): Promise<ComposeFile> =>
+      (await api.get<ComposeFile>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/file`)).data,
+  })
+
+/** V7.4 — replaces the whole Compose file with hand-edited text (the "Raw YAML"
+ *  tab). On success the parsed project + raw file caches are invalidated so the
+ *  service tabs and the editor refresh from disk. */
+export const useSaveComposeFile = (connectionId: string, project: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (content: string) =>
+      (await api.put<ComposeFileSaveResponse>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/file`,
+        { content })).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.composeProject(connectionId, project) })
+      qc.invalidateQueries({ queryKey: qk.composeFile(connectionId, project) })
+    },
+  })
+}
+
+/** V7.4 — the "Save and run" CTA: `docker compose up -d` against the whole
+ *  project (LocalSocket via the in-container CLI, Ssh on the remote host). The
+ *  container list is invalidated on success so the freshly-started container's
+ *  live state badge appears without waiting for the next poll. */
+export const useComposeUp = (connectionId: string, project: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (): Promise<ComposeUpResponse> =>
+      (await api.post<ComposeUpResponse>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/up`)).data,
+    onSuccess: (result) => {
+      if (result.success) qc.invalidateQueries({ queryKey: qk.dockerInstanceContainers(connectionId) })
+    },
+  })
+}
+
+/** V7.3 — adds/replaces (`PUT`) or removes (`DELETE`) one top-level resource
+ *  entry. Same atomic, compose-validated save path as the service editor; the
+ *  re-parsed project is primed into the cache on success. */
+export const useEditComposeResource = (connectionId: string, project: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: {
+      kind: ComposeResourceKind
+      name: string
+      data: ComposeResourceEditRequest
+    }) =>
+      (await api.put<ComposeResourceEditResponse>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/resources/${args.kind}/${encodeURIComponent(args.name)}`,
+        args.data)).data,
+    onSuccess: (response) => {
+      qc.setQueryData<ComposeProject>(qk.composeProject(connectionId, project), response.project)
+    },
+  })
+}
+
+export const useDeleteComposeResource = (connectionId: string, project: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: { kind: ComposeResourceKind; name: string }) =>
+      (await api.delete<ComposeResourceEditResponse>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/resources/${args.kind}/${encodeURIComponent(args.name)}`)).data,
+    onSuccess: (response) => {
+      qc.setQueryData<ComposeProject>(qk.composeProject(connectionId, project), response.project)
+    },
+  })
+}
+
+/** V7.3 — networks already defined on the host, for the network editor's
+ *  subnet-overlap warning. Fetched lazily (enabled) and cached server-side. */
+export const useComposeHostNetworks = (
+  connectionId: string, project: string, enabled: boolean,
+) =>
+  useQuery({
+    queryKey: qk.composeHostNetworks(connectionId, project),
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async (): Promise<ComposeHostNetwork[]> =>
+      (await api.get<ComposeHostNetwork[]>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/host-networks`)).data,
+  })
+
+/** V7.3 — on-disk usage of the host's named volumes (best-effort). */
+export const useComposeVolumeUsage = (
+  connectionId: string, project: string, enabled: boolean,
+) =>
+  useQuery({
+    queryKey: qk.composeVolumeUsage(connectionId, project),
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async (): Promise<ComposeVolumeUsage[]> =>
+      (await api.get<ComposeVolumeUsage[]>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/volume-usage`)).data,
+  })
+
+/** V7.1 — registry tags for the image dropdown in the edit modal. Fetched
+ *  lazily (enabled flag) so opening the modal doesn't hit the registry until
+ *  the user reaches for the dropdown. */
+export const useComposeImageTags = (connectionId: string, image: string | null, enabled: boolean) =>
+  useQuery({
+    queryKey: image ? qk.composeImageTags(connectionId, image) : ['compose-image-tags-disabled'],
+    enabled: enabled && !!image,
+    staleTime: 5 * 60_000, // tag lists move slowly; don't refetch per keystroke
+    retry: false,
+    queryFn: async (): Promise<ComposeImageTags> =>
+      (await api.get<ComposeImageTags>(
+        `/api/docker/connections/${connectionId}/compose/image-tags`,
+        { params: { image } })).data,
+  })
+
+/** V7.2 — host capacity already reserved by other running containers, for the
+ *  resources editor's over-commit panel. Cached server-side (~60 s); a short
+ *  client `staleTime` avoids refetching while the modal is open. */
+export const useComposeAllocation = (connectionId: string | null, project: string | null) =>
+  useQuery({
+    queryKey: connectionId && project
+      ? qk.composeAllocation(connectionId, project)
+      : ['compose-allocation-disabled'],
+    enabled: connectionId !== null && project !== null,
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async (): Promise<ComposeAllocation> =>
+      (await api.get<ComposeAllocation>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project!)}/allocation`)).data,
   })
 
 export const useCreateDockerConnection = () => {

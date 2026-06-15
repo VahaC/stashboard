@@ -45,6 +45,18 @@ public sealed record ComposeRecreateRequest(string ProjectPath, string ServiceNa
 public sealed record ComposeProjectRecreateRequest(string ProjectPath);
 
 /// <summary>
+/// V7.4 — what the "Save and run" CTA needs to bring a Compose project up.
+/// Runs <c>docker compose up -d</c> (no <c>pull</c>) against the whole project
+/// so a freshly-added service is created/started without disturbing the
+/// already-running siblings. Unlike <see cref="ComposeProjectRecreateRequest"/>
+/// this path also serves SSH hosts: when <see cref="Ssh"/> is set the command
+/// runs over the connection's existing SSH credentials on the remote host;
+/// when it is <c>null</c> the local <c>docker compose</c> CLI inside the
+/// Stashboard container is used (LocalSocket connections).
+/// </summary>
+public sealed record ComposeUpRequest(string ProjectPath, DockerSshCredentials? Ssh);
+
+/// <summary>
 /// V5.2 — result of a <see cref="IComposeCommandRunner.RecreateServiceAsync"/>
 /// call. <see cref="Output"/> / <see cref="Error"/> carry the captured stdout /
 /// stderr so a failure can surface an actionable message on the audit row.
@@ -95,4 +107,27 @@ public interface IComposeCommandRunner
     /// </summary>
     Task<ComposeRunResult> RecreateProjectAsync(
         ComposeProjectRecreateRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// V7.4 — runs <c>docker compose up -d</c> against the whole project at
+    /// <see cref="ComposeUpRequest.ProjectPath"/>. No <c>pull</c> and no service
+    /// argument: Compose creates/starts whatever is missing or changed (the
+    /// newly-added service) and leaves unchanged containers running, in
+    /// <c>depends_on</c> order. Local (<see cref="ComposeUpRequest.Ssh"/>
+    /// <c>null</c>) or over SSH on the remote host. Never throws — every failure
+    /// mode is a typed <see cref="ComposeRunnerStatus"/>.
+    /// </summary>
+    Task<ComposeRunResult> UpProjectAsync(
+        ComposeUpRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// V7.1 — runs <c>docker compose -f &lt;composeFilePath&gt; config -q</c>
+    /// with <paramref name="projectPath"/> as the working directory, so a
+    /// candidate file (the editor's <c>.next</c> temp file) is validated by
+    /// Compose itself — including <c>env_file</c> resolution — before the
+    /// writer renames it over the original. A non-zero exit comes back as
+    /// <see cref="ComposeRunnerStatus.CommandFailed"/> with the raw stderr.
+    /// </summary>
+    Task<ComposeRunResult> ValidateConfigAsync(
+        string projectPath, string composeFilePath, CancellationToken cancellationToken = default);
 }

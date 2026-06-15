@@ -409,9 +409,12 @@ export interface DockerConnection {
   hasSshPrivateKeyPassphrase: boolean
   /** V2.5 — remote socket path (default `/var/run/docker.sock`). */
   sshRemoteSocketPath: string | null
-  /** V5.2 — in-container path to the Compose project directory used by the
-   *  Compose-aware "Update now" recreate. Non-null only for `LocalSocket`. */
-  composeProjectPath: string | null
+  /** V7.1 — host-side prefix of the optional Compose path mapping
+   *  (LocalSocket only). Project directories are discovered per project from
+   *  the containers' working_dir labels. */
+  composePathHostPrefix: string | null
+  /** V7.1 — container-side prefix of the optional Compose path mapping. */
+  composePathContainerPrefix: string | null
   /** V5.3 — whether this connection has opted in to the browser host terminal.
    *  Only meaningful for SSH hosts; the server also requires the global
    *  AllowHostShell flag before honouring it. */
@@ -452,9 +455,11 @@ export interface DockerConnectionUpsert {
   sshPrivateKeyPassphrase: SecretValueUpsert | null
   /** V2.5 — remote socket path override (default `/var/run/docker.sock`). */
   sshRemoteSocketPath: string | null
-  /** V5.2 — absolute in-container path to the Compose project directory.
-   *  Only meaningful for `LocalSocket` hosts. */
-  composeProjectPath: string | null
+  /** V7.1 — host-side prefix of the optional Compose path mapping
+   *  (LocalSocket only; both prefixes must be set together to take effect). */
+  composePathHostPrefix: string | null
+  /** V7.1 — container-side prefix of the optional Compose path mapping. */
+  composePathContainerPrefix: string | null
   /** V5.3 — opt this connection in to the browser host terminal (SSH only). */
   allowHostShell: boolean
   /** V5.7 — opt this connection in to the browser container-exec terminal (any host type). */
@@ -839,6 +844,288 @@ export interface DockerProjectUpdateResponse {
    *  fallback. Surfaced so the UI can hint at why the update was slow or
    *  why a particular service is the one that failed. */
   mode: 'Compose' | 'Recreate'
+}
+
+// ── V7.0 — Read-only Compose viewer ──────────────────────────────────────
+
+/** V7.0 — one environment variable; `value` is null for pass-through
+ *  entries (`- KEY` with no value). */
+export interface ComposeEnvVar {
+  name: string
+  value: string | null
+}
+
+/** V7.2 — one `ulimits:` entry; the scalar form (`nproc: 65535`) yields equal
+ *  soft/hard. */
+export interface ComposeUlimit {
+  name: string
+  soft: number | null
+  hard: number | null
+}
+
+/** V7.2 — a service's resource constraints, flattened across the two Compose
+ *  conventions. `convention` (`"deploy"` | `"legacy"`) tells the UI where
+ *  cpu/mem/pids live so it edits and writes back in the same home; legacy mode
+ *  has no CPU-reservation key (`cpuReservation` stays null and the input is
+ *  disabled). `cpuShares` / `oom*` / `shmSize` / `ulimits` are always top-level. */
+export interface ComposeResourceConstraints {
+  convention: 'deploy' | 'legacy'
+  cpuLimit: string | null
+  cpuReservation: string | null
+  memLimit: string | null
+  memReservation: string | null
+  pidsLimit: string | null
+  cpuShares: number | null
+  oomKillDisable: boolean | null
+  oomScoreAdj: number | null
+  shmSize: string | null
+  ulimits: ComposeUlimit[]
+}
+
+/** V7.2 — host capacity already reserved by other running containers (the
+ *  edited project's own containers excluded), from
+ *  `GET /compose/{project}/allocation`. */
+export interface ComposeAllocation {
+  containerCount: number
+  reservedCpus: number
+  reservedMemoryBytes: number
+}
+
+/** V7.0 — one Compose service card. Ports / volumes are normalised to the
+ *  short syntax by the backend regardless of which form the file used. */
+export interface ComposeService {
+  name: string
+  image: string | null
+  containerName: string | null
+  restart: string | null
+  ports: string[]
+  volumes: string[]
+  environment: ComposeEnvVar[]
+  envFiles: string[]
+  dependsOn: string[]
+  networks: string[]
+  /** V7.2 — CPU / memory / pids / ulimits / OOM constraints, normalised across
+   *  the deploy and legacy conventions. */
+  resources: ComposeResourceConstraints
+  /** V7.1 — `labels:` as name/value pairs in file order. */
+  labels: ComposeEnvVar[]
+  /** V7.1 — `command:`; exec (list) form folded into a `["json", "style"]` flow string. */
+  command: string | null
+  /** V7.1 — `entrypoint:`, same folding as `command`. */
+  entrypoint: string | null
+  /** V7.1 — `user:`. */
+  user: string | null
+  /** V7.1 — `working_dir:`. */
+  workingDir: string | null
+}
+
+/** V7.0 — parsed Compose project from
+ *  `GET /api/docker/connections/{id}/compose/{project}`.
+ *  `unsupportedFeatures` powers the "Read-only — file uses X" banner. */
+export interface ComposeProject {
+  projectName: string | null
+  fileName: string
+  projectPath: string
+  services: ComposeService[]
+  /** V7.3 — top-level networks with their editable options (was a name list). */
+  networks: ComposeNetwork[]
+  volumes: ComposeVolume[]
+  secrets: ComposeFileResource[]
+  configs: ComposeFileResource[]
+  unsupportedFeatures: string[]
+}
+
+/** V7.3 — one top-level `networks:` entry. External entries bind to a
+ *  pre-existing network; the driver / ipam / driver_opts fields are then unused. */
+export interface ComposeNetwork {
+  name: string
+  external: boolean
+  nameOverride: string | null
+  driver: string | null
+  subnet: string | null
+  gateway: string | null
+  driverOpts: ComposeEnvVar[]
+}
+
+/** V7.3 — one top-level `volumes:` entry. */
+export interface ComposeVolume {
+  name: string
+  external: boolean
+  nameOverride: string | null
+  driver: string | null
+  driverOpts: ComposeEnvVar[]
+}
+
+/** V7.3 — one top-level `secrets:` / `configs:` entry: a host `file:` path or an
+ *  external reference. */
+export interface ComposeFileResource {
+  name: string
+  external: boolean
+  nameOverride: string | null
+  file: string | null
+}
+
+/** V7.3 — which top-level section a resource edit targets (the route segment). */
+export type ComposeResourceKind = 'networks' | 'volumes' | 'secrets' | 'configs'
+
+/** V7.3 — desired final state of one top-level resource entry. The entry name
+ *  (key) and the kind travel in the URL; the backend writes only the fields that
+ *  apply to the kind. */
+export interface ComposeResourceEditRequest {
+  external: boolean
+  nameOverride: string | null
+  driver: string | null
+  subnet: string | null
+  gateway: string | null
+  file: string | null
+  driverOpts: ComposeEnvVar[]
+}
+
+/** V7.3 — result of a top-level resource edit / delete. */
+export interface ComposeResourceEditResponse {
+  changed: boolean
+  project: ComposeProject
+}
+
+/** V7.3 — one network already defined on the host, for the subnet-overlap warning. */
+export interface ComposeHostNetwork {
+  name: string
+  driver: string | null
+  subnets: string[]
+}
+
+/** V7.3 — on-disk usage of one named volume; `sizeBytes` null when unknown. */
+export interface ComposeVolumeUsage {
+  name: string
+  sizeBytes: number | null
+  refCount: number | null
+}
+
+/** V7.1 — one Compose project discovered on a connection from its containers'
+ *  `com.docker.compose.project` / `…working_dir` labels. */
+export interface ComposeDiscoveredProject {
+  name: string
+  /** The project directory as the host knows it (the working_dir label). */
+  workingDir: string | null
+  /** The directory Stashboard would actually read; `null` when the project
+   *  advertises no working_dir (Compose file access unavailable). */
+  resolvedPath: string | null
+  containerCount: number
+  runningCount: number
+}
+
+/** V7.1 — desired final state of one service's editable fields. Send back
+ *  exactly what the GET returned with the fields you want changed; the
+ *  backend diffs per key, so untouched fields are a guaranteed zero-diff. */
+export interface ComposeServiceEditRequest {
+  image: string | null
+  restart: string | null
+  ports: string[]
+  volumes: string[]
+  environment: ComposeEnvVar[]
+  labels: ComposeEnvVar[]
+  command: string | null
+  entrypoint: string | null
+  user: string | null
+  workingDir: string | null
+  /** V7.2 — desired resource constraints. */
+  resources: ComposeResourceConstraints
+}
+
+/** V7.1 — result of a service edit; `project` is the freshly re-parsed file. */
+export interface ComposeServiceEditResponse {
+  changed: boolean
+  project: ComposeProject
+}
+
+/** V7.4 — desired state of a brand-new service appended to the project's
+ *  `services:` map. Mirrors {@link ComposeServiceEditRequest} plus the
+ *  service `name` (validated `^[a-zA-Z0-9._-]+$`, unique). */
+export interface ComposeServiceCreateRequest extends ComposeServiceEditRequest {
+  name: string
+}
+
+/** V7.4.1 — bootstrap a brand-new Compose project: write a new file holding a
+ *  top-level `name:` + first service into `directory` (created when
+ *  `createDirectory` is set), optionally running `docker compose up -d`. */
+export interface ComposeProjectCreateRequest {
+  projectName: string
+  directory: string
+  fileName: string | null
+  createDirectory: boolean
+  run: boolean
+  /** V7.5 — the services to write, in order. The first seeds the file; the rest
+   *  are appended. The from-scratch wizard sends one; templates may send several. */
+  services: ComposeServiceCreateRequest[]
+}
+
+/** V7.4.1 — result of a project bootstrap. `started` reflects the optional
+ *  `up -d`; `startError` carries the run failure (the file is still written). */
+export interface ComposeProjectCreateResponse {
+  projectName: string
+  fileName: string
+  directory: string
+  started: boolean
+  startError: string | null
+}
+
+/** V7.5 — one per-deployment input a template asks the user to fill. The
+ *  placeholder `${key}` in the template's service fields is replaced with the
+ *  entered value (or `default`). */
+export interface ServiceTemplateVariable {
+  key: string
+  label: string
+  /** `text` (default) | `password` | `path` | `port`. */
+  type: string | null
+  hint: string | null
+  default: string | null
+  required: boolean
+  generate: boolean
+}
+
+/** V7.5 — one starter recipe behind the "From template" wizard tab. Services
+ *  mirror {@link ComposeServiceCreateRequest} with `${key}` placeholders the
+ *  client resolves from {@link variables} before posting to `create-project`. */
+export interface ServiceTemplate {
+  id: string
+  name: string
+  description: string
+  category: string
+  /** dashboard-icons slug; the UI builds the CDN URL, falling back to a badge. */
+  icon: string | null
+  projectName: string
+  variables: ServiceTemplateVariable[]
+  services: ComposeServiceCreateRequest[]
+  notes: string | null
+  documentation: string | null
+}
+
+/** V7.4 — the project's Compose file as raw text, for the "Raw YAML" tab. */
+export interface ComposeFile {
+  fileName: string
+  projectPath: string
+  content: string
+}
+
+/** V7.4 — result of a raw-file save; `changed` is false when the submitted
+ *  text already matched the file on disk. */
+export interface ComposeFileSaveResponse {
+  changed: boolean
+}
+
+/** V7.4 — result of the "Save and run" `docker compose up -d`. */
+export interface ComposeUpResponse {
+  success: boolean
+  output: string | null
+  error: string | null
+}
+
+/** V7.1 — registry tag list for the image dropdown; `error` set when the
+ *  registry refused (private image) — the UI falls back to free text. */
+export interface ComposeImageTags {
+  repository: string
+  tags: string[]
+  error: string | null
 }
 
 // ── V3.4 — Live container stats ──────────────────────────────────────────

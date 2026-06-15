@@ -856,9 +856,14 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
                 d.TryGetProperty("model", out var md) ? ReadString(md) : null,
                 d.TryGetProperty("serial", out var sr) ? ReadString(sr) : null,
                 d.TryGetProperty("vendor", out var vd) ? ReadString(vd) : null,
-                d.TryGetProperty("type", out var ty) ? ReadString(ty) : null,
+                // V7.2.1 — PVE names these "type" / "health"; PBS names the same
+                // columns "disk-type" / "status" (and reports e.g. "hdd" / "passed").
+                // Read the PVE key first, fall back to the PBS key, so the type chip
+                // and the SMART-health badge populate on PBS instead of showing a
+                // blank type + an "UNKNOWN" health.
+                ReadFirstString(d, "type", "disk-type"),
                 ReadLong(d, "size"),
-                d.TryGetProperty("health", out var hl) ? ReadString(hl) : null,
+                ReadFirstString(d, "health", "status"),
                 ReadInt(d, "wearout"),   // SSD media-life-remaining %, or absent
                 ReadInt(d, "rpm"),
                 d.TryGetProperty("used", out var us) ? ReadString(us) : null));
@@ -870,9 +875,31 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
     public async Task<ProxmoxNodeDiskSmart> GetNodeDiskSmartAsync(
         ProxmoxConnectionProfile profile, string devPath, CancellationToken cancellationToken = default)
     {
-        var disk = Uri.EscapeDataString(devPath);
-        using var doc = await GetJsonAsync(
+        // V7.2.1 — PBS validates the `disk` parameter against its block-device
+        // name schema: a bare name (`sda` / `nvme0n1`, as found under
+        // /sys/block/<name>), NOT the `/dev/`-prefixed path PVE accepts. Sending
+        // `/dev/sda` to PBS fails its regex with a 400 ("'disk': value does not
+        // match the regex pattern"), so strip the prefix for PBS; PVE keeps the
+        // full devpath it has always used.
+        var diskParam = profile.ServerType == ProxmoxServerType.Pbs && devPath.StartsWith("/dev/", StringComparison.Ordinal)
+            ? devPath["/dev/".Length..]
+            : devPath;
+        var disk = Uri.EscapeDataString(diskParam);
+        var (doc, hostError) = await GetJsonOrHostErrorAsync(
             profile, $"nodes/{profile.NodeName}/disks/smart?disk={disk}", cancellationToken);
+
+        // A per-disk SMART read can still fail for THIS disk while the host is
+        // perfectly reachable — the host runs `smartctl`, which exits non-zero for
+        // a USB-bridged disk, a disk that can't report SMART, etc., and Proxmox
+        // relays that as a 4xx. That is a disk-level condition, not a
+        // host-reachability failure, so surface the host's own reason as the SMART
+        // text (it renders inline under the disk) instead of letting it bubble up
+        // as a scary "host unreachable" 502. A genuine transport failure (host
+        // actually down) still throws below.
+        if (doc is null)
+            return new ProxmoxNodeDiskSmart(null, null, [], $"SMART unavailable for {devPath}: {hostError}");
+
+        using var _ = doc;
         if (!doc.RootElement.TryGetProperty("data", out var d) || d.ValueKind != JsonValueKind.Object)
             return new ProxmoxNodeDiskSmart(null, null, [], null);
 
@@ -942,6 +969,36 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
         response.EnsureSuccessStatusCode();
         var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+    }
+
+    /// <summary>V7.2.1 — like <see cref="GetJsonAsync"/> but for an endpoint where
+    /// a non-success status is a per-resource condition rather than a host
+    /// reachability failure (e.g. <c>disks/smart</c>, where <c>smartctl</c> can
+    /// fail for one disk while the host is fine). Returns the parsed document on
+    /// success, or <c>(null, hostMessage)</c> carrying the host's own error body
+    /// on a 4xx/5xx — it never throws on a non-success <em>response</em>. A
+    /// genuine transport failure (connection refused / no route to host) still
+    /// throws, so the caller can keep treating that as "host unreachable".</summary>
+    private async Task<(JsonDocument? Doc, string? Error)> GetJsonOrHostErrorAsync(
+        ProxmoxConnectionProfile profile, string path, CancellationToken cancellationToken)
+    {
+        var client = httpClientFactory.CreateClient(
+            profile.SkipTlsVerify ? InsecureHttpClientName : HttpClientName);
+
+        var baseUrl = profile.ApiBaseUrl.TrimEnd('/');
+        var request = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/api2/json/{path}");
+        request.Headers.Authorization = BuildAuthHeader(profile);
+
+        using var response = await client.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            var detail = string.IsNullOrWhiteSpace(body) ? response.ReasonPhrase : body.Trim();
+            return (null, $"Proxmox returned {(int)response.StatusCode}: {detail}");
+        }
+
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        return (await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken), null);
     }
 
     /// <summary>POSTs to a Proxmox path (e.g. a lifecycle action). The
@@ -1109,6 +1166,17 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
     /// <summary>Reads a string property; returns <c>null</c> for non-strings.</summary>
     private static string? ReadString(JsonElement value) =>
         value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    /// <summary>V7.2.1 — reads the first present string property among
+    /// <paramref name="names"/>, for fields PVE and PBS expose under different
+    /// keys (e.g. <c>type</c>/<c>disk-type</c>, <c>health</c>/<c>status</c>).</summary>
+    private static string? ReadFirstString(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+            if (element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String)
+                return value.GetString();
+        return null;
+    }
 
     /// <summary>Reads a Proxmox boolean flag, encoded as <c>1</c> / <c>0</c>
     /// (number or string).</summary>
