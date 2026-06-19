@@ -46,7 +46,21 @@ public sealed record ComposeProjectResponse(
     IReadOnlyList<ComposeVolumeResponse> Volumes,
     IReadOnlyList<ComposeFileResourceResponse> Secrets,
     IReadOnlyList<ComposeFileResourceResponse> Configs,
-    IReadOnlyList<string> UnsupportedFeatures);
+    IReadOnlyList<string> UnsupportedFeatures,
+    /// <summary>V7.7 — linter findings for this file, computed on every load and
+    /// after every save. Each carries the service it renders on (<c>null</c> for a
+    /// project-level finding); the UI aggregates them into the Health badge.</summary>
+    IReadOnlyList<ComposeLintFindingResponse> Lint);
+
+/// <summary>V7.7 — one linter finding. <see cref="Severity"/> serialises as
+/// <c>"Warning"</c> / <c>"Error"</c>; <see cref="Rule"/> is a stable kebab-case
+/// id; <see cref="Service"/> is the service the finding renders on (<c>null</c>
+/// for a project-level finding).</summary>
+public sealed record ComposeLintFindingResponse(
+    string Rule,
+    ComposeLintSeverity Severity,
+    string Message,
+    string? Service);
 
 /// <summary>V7.3 — one top-level <c>networks:</c> entry. External entries bind
 /// to a pre-existing network; the driver / ipam / driver_opts fields are then

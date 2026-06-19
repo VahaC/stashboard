@@ -38,6 +38,7 @@ const PROJECT: ComposeProject = {
   secrets: [],
   configs: [],
   unsupportedFeatures: [],
+  lint: [],
 }
 
 let mutateEdit: ReturnType<typeof vi.fn>

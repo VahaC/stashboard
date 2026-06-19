@@ -1,5 +1,16 @@
 import { Fragment, useMemo, useState } from 'react'
-import { AlertCircle, FileCode, FileText, History, Layers, Lock, Plus } from 'lucide-react'
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  FileCode,
+  FileText,
+  History,
+  Layers,
+  Lock,
+  Plus,
+  Workflow,
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -14,12 +25,20 @@ import {
   useDockerInstanceContainers,
 } from '@/lib/queries'
 import type {
+  ComposeLintFinding,
   ComposeProject,
   ComposeService,
   DockerContainerCard,
 } from '@/lib/types'
+import {
+  findingsForService,
+  projectLevelFindings,
+  summarizeFindings,
+  type LintSummary,
+} from '@/lib/compose-lint'
 import { getApiErrorMessage } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { ComposeDependencyGraph } from './ComposeDependencyGraph'
 import { ComposeHistoryTab } from './ComposeHistoryTab'
 import { ComposeRawFileEditor } from './ComposeRawFileEditor'
 import { ComposeServiceCreateForm } from './ComposeServiceCreateForm'
@@ -33,6 +52,7 @@ import '@/styles/docker-instances.css'
 type ActivePanel =
   | { type: 'container'; name: string }
   | { type: 'cross' }
+  | { type: 'graph' }
   | { type: 'add' }
   | { type: 'raw' }
   | { type: 'history' }
@@ -105,6 +125,19 @@ export function ComposeProjectModal({ connectionId, project, onClose }: ComposeP
 
   const readOnly = (projectData?.unsupportedFeatures.length ?? 0) > 0
 
+  // V7.7 — linter findings ride on the project response (load + every save).
+  const findings = useMemo(() => projectData?.lint ?? [], [projectData])
+  const lintSummary = useMemo(() => summarizeFindings(findings), [findings])
+  const projectFindings = useMemo(() => projectLevelFindings(findings), [findings])
+
+  // Live runtime state per service, for the dependency graph's node pills.
+  const stateByService = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const svc of services) map.set(svc.name, containerFor(svc)?.state ?? 'not deployed')
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [services, containerByService, containers.data])
+
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent className="container-modal-content compose-project-modal">
@@ -113,6 +146,7 @@ export function ComposeProjectModal({ connectionId, project, onClose }: ComposeP
             <FileCode className="h-4 w-4" />
             <span>{project}</span>
             {connection.data ? <span className="compose-modal-host">@ {connection.data.name}</span> : null}
+            {projectData ? <HealthBadge summary={lintSummary} /> : null}
           </DialogTitle>
           <DialogDescription className="container-modal-image">
             {projectData
@@ -134,6 +168,7 @@ export function ComposeProjectModal({ connectionId, project, onClose }: ComposeP
         {projectData && (
           <>
             {readOnly && <ReadOnlyBanner project={projectData} />}
+            {projectFindings.length > 0 && <ProjectFindingsBanner findings={projectFindings} />}
 
             {/* One tab per container, then a separate tab for the resources
                 shared across the whole project (networks / volumes / …). */}
@@ -152,6 +187,7 @@ export function ComposeProjectModal({ connectionId, project, onClose }: ComposeP
                   >
                     <StateBadge state={container?.state ?? 'not deployed'} size="sm" />
                     {svc.name}
+                    <TabFindingMark findings={findingsForService(findings, svc.name)} />
                   </button>
                 )
               })}
@@ -167,6 +203,19 @@ export function ComposeProjectModal({ connectionId, project, onClose }: ComposeP
               >
                 <Layers className="h-3.5 w-3.5" />
                 Shared resources
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={resolved.type === 'graph'}
+                className={cn(
+                  'container-modal-tab compose-graph-tab',
+                  resolved.type === 'graph' && 'container-modal-tab-active',
+                )}
+                onClick={() => setActive({ type: 'graph' })}
+              >
+                <Workflow className="h-3.5 w-3.5" />
+                Graph
               </button>
               {!readOnly && (
                 <button
@@ -219,6 +268,12 @@ export function ComposeProjectModal({ connectionId, project, onClose }: ComposeP
                   projectData={projectData}
                   readOnly={readOnly}
                 />
+              ) : resolved.type === 'graph' ? (
+                <ComposeDependencyGraph
+                  projectData={projectData}
+                  stateByService={stateByService}
+                  onSelectService={(name) => setActive({ type: 'container', name })}
+                />
               ) : resolved.type === 'add' ? (
                 <ComposeServiceCreateForm
                   connectionId={connectionId}
@@ -241,6 +296,7 @@ export function ComposeProjectModal({ connectionId, project, onClose }: ComposeP
                   readOnly={readOnly}
                   container={containerFor(activeService)}
                   capacityContainerName={capacityContainerName}
+                  findings={findingsForService(findings, activeService.name)}
                 />
               ) : null}
             </div>
@@ -263,6 +319,72 @@ function ReadOnlyBanner({ project }: { project: ComposeProject }) {
   )
 }
 
+// ── V7.7 — linter UI ─────────────────────────────────────────────────────────
+
+/** Project-level Health badge next to the project name; aggregates the linter
+ *  findings into ok / warning / error. */
+function HealthBadge({ summary }: { summary: LintSummary }) {
+  if (summary.level === 'ok') {
+    return (
+      <span className="compose-health-badge ok" title="No linter findings">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        Healthy
+      </span>
+    )
+  }
+  const parts: string[] = []
+  if (summary.errors > 0) parts.push(`${summary.errors} error${summary.errors > 1 ? 's' : ''}`)
+  if (summary.warnings > 0) parts.push(`${summary.warnings} warning${summary.warnings > 1 ? 's' : ''}`)
+  const label = parts.join(' · ')
+  return (
+    <span className={cn('compose-health-badge', summary.level)} title={`Linter: ${label}`}>
+      {summary.level === 'error'
+        ? <AlertCircle className="h-3.5 w-3.5" />
+        : <AlertTriangle className="h-3.5 w-3.5" />}
+      {label}
+    </span>
+  )
+}
+
+/** A small dot on a service tab when that service has findings. */
+function TabFindingMark({ findings }: { findings: ComposeLintFinding[] }) {
+  if (findings.length === 0) return null
+  const level = findings.some((f) => f.severity === 'Error') ? 'error' : 'warning'
+  return <span className={cn('compose-tab-mark', level)} aria-hidden />
+}
+
+/** The list of findings for one service, rendered on its card. */
+function ServiceFindings({ findings }: { findings: ComposeLintFinding[] }) {
+  return (
+    <ul className="compose-findings">
+      {findings.map((f, i) => (
+        <li key={`${f.rule}-${i}`} className={cn('compose-finding', f.severity.toLowerCase())}>
+          {f.severity === 'Error'
+            ? <AlertCircle className="h-3.5 w-3.5 compose-finding-icon" />
+            : <AlertTriangle className="h-3.5 w-3.5 compose-finding-icon" />}
+          <span>{f.message}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** Project-level findings (no owning service) shown as a banner under the header. */
+function ProjectFindingsBanner({ findings }: { findings: ComposeLintFinding[] }) {
+  return (
+    <ul className="compose-findings compose-findings-project">
+      {findings.map((f, i) => (
+        <li key={`${f.rule}-${i}`} className={cn('compose-finding', f.severity.toLowerCase())}>
+          {f.severity === 'Error'
+            ? <AlertCircle className="h-3.5 w-3.5 compose-finding-icon" />
+            : <AlertTriangle className="h-3.5 w-3.5 compose-finding-icon" />}
+          <span>{f.message}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 // ── One service tab ────────────────────────────────────────────────────────
 
 interface ComposeServiceTabProps {
@@ -273,10 +395,11 @@ interface ComposeServiceTabProps {
   readOnly: boolean
   container: DockerContainerCard | null
   capacityContainerName: string | null
+  findings: ComposeLintFinding[]
 }
 
 function ComposeServiceTab({
-  connectionId, project, projectData, service, readOnly, container, capacityContainerName,
+  connectionId, project, projectData, service, readOnly, container, capacityContainerName, findings,
 }: ComposeServiceTabProps) {
   return (
     <div className="compose-tab">
@@ -285,6 +408,8 @@ function ComposeServiceTab({
         <span className="compose-tab-name">{service.name}</span>
         {service.image && <code className="container-modal-code">{service.image}</code>}
       </div>
+
+      {findings.length > 0 && <ServiceFindings findings={findings} />}
 
       {readOnly
         ? <ServiceDetails service={service} all />

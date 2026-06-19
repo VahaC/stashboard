@@ -5,6 +5,42 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [7.7.0] — 2026-06-17
+
+### Added
+- **Dependency graph (V7.7).** The Compose modal gains a **Graph** tab: a
+  lightweight, read-only SVG diagram of the project. Nodes are services (with
+  their live runtime state pill), directed edges are `depends_on` (the arrow
+  points to the dependency, drawn with dependencies layered below their
+  dependents), shared networks are rendered as translucent **group boxes** behind
+  the services that share them, and named volumes are listed in a side legend with
+  the services that mount each one. Clicking a node jumps straight to that
+  service's tab. Built with hand-rolled SVG (no graph-library dependency) so it
+  matches the rest of the UI; a simple layered layout that stays readable at the
+  "a dozen services" scale the feature targets, and tolerates cycles without
+  hanging.
+- **Compose linter (V7.7).** Every project load **and every save** now runs a
+  pure linter over the file, with findings rendered **inline on each service
+  card** and aggregated into a **Health badge** next to the project name
+  (Healthy / N warnings / N errors). The rules:
+  - **Port collisions** (error) — two services publish the same host
+    port/protocol on the same interface (distinct specific host IPs and
+    different protocols don't clash; container-only ports are ignored).
+  - **`depends_on` cycles** (error) — a cycle in the dependency graph, reported
+    on each service in the loop.
+  - **Missing healthcheck** (error) — a service is depended on with
+    `condition: service_healthy` but declares no (enabled) healthcheck.
+  - **Bind mounts escaping the project root** (warning) — a relative bind source
+    that climbs above the root (or a `~` home path); absolute system mounts like
+    `/etc/localtime` are intentionally left alone.
+  - **Deprecated keys** (warning) — `links:` / `volumes_from:` on a service, or a
+    top-level `version:`.
+  - **`:latest` image tags** (warning, not error — many homelab setups pin
+    `latest` deliberately and use update monitoring to watch digests) — also
+    flags an image with no tag at all, and a variable tag that *defaults* to
+    latest (`${VAR:-latest}`); a bare `${VAR}` or a variable defaulting to a real
+    version is left alone.
+
 ## [7.6.0] — 2026-06-16
 
 ### Added

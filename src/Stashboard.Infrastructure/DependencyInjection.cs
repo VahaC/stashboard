@@ -126,6 +126,10 @@ public static class DependencyInjection
         // Compose file and parses it into the viewer subset. Both stateless.
         services.AddSingleton<IComposeProjectReader, ComposeProjectReader>();
         services.AddSingleton<IComposeFileParser, ComposeFileParser>();
+        // V7.7 — pure Compose linter (port clashes, depends_on cycles, missing
+        // healthchecks, escaping bind mounts, deprecated keys, :latest tags). Its
+        // findings ride on every project response (load + every save).
+        services.AddSingleton<IComposeLinter, ComposeFileLinter>();
         // V7.1 — surgical Compose editor: splices the raw YAML text at the
         // edited keys only, so the rest of the file round-trips byte-for-byte.
         services.AddSingleton<IComposeFileEditor, ComposeFileEditor>();

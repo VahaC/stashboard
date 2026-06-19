@@ -25,8 +25,8 @@
 
 ## V7 — Visual Compose editor (Docker)
 
-> The visual Compose editor track for the Docker page. V7.0–V7.6 have
-> shipped; V7.7+ below are forward-looking.
+> The visual Compose editor track for the Docker page. V7.0–V7.7 have
+> shipped, completing the V7 track.
 
 ---
 
@@ -452,7 +452,7 @@ always-on host.
 
 ---
 
-### Phase V7.7 — Dependency graph + linter
+### ✅ Phase V7.7 — Dependency graph + linter (image 7.7.0)
 
 **Complexity:** Medium–High
 **Value:** Once a project has a dozen services, the
@@ -461,19 +461,25 @@ about. A small DAG view plus an inline linter catches the issues that
 "works on my machine" hides — and is the kind of thing Stashboard can
 do that a raw text editor structurally cannot.
 
-**Proposed approach:**
+**What shipped:**
 
-- `react-flow`-based DAG view: nodes = services, edges = `depends_on`,
-  shared networks rendered as group boxes, shared volumes shown as a
-  side legend.
-- Lint rules (run on every load + every save):
-  - Port collisions across services on the same host.
-  - `depends_on` cycles.
+- A **Graph** tab with a **hand-rolled SVG** DAG (no `react-flow` /
+  graph-library dependency — it keeps the bundle lean and matches the
+  rest of the hand-built UI). Nodes = services (with their live state
+  pill), edges = `depends_on` (arrow points to the dependency,
+  dependencies layered below their dependents), shared networks drawn as
+  translucent **group boxes** behind their members, named volumes in a
+  side legend. A simple layered layout, deterministic and cycle-safe;
+  clicking a node opens that service's tab.
+- A pure backend **linter** whose findings ride on every project
+  response (run on every load + every save). Rules:
+  - Port collisions across services on the same host (error).
+  - `depends_on` cycles (error).
   - Missing healthcheck on a service other services depend on with
-    `condition: service_healthy`.
-  - Bind mounts pointing outside the project root.
+    `condition: service_healthy` (error).
+  - Bind mounts pointing outside the project root (warning).
   - Deprecated Compose keys (`links`, `volumes_from`, top-level
-    `version:`).
+    `version:`) (warning).
   - Image tags pinned to `latest` (warning, not error — many homelab
     users intentionally pin to `latest` + use V2 to monitor digests).
 - Findings render inline on the service card and aggregate into a
@@ -499,6 +505,148 @@ do that a raw text editor structurally cannot.
 > existing compose files + create new containers via UI). V7.5 / V7.6 / V7.7
 > are additions: they don't extend the surface much but they're
 > the difference between "a YAML form" and "a safe project editor".
+
+---
+
+## V7.8 — Container card icons (image 7.8.0)
+
+> Container cards on `/docker` (and inside `ServiceModal → Docker`) get a
+> leading avatar: the service's **official icon** (auto, from the
+> `homarr-labs/dashboard-icons` set), a **custom image** the user uploaded, or
+> a **placeholder** when neither resolves. Reuses the existing `WebResource`
+> logo machinery (the `LogoSource` enum, `LogoBase64` data-URI storage, the
+> `IFormFile` upload endpoint + `/uploads/…` static serving, the
+> `service-card-logo` visual) and `IImageReferenceParser` for slug derivation —
+> so this is mostly wiring, not new ground.
+
+**Resolution chain** (per card, highest priority first):
+
+1. **Custom** — the user uploaded an image → `LogoBase64` from the new
+   `ContainerIcon` row.
+2. **Official (auto)** — backend derives a slug from the image reference and
+   resolves it against the dashboard-icons set, cached.
+3. **Placeholder** — an inline `Box` glyph + name initials (the
+   `service-card-logo` fallback treatment).
+
+### Phase V7.8.0 — Official icon resolver (backend)
+
+**Complexity:** Low–Medium
+**Value:** Most homelab images map cleanly to a well-known service logo; surfacing
+it makes the Docker page scannable at a glance instead of a wall of identical cards.
+
+**Scope:**
+
+- A new `IContainerIconResolver` / `ContainerIconResolver` in
+  `Infrastructure/Services`, built on the **exact `FaviconService` pattern**
+  (`IHttpClientFactory` + `IMemoryCache`, 24h cache, best-effort, returns
+  `null` on failure).
+- `SlugFor(imageReference)` via the existing **`IImageReferenceParser`**:
+  `lscr.io/linuxserver/jellyfin:latest` → repository `linuxserver/jellyfin` →
+  last segment `jellyfin`. Plus a small alias table for docker-repo ↔
+  dashboard-icons slug mismatches (`library/postgres` → `postgresql`,
+  `ghcr.io/home-assistant/…` → `home-assistant`, …) and arch/tag cleanup.
+- `ResolveIconDataUriAsync(slug)` — `GET {base}/webp/{slug}.webp`, returned as a
+  `data:image/webp;base64,…` URI (reuses the `DownloadAsBase64Async` logic).
+  **Negative results are cached too** so a miss doesn't re-hit the CDN every
+  refresh. Base URL constant
+  `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons` (single line, leaves
+  room for a later self-hosted-base config).
+
+**Out of scope:** a configurable/self-hosted icon base URL (deferred); per-arch
+icon variants.
+
+**Tests:** mock `HttpMessageHandler` (Moq.Protected) + fake `IHttpClientFactory`
+(as in the `FaviconService` tests): slug derivation is correct for
+docker.io / lscr.io / ghcr.io / a private registry; a 404 yields `null`; a hit
+yields a data-URI; the result is cached (a second call doesn't touch the network).
+
+### Phase V7.8.1 — Custom icon storage + upload (backend)
+
+**Complexity:** Medium
+**Value:** Auto-resolution can't cover every image; a one-click upload lets the
+user pin the right logo for anything the slug map misses.
+
+**Scope:**
+
+- A new `ContainerIconEntity : AuditableEntity` mirroring the `WebResource` logo
+  fields: `UserId`, `DockerConnectionId`, `ContainerName`, `IconSource`
+  (`Auto` / `Custom`), `LogoBase64`, `CustomLogoPath`, with a unique index on
+  `(UserId, DockerConnectionId, ContainerName)`. EF migration in
+  `Stashboard.Migrations`. The `(connection, name)` key is stable even though
+  containers themselves are ephemeral.
+- Endpoints on `DockerInstancesController`, a copy of
+  `WebResourcesController.UploadLogo`:
+  - `POST /api/docker/connections/{connectionId}/containers/{name}/icon` —
+    `IFormFile` → base64 + a file under `/uploads/container-icons/`,
+    `IconSource = Custom`, upserts the row.
+  - `DELETE …/icon` — reverts to `Auto` (removes the base64 + file, reusing the
+    `DeleteCustomLogoFileIfExists` guard).
+- **List integration** (`GET containers`): build an `iconByContainer` dictionary
+  the same way `watchByContainer` is built, then set a final `IconDataUri` per
+  card — custom → official (resolver) → `null`. The resolver is only called when
+  there's no custom image; the cache keeps that cheap.
+- Add one field `string? IconDataUri` to the `DockerContainerCard` contract (and
+  the frontend type).
+
+**Out of scope:** per-user shared icon library; bulk import.
+
+**Tests:** controller tests (which bypass routing): upload writes the row +
+base64; a repeat upload updates in place; DELETE reverts to `Auto`; the list
+returns the custom image when present, else the official one, else `null`; file
+mime/size validation matches the service-logo path.
+
+### Phase V7.8.2 — Card icon slot + management UI (frontend)
+
+**Complexity:** Low–Medium
+**Value:** The visible payoff — the avatar on the card, plus a clean place to
+set/clear a custom one without cluttering the card itself.
+
+**Scope:**
+
+- `EntityCard.tsx` gains an optional `icon?: ReactNode` prop, rendered before
+  `cc-name` in `cc-head`. Optional ⇒ **nothing changes for the LXC card**, and it
+  leaves the door open to reuse icons on Proxmox guests later.
+- A new `ContainerIcon` atom — a rounded ~32px avatar reusing the
+  `service-card-logo` visual (background-image, `object-contain`), falling back to
+  a `Box` glyph + initials when `iconDataUri` is `null`.
+- `ContainerCard.tsx` passes
+  `icon={<ContainerIcon dataUri={card.iconDataUri} name={card.name} />}`.
+- A new `cc-card-icon` class in `docker-instances.css`; the card head stays
+  **flex-wrap / label-collapse friendly** on small screens (phone-tested).
+- Custom-icon management lives in `ContainerModal` (overview tab): a preview +
+  `<input type="file" accept="image/*">` (reusing the `ServiceModal` `onLogoFile`
+  handler) + a **Reset to auto** button (DELETE), with react-query mutations that
+  invalidate the container list.
+
+**Out of scope:** drag-and-drop upload; cropping.
+
+**Tests:** vitest — the card renders a custom data-URI, an official one, and the
+placeholder when `null`; the upload/reset mutations hit the right endpoints and
+the list refreshes; `vite build` is clean.
+
+### Possible follow-ups (not in scope for 7.8.0)
+
+- Reuse the resolver to give a **service its container's icon** on the dashboard /
+  `ServiceModal` when it has no favicon.
+- Reuse the shared `EntityCard` icon slot for **Proxmox LXC** cards (fits the
+  Proxmox↔Docker parity track).
+- A **"refresh icons"** action that drops the negative cache and re-resolves.
+- A **type-aware placeholder** (db / proxy) instead of the generic box when the
+  slug doesn't match.
+
+### V7.8 effort estimate (rough)
+
+| Phase | Effort |
+|---|---|
+| V7.8.0 — Official icon resolver (backend) | 0.5 day |
+| V7.8.1 — Custom icon storage + upload (backend) | 1 day |
+| V7.8.2 — Card icon slot + management UI (frontend) | 1 day |
+| Tests + doc-sync + version bump | 0.5 day |
+| **Total** | **~3 days** |
+
+> **Scope note.** Beyond the original ask (official icons + custom upload), the
+> follow-ups above are deliberately deferred — 7.8.0 ships the Docker-card icon
+> end to end and reuses the `EntityCard` slot so the rest is incremental.
 
 ---
 

@@ -2834,3 +2834,202 @@
   flex-direction: column;
   gap: 10px;
 }
+
+/* ── V7.7 — dependency graph + linter ─────────────────────────────────────── */
+
+/* Health badge next to the project name in the modal header. */
+.compose-health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.compose-health-badge.ok {
+  color: hsl(142 71% 35%);
+  border-color: hsl(142 71% 45% / 0.45);
+  background: hsl(142 71% 45% / 0.10);
+}
+.compose-health-badge.warning {
+  color: hsl(38 92% 42%);
+  border-color: hsl(38 92% 50% / 0.45);
+  background: hsl(38 92% 50% / 0.10);
+}
+.compose-health-badge.error {
+  color: hsl(0 72% 51%);
+  border-color: hsl(0 72% 51% / 0.45);
+  background: hsl(0 72% 51% / 0.10);
+}
+
+/* Small dot on a service tab that has findings. */
+.compose-tab-mark {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  margin-left: 2px;
+}
+.compose-tab-mark.warning { background: hsl(38 92% 50%); }
+.compose-tab-mark.error { background: hsl(0 72% 51%); }
+
+/* Inline finding rows on a service card / project banner. */
+.compose-findings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.compose-findings-project { margin-top: 4px; }
+.compose-finding {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius);
+  font-size: 12.5px;
+  line-height: 1.35;
+  border: 1px solid transparent;
+}
+.compose-finding.warning {
+  border-color: hsl(38 92% 50% / 0.45);
+  background: hsl(38 92% 50% / 0.08);
+}
+.compose-finding.error {
+  border-color: hsl(0 72% 51% / 0.45);
+  background: hsl(0 72% 51% / 0.08);
+}
+.compose-finding-icon { flex: 0 0 auto; margin-top: 1px; }
+.compose-finding.warning .compose-finding-icon { color: hsl(38 92% 42%); }
+.compose-finding.error .compose-finding-icon { color: hsl(0 72% 51%); }
+
+/* Dependency graph layout: canvas + side legend. */
+.compose-graph {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.compose-graph-canvas {
+  flex: 1 1 auto;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--muted) 25%, transparent);
+  padding: 4px;
+}
+.compose-graph-svg { display: block; }
+
+.compose-graph-edge {
+  fill: none;
+  stroke: var(--muted-foreground);
+  stroke-width: 1.5;
+  opacity: 0.6;
+}
+.compose-graph-arrowhead { fill: var(--muted-foreground); }
+
+.compose-graph-netbox {
+  fill-opacity: 0.06;
+  stroke-opacity: 0.55;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.compose-graph-netlabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+/* foreignObject node card (reuses the modal card look). */
+.compose-graph-node {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+}
+.compose-graph-node:hover { border-color: var(--primary); }
+.compose-graph-node.has-warning { border-color: hsl(38 92% 50% / 0.7); }
+.compose-graph-node.has-error { border-color: hsl(0 72% 51% / 0.7); }
+.compose-graph-node-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.compose-graph-node-name {
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.compose-graph-node-icon.warning { color: hsl(38 92% 42%); }
+.compose-graph-node-icon.error { color: hsl(0 72% 51%); }
+.compose-graph-node-image {
+  font-size: 10.5px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compose-graph-legend {
+  flex: 0 0 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 12px;
+}
+.compose-graph-legend-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.compose-graph-legend-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+}
+.compose-graph-legend-hint { color: var(--muted-foreground); }
+.compose-graph-legend-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.compose-graph-legend-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  word-break: break-all;
+}
+.compose-graph-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 720px) {
+  .compose-graph { flex-direction: column; }
+  .compose-graph-legend { flex-basis: auto; flex-direction: row; flex-wrap: wrap; gap: 18px; }
+}

@@ -31,6 +31,7 @@ public class ComposeProjectsController(
     IDockerHostClient hostClient,
     IComposeProjectReader reader,
     IComposeFileParser parser,
+    IComposeLinter linter,
     IComposeFileEditor editor,
     IComposeProjectWriter writer,
     IComposeHistoryStore historyStore,
@@ -80,7 +81,7 @@ public class ComposeProjectsController(
         if (parsed.Project is null)
             return UnprocessableEntity(new { error = parsed.Error });
 
-        return Ok(BuildProjectResponse(parsed.Project, read.Result.FileName!, located.Path!));
+        return Ok(BuildProjectResponse(parsed.Project, read.Result.FileName!, located.Path!, read.Result.Content!));
     }
 
     /// <summary>
@@ -142,7 +143,7 @@ public class ComposeProjectsController(
 
         return Ok(new ComposeServiceEditResponse(
             edited.Changed,
-            BuildProjectResponse(reparsed.Project, fileName, located.Path!)));
+            BuildProjectResponse(reparsed.Project, fileName, located.Path!, edited.Content!)));
     }
 
     /// <summary>
@@ -199,7 +200,7 @@ public class ComposeProjectsController(
 
         return Ok(new ComposeServiceEditResponse(
             added.Changed,
-            BuildProjectResponse(reparsed.Project, fileName, located.Path!)));
+            BuildProjectResponse(reparsed.Project, fileName, located.Path!, added.Content!)));
     }
 
     /// <summary>V7.4 — the project's Compose file as raw text for the "Raw YAML"
@@ -456,7 +457,7 @@ public class ComposeProjectsController(
         if (reparsed.Project is null)
             return UnprocessableEntity(new { error = reparsed.Error });
 
-        return Ok(new ComposeRestoreResponse(changed, BuildProjectResponse(reparsed.Project, fileName, located.Path!)));
+        return Ok(new ComposeRestoreResponse(changed, BuildProjectResponse(reparsed.Project, fileName, located.Path!, restoredContent)));
     }
 
     /// <summary>
@@ -1000,7 +1001,7 @@ public class ComposeProjectsController(
 
         return Ok(new ComposeResourceEditResponse(
             edited.Changed,
-            BuildProjectResponse(reparsed.Project, ctx.FileName, ctx.Path)));
+            BuildProjectResponse(reparsed.Project, ctx.FileName, ctx.Path, edited.Content!)));
     }
 
     // ── discovery + shared plumbing ─────────────────────────────────────────
@@ -1107,8 +1108,11 @@ public class ComposeProjectsController(
         return new ReadOutcome(read, null);
     }
 
-    private static ComposeProjectResponse BuildProjectResponse(
-        ComposeProjectModel p, string fileName, string projectPath) =>
+    /// <summary>V7.0/V7.7 — maps the parsed model to the wire response and (V7.7)
+    /// attaches the linter findings for the same <paramref name="yamlText"/>, so
+    /// every load and every save carries fresh findings without a second call.</summary>
+    private ComposeProjectResponse BuildProjectResponse(
+        ComposeProjectModel p, string fileName, string projectPath, string yamlText) =>
         new(
             ProjectName: p.ProjectName,
             FileName: fileName,
@@ -1129,7 +1133,10 @@ public class ComposeProjectsController(
                 v.DriverOpts.Select(o => new ComposeEnvVarResponse(o.Name, o.Value)).ToList())).ToList(),
             Secrets: p.Secrets.Select(ToFileResourceResponse).ToList(),
             Configs: p.Configs.Select(ToFileResourceResponse).ToList(),
-            UnsupportedFeatures: p.UnsupportedFeatures);
+            UnsupportedFeatures: p.UnsupportedFeatures,
+            Lint: linter.Lint(yamlText, projectPath)
+                .Select(f => new ComposeLintFindingResponse(f.Rule, f.Severity, f.Message, f.Service))
+                .ToList());
 
     private static ComposeFileResourceResponse ToFileResourceResponse(ComposeFileResourceModel m) =>
         new(m.Name, m.External, m.NameOverride, m.File);

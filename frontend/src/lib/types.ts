@@ -933,6 +933,24 @@ export interface ComposeProject {
   secrets: ComposeFileResource[]
   configs: ComposeFileResource[]
   unsupportedFeatures: string[]
+  /** V7.7 — linter findings for this file, computed on every load and after
+   *  every save. Each finding renders on its `service` card (or project-level
+   *  when `service` is null) and aggregates into the Health badge. */
+  lint: ComposeLintFinding[]
+}
+
+/** V7.7 — severity of one {@link ComposeLintFinding}. `Error` blocks / breaks
+ *  the project; `Warning` is a smell worth surfacing but not blocking. */
+export type ComposeLintSeverity = 'Warning' | 'Error'
+
+/** V7.7 — one linter finding from `GET …/compose/{project}`. `rule` is a stable
+ *  kebab-case id; `service` is the service the finding renders on (null for a
+ *  project-level finding, e.g. a top-level `version:` key). */
+export interface ComposeLintFinding {
+  rule: string
+  severity: ComposeLintSeverity
+  message: string
+  service: string | null
 }
 
 /** V7.3 — one top-level `networks:` entry. External entries bind to a

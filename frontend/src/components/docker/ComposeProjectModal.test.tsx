@@ -104,6 +104,7 @@ const PROJECT: ComposeProject = {
   secrets: [],
   configs: [],
   unsupportedFeatures: [],
+  lint: [],
 }
 
 function renderModal() {
@@ -361,5 +362,47 @@ describe('ComposeProjectModal — V7.4 create + raw tabs', () => {
     await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
     await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1))
     expect(apply.mock.calls[0][0]).toEqual(['web']) // only the changed service is recreated
+  })
+})
+
+// ── V7.7 — dependency graph + linter ────────────────────────────────────────
+
+describe('ComposeProjectModal — linter + graph (V7.7)', () => {
+  const WITH_FINDINGS: ComposeProject = {
+    ...PROJECT,
+    lint: [
+      { rule: 'port-collision', severity: 'Error', service: 'web', message: 'Host port 8080 is published by multiple services (db, web).' },
+      { rule: 'latest-tag', severity: 'Warning', service: 'db', message: "Image 'mariadb:11' is pinned to :latest — pin a version." },
+      { rule: 'deprecated-key', severity: 'Warning', service: null, message: "Top-level 'version:' is obsolete in the Compose Specification and is ignored — remove it." },
+    ],
+  }
+
+  it('shows a Healthy badge when there are no findings', () => {
+    renderModal()
+    expect(screen.getByText(/Healthy/)).toBeInTheDocument()
+  })
+
+  it('aggregates findings into the Health badge and shows the project-level finding', () => {
+    mockCompose.mockReturnValue({ data: WITH_FINDINGS, isLoading: false, error: null })
+    renderModal()
+    expect(screen.getByText(/1 error/)).toBeInTheDocument()
+    // Project-level (version:) finding renders as a banner under the header.
+    expect(screen.getByText(/Top-level 'version:'/)).toBeInTheDocument()
+  })
+
+  it('renders the per-service finding inline on the service tab', () => {
+    mockCompose.mockReturnValue({ data: WITH_FINDINGS, isLoading: false, error: null })
+    renderModal()
+    // Defaults to the web tab → its port-collision error is shown.
+    expect(screen.getByText(/Host port 8080 is published/)).toBeInTheDocument()
+  })
+
+  it('opens the Graph tab and draws a node per service', () => {
+    renderModal()
+    fireEvent.click(screen.getByRole('tab', { name: /Graph/ }))
+    expect(screen.getByRole('img', { name: /dependency graph/i })).toBeInTheDocument()
+    // Each service appears as a clickable node button.
+    expect(screen.getByRole('button', { name: /^web/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^db/ })).toBeInTheDocument()
   })
 })

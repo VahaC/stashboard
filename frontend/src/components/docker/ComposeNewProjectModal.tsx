@@ -93,6 +93,7 @@ export function ComposeNewProjectModal({
     secrets: [],
     configs: [],
     unsupportedFeatures: [],
+    lint: [],
   }), [projectName, fileName, directory])
 
   const submit = async (run: boolean) => {

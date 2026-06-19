@@ -1219,6 +1219,7 @@ public class ComposeProjectsControllerTests : IAsyncLifetime
             _hostClientMock.Object,
             _readerMock.Object,
             parser,
+            new ComposeFileLinter(),
             new ComposeFileEditor(parser),
             _writerMock.Object,
             _historyMock.Object,
