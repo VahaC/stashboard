@@ -1,7 +1,7 @@
 services:
   app:
     # Pull the published image from Docker Hub. Pin a version with STASHBOARD_TAG
-    # in .env (e.g. STASHBOARD_TAG=7.8.0); defaults to the latest release.
+    # in .env (e.g. STASHBOARD_TAG=7.9.0); defaults to the latest release.
     # If your Docker Hub namespace differs, change "vahac" here.
     # To build from source instead, see docker-compose.build.yml.
     image: vahac/stashboard:${STASHBOARD_TAG:-latest}

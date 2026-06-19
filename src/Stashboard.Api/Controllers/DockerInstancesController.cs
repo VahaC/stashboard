@@ -96,6 +96,11 @@ public class DockerInstancesController(
             .GroupBy(i => i.ContainerName, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().LogoBase64!, StringComparer.OrdinalIgnoreCase);
 
+        // V7.9 — "runs on" Proxmox cross-links for this user + connection, resolved
+        // to the target guest's name/type. A link whose guest no longer exists is
+        // dropped (no chip) rather than surfaced as an error.
+        var proxmoxByContainer = await LoadProxmoxLinksAsync(userId, connectionId, cancellationToken);
+
         var cards = new List<DockerContainerCard>(details.Count);
         foreach (var c in details)
         {
@@ -117,7 +122,8 @@ public class DockerInstancesController(
                 ComposeService: c.ComposeService,
                 WatchId: watchLink?.Id,
                 WebResourceId: watchLink?.WebResourceId,
-                IconDataUri: iconDataUri));
+                IconDataUri: iconDataUri,
+                ProxmoxLink: proxmoxByContainer.GetValueOrDefault(c.Name)));
         }
 
         // Tracked containers whose name no longer appears on the Docker host
@@ -139,7 +145,8 @@ public class DockerInstancesController(
                 ComposeService: null,
                 WatchId: orphan.Id,
                 WebResourceId: orphan.WebResourceId,
-                IconDataUri: iconDataUri));
+                IconDataUri: iconDataUri,
+                ProxmoxLink: proxmoxByContainer.GetValueOrDefault(orphan.ContainerName)));
         }
 
         return Ok(cards);
@@ -272,6 +279,117 @@ public class DockerInstancesController(
             await db.SaveChangesAsync(cancellationToken);
         }
         return NoContent();
+    }
+
+    // ── V7.9 — "runs on" Proxmox guest cross-link ────────────────────────────
+
+    /// <summary>
+    /// V7.9 — mark a container (addressed by connection + name, the stable key) as
+    /// running inside a Proxmox guest. Validates the guest belongs to a connection
+    /// the user owns and isn't the node row, then upserts the
+    /// <see cref="ContainerProxmoxLinkEntity"/> in place. Works for any container,
+    /// watched or not.
+    /// </summary>
+    [HttpPut("containers/{containerName}/proxmox-link")]
+    public async Task<ActionResult<object>> SetProxmoxLink(
+        Guid connectionId, string containerName,
+        [FromBody] ContainerProxmoxLinkRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(containerName))
+            return BadRequest(new { error = "Container name is required." });
+        var connection = await LoadOwnedConnectionAsync(connectionId, cancellationToken);
+        if (connection is null) return NotFound();
+        if (request is null || request.VmId == 0)
+            return BadRequest(new { error = "A Proxmox guest (LXC or VM) is required." });
+
+        var userId = UserId;
+        var guestExists = await db.ProxmoxGuests.AsNoTracking().AnyAsync(g =>
+            g.ProxmoxConnectionId == request.ProxmoxConnectionId
+            && g.VmId == request.VmId
+            && g.GuestType != ProxmoxGuestType.Node
+            && db.ProxmoxConnections.Any(c => c.Id == g.ProxmoxConnectionId && c.UserId == userId),
+            cancellationToken);
+        if (!guestExists)
+            return BadRequest(new { error = "Proxmox guest does not exist." });
+
+        var link = await LoadProxmoxLinkAsync(connectionId, containerName, cancellationToken);
+        if (link is null)
+        {
+            link = new ContainerProxmoxLinkEntity
+            {
+                UserId = userId,
+                DockerConnectionId = connectionId,
+                ContainerName = containerName,
+            };
+            db.ContainerProxmoxLinks.Add(link);
+        }
+
+        link.ProxmoxConnectionId = request.ProxmoxConnectionId;
+        link.VmId = request.VmId;
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(new { stored = true });
+    }
+
+    /// <summary>V7.9 — clear a container's "runs on" Proxmox cross-link. Idempotent
+    /// — a container with no link returns 204.</summary>
+    [HttpDelete("containers/{containerName}/proxmox-link")]
+    public async Task<IActionResult> RemoveProxmoxLink(
+        Guid connectionId, string containerName, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(containerName))
+            return BadRequest(new { error = "Container name is required." });
+        var connection = await LoadOwnedConnectionAsync(connectionId, cancellationToken);
+        if (connection is null) return NotFound();
+
+        var link = await LoadProxmoxLinkAsync(connectionId, containerName, cancellationToken);
+        if (link is not null)
+        {
+            db.ContainerProxmoxLinks.Remove(link);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        return NoContent();
+    }
+
+    private Task<ContainerProxmoxLinkEntity?> LoadProxmoxLinkAsync(
+        Guid connectionId, string containerName, CancellationToken cancellationToken)
+    {
+        var userId = UserId;
+        return db.ContainerProxmoxLinks.FirstOrDefaultAsync(
+            l => l.UserId == userId && l.DockerConnectionId == connectionId && l.ContainerName == containerName,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// V7.9 — the user's container→guest cross-links on a connection, resolved to
+    /// the target guest's name/type and keyed by container name. Only links whose
+    /// target guest still exists (and is owned by the user) are returned, so a
+    /// stale link surfaces no chip instead of erroring.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, DockerContainerProxmoxLink>> LoadProxmoxLinksAsync(
+        Guid userId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var links = await db.ContainerProxmoxLinks.AsNoTracking()
+            .Where(l => l.UserId == userId && l.DockerConnectionId == connectionId)
+            .Select(l => new { l.ContainerName, l.ProxmoxConnectionId, l.VmId })
+            .ToListAsync(cancellationToken);
+        if (links.Count == 0)
+            return new Dictionary<string, DockerContainerProxmoxLink>();
+
+        var connIds = links.Select(l => l.ProxmoxConnectionId).Distinct().ToList();
+        var guests = await db.ProxmoxGuests.AsNoTracking()
+            .Where(g => connIds.Contains(g.ProxmoxConnectionId)
+                && db.ProxmoxConnections.Any(c => c.Id == g.ProxmoxConnectionId && c.UserId == userId))
+            .Select(g => new { g.ProxmoxConnectionId, g.VmId, g.Name, g.GuestType })
+            .ToListAsync(cancellationToken);
+        var guestByKey = guests.ToDictionary(g => (g.ProxmoxConnectionId, g.VmId));
+
+        var result = new Dictionary<string, DockerContainerProxmoxLink>(StringComparer.OrdinalIgnoreCase);
+        foreach (var l in links)
+        {
+            if (guestByKey.TryGetValue((l.ProxmoxConnectionId, l.VmId), out var g))
+                result[l.ContainerName] = new DockerContainerProxmoxLink(l.ProxmoxConnectionId, l.VmId, g.Name, g.GuestType);
+        }
+        return result;
     }
 
     /// <summary>

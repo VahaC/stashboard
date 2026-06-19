@@ -108,6 +108,8 @@ public class BackupServiceTests
                     WebhookToken = "pve-webhook-tok",
                 };
                 ctx.ProxmoxConnections.Add(pve);
+                // V7.9 — the service is also associated with a Proxmox host.
+                svc.ProxmoxConnectionId = pve.Id;
                 // A guest the user opted OUT of monitoring (intent worth backing up)…
                 ctx.ProxmoxGuests.Add(new ProxmoxGuestEntity
                 {
@@ -138,6 +140,18 @@ public class BackupServiceTests
                 {
                     UserId = alice.Id, ProxmoxConnectionId = pve.Id, VmId = 101,
                     IconSource = ContainerIconSource.Custom, LogoBase64 = "data:image/webp;base64,CUSTOMVM==",
+                });
+
+                // V7.9 — a service↔guest link and a container↔guest cross-link, both
+                // keyed by the guest's (connection, vmid) and remapped on import.
+                ctx.WebResourceProxmoxGuestLinks.Add(new WebResourceProxmoxGuestLinkEntity
+                {
+                    WebResourceId = svc.Id, ProxmoxConnectionId = pve.Id, VmId = 101,
+                });
+                ctx.ContainerProxmoxLinks.Add(new ContainerProxmoxLinkEntity
+                {
+                    UserId = alice.Id, DockerConnectionId = connection.Id, ContainerName = "sonarr",
+                    ProxmoxConnectionId = pve.Id, VmId = 101,
                 });
 
                 await ctx.SaveChangesAsync();
@@ -213,6 +227,9 @@ public class BackupServiceTests
                 Assert.Equal(DayOfWeek.Monday, pve.CheckOnDayOfWeek);
                 Assert.Equal("pve-webhook-tok", pve.WebhookToken);
 
+                // V7.9 — the service's Proxmox-host association re-maps to the new host.
+                Assert.Equal(pve.Id, svc.ProxmoxConnectionId);
+
                 // Only the monitoring-off guest is restored; the default one is left
                 // for the next scan to rediscover.
                 var guest = await ctx.ProxmoxGuests.AsNoTracking().SingleAsync(g => g.ProxmoxConnectionId == pve.Id);
@@ -234,6 +251,17 @@ public class BackupServiceTests
                 Assert.Equal(101, gIcon.VmId);
                 Assert.Equal(ContainerIconSource.Custom, gIcon.IconSource);
                 Assert.Equal("data:image/webp;base64,CUSTOMVM==", gIcon.LogoBase64);
+
+                // V7.9 — both cross-link kinds round-trip, re-keyed to the new ids.
+                var svcLink = await ctx.WebResourceProxmoxGuestLinks.AsNoTracking().SingleAsync(l => l.WebResourceId == svc.Id);
+                Assert.Equal(pve.Id, svcLink.ProxmoxConnectionId);
+                Assert.Equal(101, svcLink.VmId);
+
+                var ctLink = await ctx.ContainerProxmoxLinks.AsNoTracking().SingleAsync(l => l.UserId == userB);
+                Assert.Equal(conn.Id, ctLink.DockerConnectionId);
+                Assert.Equal("sonarr", ctLink.ContainerName);
+                Assert.Equal(pve.Id, ctLink.ProxmoxConnectionId);
+                Assert.Equal(101, ctLink.VmId);
             }
         }
         finally

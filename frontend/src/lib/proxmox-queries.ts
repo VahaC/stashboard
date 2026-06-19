@@ -555,6 +555,25 @@ export const useSetProxmoxLxcMonitoring = (connectionId: string) => {
   })
 }
 
+/** V7.9 — link a guest to a single service (or unlink with `null`), the Proxmox
+ *  analogue of a Docker watch's "Linked service" dropdown. Returns the refreshed
+ *  host; also invalidates the services query so the dashboard badge + the
+ *  service modal's read-only linked-guests list update. */
+export const useSetProxmoxGuestService = (connectionId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: { vmId: number; webResourceId: string | null }) =>
+      (await api.put<ProxmoxConnection>(
+        `/api/proxmox/connections/${connectionId}/guests/${args.vmId}/service`,
+        { webResourceId: args.webResourceId })).data,
+    onSuccess: (updated) => {
+      qc.setQueryData<ProxmoxConnection[]>(proxmoxQk.connections, (prev) =>
+        prev ? prev.map((c) => (c.id === updated.id ? updated : c)) : prev)
+      void qc.invalidateQueries({ queryKey: ['services'] })
+    },
+  })
+}
+
 /** V6.11 — host-wide bulk monitoring toggle (Enable all / Disable all). One call
  *  flips every LXC on the host server-side and returns the refreshed host. */
 export const useSetBulkProxmoxMonitoring = (connectionId: string) => {

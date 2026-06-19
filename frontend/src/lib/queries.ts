@@ -154,14 +154,16 @@ export const useCheckNow = () => {
   })
 }
 
+/** Set a custom service logo. The image is sent as a base64 data URI in a JSON
+ *  body (read in the browser via FileReader), so it lives purely in the database
+ *  and survives backup / restore — mirroring the container / guest icon upload. */
 export const useUploadLogo = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ id, file }: { id: string; file: File }) => {
-      const fd = new FormData()
-      fd.append('file', file)
-      const resp = await api.post<{ path: string }>(`/api/services/${id}/logo`, fd)
-      return resp.data.path
+      const dataUri = await readFileAsDataUrl(file)
+      const resp = await api.post<{ dataUri: string }>(`/api/services/${id}/logo`, { dataUri })
+      return resp.data.dataUri
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.services }),
   })
@@ -176,6 +178,49 @@ export const useRefreshFavicon = () => {
         previousServices ? previousServices.map((service) => (service.id === updatedService.id ? updatedService : service)) : previousServices
       )
     },
+  })
+}
+
+/** V7.9 — unlink a Proxmox guest from a service. Also invalidates the Proxmox
+ *  connections cache so the guest's "Linked service" dropdown reflects the change. */
+export const useRemoveProxmoxLink = (serviceId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (target: { proxmoxConnectionId: string; vmId: number }) =>
+      (await api.delete<Service>(
+        `/api/services/${serviceId}/proxmox-links/${target.proxmoxConnectionId}/${target.vmId}`
+      )).data,
+    onSuccess: (updated) => {
+      qc.setQueryData<Service[]>(qk.services, (prev) =>
+        prev ? prev.map((s) => (s.id === updated.id ? updated : s)) : prev
+      )
+      qc.invalidateQueries({ queryKey: qk.services })
+      qc.invalidateQueries({ queryKey: ['proxmox', 'connections'] })
+    },
+  })
+}
+
+/** V7.9 — set a Docker container's "runs on" Proxmox guest cross-link. */
+export const useSetContainerProxmoxLink = (connectionId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: { containerName: string; proxmoxConnectionId: string; vmId: number }) => {
+      const url = `/api/docker/connections/${connectionId}/instance/containers/${encodeURIComponent(args.containerName)}/proxmox-link`
+      await api.put(url, { proxmoxConnectionId: args.proxmoxConnectionId, vmId: args.vmId })
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.dockerInstanceContainers(connectionId) }),
+  })
+}
+
+/** V7.9 — clear a Docker container's "runs on" Proxmox guest cross-link. */
+export const useRemoveContainerProxmoxLink = (connectionId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (containerName: string) => {
+      const url = `/api/docker/connections/${connectionId}/instance/containers/${encodeURIComponent(containerName)}/proxmox-link`
+      await api.delete(url)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.dockerInstanceContainers(connectionId) }),
   })
 }
 

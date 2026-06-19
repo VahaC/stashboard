@@ -1,14 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronDown, ChevronRight, Pencil, Plus, Search } from 'lucide-react'
+import { Activity, ChevronDown, ChevronRight, Container, Info, KeyRound, MoreVertical, Plus, RefreshCw, Search, Server } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useCategories, useServices } from '@/lib/queries'
-import { ServiceModal } from '@/components/ServiceModal'
+import { useCategories, useCheckNow, useServices } from '@/lib/queries'
+import { ServiceModal, type ModalTab } from '@/components/ServiceModal'
+import { FloatingMenu } from '@/components/shared/FloatingMenu'
 import { resolveDockerUpdateStatus, type Service, type ServiceStatus } from '@/lib/types'
 import { accountApi } from '@/lib/account-api'
 import { cn } from '@/lib/utils'
 import '@/styles/dashboard.css'
+
+/** Tabs surfaced in the card's "⋮" menu, mirroring the order + labels of the
+ *  ServiceModal tab strip so the menu and the modal stay in lockstep. */
+const SERVICE_TABS: ReadonlyArray<[ModalTab, string, typeof Info]> = [
+  ['general', 'General', Info],
+  ['healthcheck', 'Healthcheck', Activity],
+  ['credentials', 'Credentials', KeyRound],
+  ['docker', 'Docker', Container],
+  ['proxmox', 'Proxmox', Server],
+]
 
 const resolveStatus = (s: ServiceStatus) =>
   typeof s === 'number' ? (['Unknown', 'Up', 'Down', 'NeedsAttention'][s] as string) : s
@@ -44,9 +55,13 @@ export function Dashboard() {
   const [groupByCategory, setGroupByCategory] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [modalInitialTab, setModalInitialTab] = useState<ModalTab>('general')
   const [modalOpen, setModalOpen] = useState(false)
   const [modalKey, setModalKey] = useState(0)
   const [handledDeepLinkServiceId, setHandledDeepLinkServiceId] = useState<string | null>(null)
+  // The card's "⋮" action menu: which service + where to anchor it.
+  const [cardMenu, setCardMenu] = useState<{ service: Service; x: number; y: number } | null>(null)
+  const checkNow = useCheckNow()
 
   const deepLinkServiceId = searchParams.get('service')
 
@@ -60,6 +75,7 @@ export function Dashboard() {
     if (deepLinkServiceId === 'new') {
       setHandledDeepLinkServiceId(deepLinkServiceId)
       setEditingId(null)
+      setModalInitialTab('general')
       setModalKey((k) => k + 1)
       setModalOpen(true)
 
@@ -74,6 +90,7 @@ export function Dashboard() {
     if (!target) return
 
     setEditingId(target.id)
+    setModalInitialTab('general')
     setModalKey((k) => k + 1)
     setModalOpen(true)
 
@@ -117,8 +134,8 @@ export function Dashboard() {
     return [...groups.entries()]
   }, [filtered])
 
-  const openNew = () => { setEditingId(null); setModalKey((k) => k + 1); setModalOpen(true) }
-  const openEdit = (s: Service) => { setEditingId(s.id); setModalKey((k) => k + 1); setModalOpen(true) }
+  const openNew = () => { setEditingId(null); setModalInitialTab('general'); setModalKey((k) => k + 1); setModalOpen(true) }
+  const openEdit = (s: Service, tab: ModalTab = 'general') => { setEditingId(s.id); setModalInitialTab(tab); setModalKey((k) => k + 1); setModalOpen(true) }
   const handleModalOpen = (open: boolean) => { if (!open) setEditingId(null); setModalOpen(open) }
   const toggleGroup = (groupName: string) => setCollapsedGroups((prev) => ({ ...prev, [groupName]: !prev[groupName] }))
 
@@ -129,13 +146,27 @@ export function Dashboard() {
       ? resolveDockerUpdateStatus(s.dockerUpdateStatus)
       : null
     const hasUpdateAvailable = dockerStatusLabel === 'UpdateAvailable'
+    const proxmoxStatusLabel = s.proxmoxUpdateStatus != null
+      ? resolveDockerUpdateStatus(s.proxmoxUpdateStatus)
+      : null
+    const hasProxmoxUpdate = proxmoxStatusLabel === 'UpdateAvailable'
 
     return (
       <div
         key={s.id}
-        className="service-card"
+        className="service-card service-card-clickable"
+        role="button"
+        tabIndex={0}
+        onClick={() => openEdit(s, 'general')}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setCardMenu({ service: s, x: e.clientX, y: e.clientY })
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(s, 'general') }
+        }}
       >
-        {/* Header row: initial badge | name | optional healthcheck dot | edit button */}
+        {/* Header row: initial badge | name | optional healthcheck dot | actions menu */}
         <div className="flex items-center gap-2">
           <span
             className="service-card-logo"
@@ -168,15 +199,47 @@ export function Dashboard() {
               Update
             </span>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="service-card-edit"
-            onClick={() => openEdit(s)}
-            aria-label={`Edit ${s.name}`}
+          {hasProxmoxUpdate && (
+            <span
+              className="service-card-update-badge service-card-update-badge-proxmox"
+              title="A linked Proxmox guest (LXC/VM) has package updates pending. Open the service for details."
+            >
+              PVE
+            </span>
+          )}
+          <button
+            type="button"
+            className="service-card-menu-trigger"
+            aria-label={`Actions for ${s.name}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              const r = e.currentTarget.getBoundingClientRect()
+              setCardMenu((m) => m?.service.id === s.id ? null : { service: s, x: r.left, y: r.bottom + 4 })
+            }}
           >
-            <Pencil className="h-3 w-3" />
-          </Button>
+            <MoreVertical className="h-3.5 w-3.5" />
+          </button>
+          {cardMenu?.service.id === s.id && (
+            <FloatingMenu pos={{ x: cardMenu.x, y: cardMenu.y }} onClose={() => setCardMenu(null)}>
+              {SERVICE_TABS.map(([tab, label, Icon]) => (
+                <button
+                  key={tab}
+                  className="cgroup-menu-item"
+                  onClick={() => { setCardMenu(null); openEdit(s, tab) }}
+                >
+                  <Icon className="h-3.5 w-3.5" /> {label}
+                </button>
+              ))}
+              <div className="cgroup-menu-sep" />
+              <button
+                className="cgroup-menu-item"
+                disabled={checkNow.isPending}
+                onClick={() => { setCardMenu(null); checkNow.mutate(s.id) }}
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', checkNow.isPending && 'animate-spin')} /> Check now
+              </button>
+            </FloatingMenu>
+          )}
         </div>
 
         {/* URL rows - flex-1 pushes footer to bottom */}
@@ -356,7 +419,7 @@ export function Dashboard() {
         </div>
       )}
 
-      <ServiceModal key={modalKey} open={modalOpen} onOpenChange={handleModalOpen} service={editingService} />
+      <ServiceModal key={modalKey} open={modalOpen} onOpenChange={handleModalOpen} service={editingService} initialTab={modalInitialTab} />
     </>
   )
 }

@@ -5,6 +5,45 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [7.9.0] — 2026-06-19
+
+### Added
+- **Link Proxmox guests to a service (V7.9).** A service on the dashboard can now
+  link **Proxmox LXCs and VMs** alongside the Docker containers it already tracks.
+  The `ServiceModal` gains a **Proxmox** section parallel to the Docker one: pick a
+  Proxmox connection, then add one or more guests from a picker fed by the
+  already-scanned guests (each shown with its live state pill and pending-update
+  count); linked guests list with an unlink action. The link is a many-to-many
+  join (`WebResourceProxmoxGuestLinkEntity`, keyed on
+  `(WebResourceId, ProxmoxConnectionId, VmId)`) — **not** ownership: guests stay
+  auto-discovered and owned by their connection, deleting a service drops its links
+  while the guest lives on, and the link is owner-scoped (a foreign connection or
+  guest is rejected, the `VmId == 0` node row is refused). No new guest
+  discovery — it only links what a scan already found.
+- **Proxmox update badge on the service card (V7.9).** `WebResourceMapper` gains an
+  `AggregateProxmoxStatus` sibling to `AggregateDockerStatus` that reduces the
+  linked guests' state to one service-level `ProxmoxUpdateStatus` (per guest:
+  **updates available** when `PendingUpdates > 0`, else up-to-date / disabled /
+  unknown / error for monitoring-off-or-snoozed / never-checked / probe-failed),
+  with the same actionable-first precedence (`UpdateAvailable > Error > UpToDate >
+  Disabled > Unknown`). The DTO carries it **independently** of the existing
+  `DockerUpdateStatus`, so a service that links both shows **both badges at once** —
+  reusing the existing badge component family, no new visual system. The badge is
+  read-only here; one-click "Update now" stays on the Proxmox page (V6.7.1).
+- **Docker container → Proxmox guest cross-link (V7.9).** A container can record the
+  **Proxmox guest it physically runs inside** (the common homelab case — Docker
+  living in an LXC or VM). A **"Runs on"** picker in the `ContainerModal` sets it,
+  and the container card shows a small **"on `<guest>`"** chip that deep-links to
+  that Proxmox guest's modal. Stored on a `ContainerProxmoxLinkEntity` keyed on
+  `(UserId, DockerConnectionId, ContainerName)` — the same shape
+  `ContainerIconEntity` uses, so it works for **any** container (watched or not)
+  and survives container churn. `GET containers` builds a `linkByContainer` map; a
+  link whose target guest is missing yields no chip rather than an error.
+- **Backup/restore covers both link sets (V7.9).** The service↔guest and
+  container↔guest link tables are now included in the JSON export/import. Links
+  reference guests by their stable `(connection, vmid)` natural key, so they survive
+  a restore even though guest rows are re-discovered rather than exported.
+
 ## [7.8.0] — 2026-06-17
 
 ### Added

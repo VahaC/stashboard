@@ -227,4 +227,133 @@ public class WebResourceMapperTests
         ContainerName = label,
         UpdateStatus = status,
     };
+
+    // ── V7.9 — Proxmox guest links ───────────────────────────────────────────
+
+    private static readonly Guid Conn = Guid.NewGuid();
+
+    private static ProxmoxGuestEntity BuildGuest(int vmId, bool running = true, int? pending = 0,
+        bool monitoring = true, string? lastError = null, DateTime? snoozedUntil = null,
+        ProxmoxGuestType type = ProxmoxGuestType.Lxc, string? name = null) => new()
+        {
+            ProxmoxConnectionId = Conn,
+            VmId = vmId,
+            Name = name ?? $"guest-{vmId}",
+            GuestType = type,
+            IsRunning = running,
+            PendingUpdates = pending,
+            MonitoringEnabled = monitoring,
+            LastError = lastError,
+            MonitoringSnoozedUntil = snoozedUntil,
+        };
+
+    private static (WebResourceEntity Entity, IReadOnlyDictionary<(Guid, int), ProxmoxGuestEntity> Lookup) WithGuests(
+        params ProxmoxGuestEntity[] guests)
+    {
+        var entity = NewEntity();
+        foreach (var g in guests)
+            entity.ProxmoxGuestLinks.Add(new WebResourceProxmoxGuestLinkEntity
+            {
+                WebResourceId = entity.Id,
+                ProxmoxConnectionId = g.ProxmoxConnectionId,
+                VmId = g.VmId,
+            });
+        var lookup = guests.ToDictionary(g => (g.ProxmoxConnectionId, g.VmId));
+        return (entity, lookup);
+    }
+
+    [Fact]
+    public async Task MapAsync_NoProxmoxLinks_StatusNullAndGuestsEmpty()
+    {
+        var dto = await _sut.MapAsync(NewEntity(), null, CancellationToken.None);
+
+        Assert.Null(dto.ProxmoxUpdateStatus);
+        Assert.Empty(dto.LinkedProxmoxGuests!);
+    }
+
+    [Fact]
+    public async Task MapAsync_AnyGuestPendingUpdates_AggregatesAsUpdateAvailable()
+    {
+        var (entity, lookup) = WithGuests(
+            BuildGuest(101, pending: 0),
+            BuildGuest(102, pending: 3));
+
+        var dto = await _sut.MapAsync(entity, lookup, CancellationToken.None);
+
+        Assert.Equal(ProxmoxUpdateStatus.UpdateAvailable, dto.ProxmoxUpdateStatus);
+        Assert.Equal(2, dto.LinkedProxmoxGuests!.Count);
+    }
+
+    [Fact]
+    public async Task MapAsync_ProxmoxPrecedence_UpdateAvailableBeatsError()
+    {
+        // 101 has a recorded error (null count + LastError), 102 has updates.
+        var (entity, lookup) = WithGuests(
+            BuildGuest(101, pending: null, lastError: "apt failed"),
+            BuildGuest(102, pending: 5));
+
+        var dto = await _sut.MapAsync(entity, lookup, CancellationToken.None);
+
+        Assert.Equal(ProxmoxUpdateStatus.UpdateAvailable, dto.ProxmoxUpdateStatus);
+    }
+
+    [Fact]
+    public async Task MapAsync_AllMonitoringOff_AggregatesAsDisabled()
+    {
+        var (entity, lookup) = WithGuests(
+            BuildGuest(101, monitoring: false, pending: 4),
+            BuildGuest(102, monitoring: false, pending: 0));
+
+        var dto = await _sut.MapAsync(entity, lookup, CancellationToken.None);
+
+        Assert.Equal(ProxmoxUpdateStatus.Disabled, dto.ProxmoxUpdateStatus);
+    }
+
+    [Fact]
+    public async Task MapAsync_SnoozedGuest_IsDisabled()
+    {
+        var (entity, lookup) = WithGuests(
+            BuildGuest(101, pending: 9, snoozedUntil: DateTime.UtcNow.AddHours(1)));
+
+        var dto = await _sut.MapAsync(entity, lookup, CancellationToken.None);
+
+        Assert.Equal(ProxmoxUpdateStatus.Disabled, dto.ProxmoxUpdateStatus);
+        Assert.Equal(ProxmoxUpdateStatus.Disabled, dto.LinkedProxmoxGuests!.Single().UpdateStatus);
+    }
+
+    [Fact]
+    public async Task MapAsync_MissingGuestInLookup_IsDroppedFromBadgeAndSummary()
+    {
+        var (entity, _) = WithGuests(BuildGuest(101, pending: 7));
+        // Empty lookup — the linked guest can't be resolved (e.g. destroyed).
+        var emptyLookup = new Dictionary<(Guid, int), ProxmoxGuestEntity>();
+
+        var dto = await _sut.MapAsync(entity, emptyLookup, CancellationToken.None);
+
+        Assert.Null(dto.ProxmoxUpdateStatus);
+        Assert.Empty(dto.LinkedProxmoxGuests!);
+    }
+
+    [Fact]
+    public async Task MapAsync_NullLookup_IgnoresProxmoxLinks()
+    {
+        var (entity, _) = WithGuests(BuildGuest(101, pending: 7));
+
+        var dto = await _sut.MapAsync(entity, null, CancellationToken.None);
+
+        Assert.Null(dto.ProxmoxUpdateStatus);
+        Assert.Empty(dto.LinkedProxmoxGuests!);
+    }
+
+    [Fact]
+    public async Task MapAsync_DockerAndProxmoxStatuses_AreIndependent()
+    {
+        var (entity, lookup) = WithGuests(BuildGuest(101, pending: 0)); // Proxmox up to date
+        entity.DockerWatches.Add(BuildWatch("app", DockerUpdateStatus.UpdateAvailable));
+
+        var dto = await _sut.MapAsync(entity, lookup, CancellationToken.None);
+
+        Assert.Equal(DockerUpdateStatus.UpdateAvailable, dto.DockerUpdateStatus);
+        Assert.Equal(ProxmoxUpdateStatus.UpToDate, dto.ProxmoxUpdateStatus);
+    }
 }

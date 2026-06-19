@@ -38,13 +38,15 @@ public class WebResourcesController(
             .Include(s => s.Credentials)
             .Include(s => s.WebResourceTags).ThenInclude(st => st.Tag)
             .Include(s => s.DockerWatches)
+            .Include(s => s.ProxmoxGuestLinks)
             .Where(s => s.UserId == userId)
             .OrderBy(s => s.Name)
             .ToListAsync(cancellationToken);
 
+        var guestLookup = await LoadGuestLookupAsync(cancellationToken);
         var result = new List<WebResourceResponse>(services.Count);
         foreach (var s in services)
-            result.Add(await mapper.MapAsync(s, cancellationToken));
+            result.Add(await mapper.MapAsync(s, guestLookup, cancellationToken));
         return Ok(result);
     }
 
@@ -52,7 +54,7 @@ public class WebResourcesController(
     public async Task<ActionResult<WebResourceResponse>> Get(Guid id, CancellationToken cancellationToken)
     {
         var s = await LoadOwnedAsync(id, cancellationToken);
-        return s is null ? NotFound() : Ok(await mapper.MapAsync(s, cancellationToken));
+        return s is null ? NotFound() : Ok(await MapWithGuestsAsync(s, cancellationToken));
     }
 
     [HttpPost]
@@ -60,6 +62,8 @@ public class WebResourcesController(
     {
         if (!await IsOwnedConnectionOrNullAsync(request.DockerConnectionId, cancellationToken))
             return BadRequest(new { error = "Docker connection does not exist." });
+        if (!await IsOwnedProxmoxConnectionOrNullAsync(request.ProxmoxConnectionId, cancellationToken))
+            return BadRequest(new { error = "Proxmox connection does not exist." });
 
         var entity = new WebResourceEntity { UserId = UserId };
         ApplyScalar(entity, request);
@@ -70,7 +74,7 @@ public class WebResourcesController(
         await StoreFaviconBase64Async(entity, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         var fresh = await LoadOwnedAsync(entity.Id, cancellationToken);
-        return CreatedAtAction(nameof(Get), new { id = entity.Id }, await mapper.MapAsync(fresh!, cancellationToken));
+        return CreatedAtAction(nameof(Get), new { id = entity.Id }, await MapWithGuestsAsync(fresh!, cancellationToken));
     }
 
     [HttpPut("{id:guid}")]
@@ -80,6 +84,8 @@ public class WebResourcesController(
         if (entity is null) return NotFound();
         if (!await IsOwnedConnectionOrNullAsync(request.DockerConnectionId, cancellationToken))
             return BadRequest(new { error = "Docker connection does not exist." });
+        if (!await IsOwnedProxmoxConnectionOrNullAsync(request.ProxmoxConnectionId, cancellationToken))
+            return BadRequest(new { error = "Proxmox connection does not exist." });
         var isShouldRecheckHealth = entity.MainUrl != request.MainUrl
             || entity.MainUrlHealthCheckEnabled != request.MainUrlHealthCheckEnabled
             || entity.AdditionalUrl != request.AdditionalUrl
@@ -97,7 +103,7 @@ public class WebResourcesController(
             return await CheckNow(id, cancellationToken);
 
         var fresh = await LoadOwnedAsync(id, cancellationToken);
-        return Ok(await mapper.MapAsync(fresh!, cancellationToken));
+        return Ok(await MapWithGuestsAsync(fresh!, cancellationToken));
     }
 
     [HttpDelete("{id:guid}")]
@@ -124,7 +130,7 @@ public class WebResourcesController(
             ClearMainHealthState(entity);
             ClearAdditionalHealthState(entity);
             await db.SaveChangesAsync(cancellationToken);
-            return Ok(await mapper.MapAsync(entity, cancellationToken));
+            return Ok(await MapWithGuestsAsync(entity, cancellationToken));
         }
 
         var previousMainStatus = entity.CurrentStatus;
@@ -157,41 +163,32 @@ public class WebResourcesController(
         if (user is not null)
             await statusNotifications.NotifyIfNeededAsync(user, entity, previousMainStatus, previousAdditionalStatus, cancellationToken);
 
-        return Ok(await mapper.MapAsync(entity, cancellationToken));
+        return Ok(await MapWithGuestsAsync(entity, cancellationToken));
     }
 
+    /// <summary>
+    /// Set a custom service logo. The image arrives as a base64 data URI in a JSON
+    /// body (the browser reads the file with <c>FileReader.readAsDataURL</c>) and is
+    /// stored straight on <see cref="WebResourceEntity.LogoBase64"/> — no file is
+    /// written to disk, mirroring the Docker container / Proxmox guest icon
+    /// endpoints. Keeping the logo purely in the database lets a backup carry it and
+    /// restore it intact. <see cref="WebResourceEntity.CustomLogoPath"/> is cleared
+    /// so no stale file reference survives.
+    /// </summary>
     [HttpPost("{id:guid}/logo")]
-    [RequestSizeLimit(2 * 1024 * 1024)]
-    public async Task<ActionResult<object>> UploadLogo(Guid id, IFormFile file, CancellationToken cancellationToken)
+    public async Task<ActionResult<object>> UploadLogo(Guid id, [FromBody] ContainerIconUploadRequest request, CancellationToken cancellationToken)
     {
         var entity = await LoadOwnedAsync(id, cancellationToken);
         if (entity is null) return NotFound();
-        if (file is null || file.Length == 0) return BadRequest(new { error = "Empty file" });
-        if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-            return BadRequest(new { error = "Not an image" });
+        if (!ImageDataUri.TryValidate(request?.DataUri, out var error))
+            return BadRequest(new { error });
 
-        var webRoot = env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot");
-        var dir = Path.Combine(webRoot, "uploads", "logos");
-        Directory.CreateDirectory(dir);
-        var ext = Path.GetExtension(file.FileName);
-        var fileName = $"{Guid.NewGuid():N}{ext}";
-        var path = Path.Combine(dir, fileName);
-        await using (var fs = System.IO.File.Create(path))
-            await file.CopyToAsync(fs, cancellationToken);
-
-        // Store the uploaded image as base64 so it can be served without the file system
-        using var readStream = new MemoryStream();
-        file.OpenReadStream().CopyTo(readStream);
-        var uploadedBytes = readStream.ToArray();
-        var mime = file.ContentType;
-        entity.LogoBase64 = uploadedBytes.Length > 0
-            ? $"data:{mime};base64,{Convert.ToBase64String(uploadedBytes)}"
-            : null;
-
-        entity.CustomLogoPath = $"/uploads/logos/{fileName}";
-        entity.LogoSource = Stashboard.Core.Enums.LogoSource.Custom;
+        entity.LogoBase64 = request!.DataUri;
+        entity.CustomLogoPath = null;
+        entity.LogoSource = LogoSource.Custom;
+        entity.UpdatedUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
-        return Ok(new { path = entity.CustomLogoPath });
+        return Ok(new { dataUri = entity.LogoBase64 });
     }
 
     [HttpPost("{id:guid}/favicon/refresh")]
@@ -211,7 +208,7 @@ public class WebResourcesController(
         await db.SaveChangesAsync(cancellationToken);
 
         var fresh = await LoadOwnedAsync(id, cancellationToken);
-        return Ok(await mapper.MapAsync(fresh!, cancellationToken));
+        return Ok(await MapWithGuestsAsync(fresh!, cancellationToken));
     }
 
     private async Task StoreFaviconBase64Async(WebResourceEntity entity, CancellationToken cancellationToken)
@@ -253,7 +250,97 @@ public class WebResourcesController(
             .Include(s => s.Credentials)
             .Include(s => s.WebResourceTags).ThenInclude(st => st.Tag)
             .Include(s => s.DockerWatches)
+            .Include(s => s.ProxmoxGuestLinks)
             .FirstOrDefaultAsync(s => s.Id == id && s.UserId == userId, cancellationToken);
+    }
+
+    /// <summary>V7.9 — map a single service with its Proxmox guest links resolved
+    /// into the update badge + summary. Loads the user's guests once for the map.</summary>
+    private async Task<WebResourceResponse> MapWithGuestsAsync(WebResourceEntity entity, CancellationToken cancellationToken)
+    {
+        var guestLookup = await LoadGuestLookupAsync(cancellationToken);
+        return await mapper.MapAsync(entity, guestLookup, cancellationToken);
+    }
+
+    /// <summary>V7.9 — all of the current user's discovered Proxmox guests, keyed
+    /// by their stable <c>(connection, vmid)</c> key, for resolving service links
+    /// to guest detail without an N+1 per service.</summary>
+    private async Task<IReadOnlyDictionary<(Guid ProxmoxConnectionId, int VmId), ProxmoxGuestEntity>> LoadGuestLookupAsync(
+        CancellationToken cancellationToken)
+    {
+        var userId = UserId;
+        var guests = await db.ProxmoxGuests.AsNoTracking()
+            .Where(g => db.ProxmoxConnections.Any(c => c.Id == g.ProxmoxConnectionId && c.UserId == userId))
+            .ToListAsync(cancellationToken);
+        return guests.ToDictionary(g => (g.ProxmoxConnectionId, g.VmId));
+    }
+
+    // ── V7.9 — service ↔ Proxmox guest links ─────────────────────────────────
+
+    /// <summary>
+    /// V7.9 — link a Proxmox guest (LXC / VM) to this service. Validates the guest
+    /// belongs to a connection the user owns and isn't the node row. Idempotent —
+    /// re-linking the same guest is a no-op. Returns the refreshed service so the
+    /// modal re-renders the linked list + badge.
+    /// </summary>
+    [HttpPost("{id:guid}/proxmox-links")]
+    public async Task<ActionResult<WebResourceResponse>> AddProxmoxLink(
+        Guid id, [FromBody] ProxmoxGuestLinkRequest request, CancellationToken cancellationToken)
+    {
+        var userId = UserId;
+        if (!await db.WebResources.AnyAsync(s => s.Id == id && s.UserId == userId, cancellationToken))
+            return NotFound();
+        if (request.VmId == 0)
+            return BadRequest(new { error = "The Proxmox node cannot be linked — link an LXC or VM guest." });
+
+        var guestExists = await db.ProxmoxGuests.AsNoTracking().AnyAsync(g =>
+            g.ProxmoxConnectionId == request.ProxmoxConnectionId
+            && g.VmId == request.VmId
+            && g.GuestType != ProxmoxGuestType.Node
+            && db.ProxmoxConnections.Any(c => c.Id == g.ProxmoxConnectionId && c.UserId == userId),
+            cancellationToken);
+        if (!guestExists)
+            return BadRequest(new { error = "Proxmox guest does not exist." });
+
+        var alreadyLinked = await db.WebResourceProxmoxGuestLinks.AnyAsync(l =>
+            l.WebResourceId == id && l.ProxmoxConnectionId == request.ProxmoxConnectionId && l.VmId == request.VmId,
+            cancellationToken);
+        if (!alreadyLinked)
+        {
+            db.WebResourceProxmoxGuestLinks.Add(new WebResourceProxmoxGuestLinkEntity
+            {
+                WebResourceId = id,
+                ProxmoxConnectionId = request.ProxmoxConnectionId,
+                VmId = request.VmId,
+            });
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        var fresh = await LoadOwnedAsync(id, cancellationToken);
+        return Ok(await MapWithGuestsAsync(fresh!, cancellationToken));
+    }
+
+    /// <summary>V7.9 — unlink a Proxmox guest from this service. Idempotent — a
+    /// missing link returns the service unchanged.</summary>
+    [HttpDelete("{id:guid}/proxmox-links/{proxmoxConnectionId:guid}/{vmId:int}")]
+    public async Task<ActionResult<WebResourceResponse>> RemoveProxmoxLink(
+        Guid id, Guid proxmoxConnectionId, int vmId, CancellationToken cancellationToken)
+    {
+        var userId = UserId;
+        if (!await db.WebResources.AnyAsync(s => s.Id == id && s.UserId == userId, cancellationToken))
+            return NotFound();
+
+        var link = await db.WebResourceProxmoxGuestLinks.FirstOrDefaultAsync(
+            l => l.WebResourceId == id && l.ProxmoxConnectionId == proxmoxConnectionId && l.VmId == vmId,
+            cancellationToken);
+        if (link is not null)
+        {
+            db.WebResourceProxmoxGuestLinks.Remove(link);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        var fresh = await LoadOwnedAsync(id, cancellationToken);
+        return Ok(await MapWithGuestsAsync(fresh!, cancellationToken));
     }
 
     /// <summary>True when the id is null (= unassign) or points at a Docker
@@ -263,6 +350,15 @@ public class WebResourcesController(
         if (connectionId is null) return true;
         var userId = UserId;
         return await db.DockerConnections.AsNoTracking()
+            .AnyAsync(c => c.Id == connectionId.Value && c.UserId == userId, cancellationToken);
+    }
+
+    /// <summary>V7.9 — the Proxmox analogue of <see cref="IsOwnedConnectionOrNullAsync"/>.</summary>
+    private async Task<bool> IsOwnedProxmoxConnectionOrNullAsync(Guid? connectionId, CancellationToken cancellationToken)
+    {
+        if (connectionId is null) return true;
+        var userId = UserId;
+        return await db.ProxmoxConnections.AsNoTracking()
             .AnyAsync(c => c.Id == connectionId.Value && c.UserId == userId, cancellationToken);
     }
 
@@ -279,8 +375,10 @@ public class WebResourcesController(
         entity.Notes = req.Notes;
         entity.CategoryId = req.CategoryId;
         entity.DockerConnectionId = req.DockerConnectionId;
+        entity.ProxmoxConnectionId = req.ProxmoxConnectionId;
         entity.LogoSource = req.LogoSource;
-        entity.CustomLogoPath = req.CustomLogoPath;
+        // The logo content (base64) is owned by the upload / favicon endpoints —
+        // the upsert must not write CustomLogoPath, which is now a legacy-only field.
         entity.OfflineNotificationsEnabled = req.OfflineNotificationsEnabled;
         entity.UpdatedUtc = DateTime.UtcNow;
 

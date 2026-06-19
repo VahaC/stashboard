@@ -9,6 +9,7 @@ vi.mock('@/lib/api', () => ({ api: { get: vi.fn(), put: vi.fn(), post: vi.fn(), 
 // off-case.
 vi.mock('@/lib/queries', () => ({
   useFeatures: () => ({ data: { allowProxmoxDestroy: true, allowProxmoxUpdates: false, allowProxmoxConsole: false } }),
+  useServices: () => ({ data: [] }),
 }))
 
 import { api } from '@/lib/api'

@@ -1111,6 +1111,142 @@ public class DockerInstancesControllerTests : IAsyncLifetime
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
+    // ── V7.9 — container ↔ Proxmox guest cross-link ─────────────────────────
+
+    private async Task<(Guid ConnectionId, int VmId)> SeedProxmoxGuestAsync(Guid ownerUserId, int vmId = 101)
+    {
+        var pve = new ProxmoxConnectionEntity
+        {
+            UserId = ownerUserId,
+            Name = $"pve-{Guid.NewGuid():N}",
+            ApiBaseUrl = "https://pve.lan:8006",
+            NodeName = "pve",
+            ServerType = ProxmoxServerType.Pve,
+            ApiTokenId = "root@pam!stash",
+        };
+        _dbContext.ProxmoxConnections.Add(pve);
+        _dbContext.ProxmoxGuests.Add(new ProxmoxGuestEntity
+        {
+            ProxmoxConnectionId = pve.Id,
+            VmId = vmId,
+            GuestType = ProxmoxGuestType.Lxc,
+            Name = $"guest-{vmId}",
+            IsRunning = true,
+        });
+        await _dbContext.SaveChangesAsync();
+        _dbContext.ChangeTracker.Clear();
+        return (pve.Id, vmId);
+    }
+
+    [Fact]
+    public async Task SetProxmoxLink_Upserts_AndListSurfacesChip()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var (pveId, vmId) = await SeedProxmoxGuestAsync(_userId);
+
+        var ctrl = BuildController();
+        var put = await ctrl.SetProxmoxLink(conn.Id, "wp", new ContainerProxmoxLinkRequest(pveId, vmId), CancellationToken.None);
+        Assert.IsType<OkObjectResult>(put.Result);
+
+        _hostClientMock
+            .Setup(h => h.ListContainerDetailsAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<DockerContainerDetail> { MakeDetail(id: "abc", name: "wp", image: "wordpress:6", state: "running") });
+
+        var list = await ctrl.ListContainers(conn.Id, CancellationToken.None);
+        var cards = Assert.IsAssignableFrom<List<DockerContainerCard>>(Assert.IsType<OkObjectResult>(list.Result).Value);
+        var card = Assert.Single(cards);
+        Assert.NotNull(card.ProxmoxLink);
+        Assert.Equal(pveId, card.ProxmoxLink!.ProxmoxConnectionId);
+        Assert.Equal(vmId, card.ProxmoxLink.VmId);
+        Assert.Equal($"guest-{vmId}", card.ProxmoxLink.GuestName);
+    }
+
+    [Fact]
+    public async Task SetProxmoxLink_IsUpsert_OnSameContainer()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var (pveId, vmId) = await SeedProxmoxGuestAsync(_userId, vmId: 101);
+        // A second guest (102) on the SAME host, so re-pointing stays owner-valid.
+        _dbContext.ProxmoxGuests.Add(new ProxmoxGuestEntity
+        {
+            ProxmoxConnectionId = pveId, VmId = 102, GuestType = ProxmoxGuestType.Lxc, Name = "guest-102", IsRunning = true,
+        });
+        await _dbContext.SaveChangesAsync();
+        _dbContext.ChangeTracker.Clear();
+
+        var ctrl = BuildController();
+        await ctrl.SetProxmoxLink(conn.Id, "wp", new ContainerProxmoxLinkRequest(pveId, vmId), CancellationToken.None);
+        await ctrl.SetProxmoxLink(conn.Id, "wp", new ContainerProxmoxLinkRequest(pveId, 102), CancellationToken.None);
+
+        var rows = await _dbContext.ContainerProxmoxLinks.AsNoTracking()
+            .Where(l => l.DockerConnectionId == conn.Id && l.ContainerName == "wp").ToListAsync();
+        var row = Assert.Single(rows);
+        Assert.Equal(102, row.VmId);
+    }
+
+    [Fact]
+    public async Task SetProxmoxLink_NodeRow_BadRequest()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var (pveId, _) = await SeedProxmoxGuestAsync(_userId);
+
+        var ctrl = BuildController();
+        var result = await ctrl.SetProxmoxLink(conn.Id, "wp", new ContainerProxmoxLinkRequest(pveId, 0), CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task SetProxmoxLink_ForeignGuest_BadRequest()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var (pveId, vmId) = await SeedProxmoxGuestAsync(_otherUserId);
+
+        var ctrl = BuildController();
+        var result = await ctrl.SetProxmoxLink(conn.Id, "wp", new ContainerProxmoxLinkRequest(pveId, vmId), CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task ListContainers_StaleLink_YieldsNoChip()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        // A real Proxmox host, but the link points at a vmid the host no longer has
+        // (e.g. the guest was destroyed) — must surface no chip rather than erroring.
+        var (pveId, _) = await SeedProxmoxGuestAsync(_userId, vmId: 101);
+        _dbContext.ContainerProxmoxLinks.Add(new ContainerProxmoxLinkEntity
+        {
+            UserId = _userId, DockerConnectionId = conn.Id, ContainerName = "wp",
+            ProxmoxConnectionId = pveId, VmId = 999,
+        });
+        await _dbContext.SaveChangesAsync();
+        _dbContext.ChangeTracker.Clear();
+
+        _hostClientMock
+            .Setup(h => h.ListContainerDetailsAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<DockerContainerDetail> { MakeDetail(id: "abc", name: "wp", image: "wordpress:6", state: "running") });
+
+        var ctrl = BuildController();
+        var list = await ctrl.ListContainers(conn.Id, CancellationToken.None);
+        var cards = Assert.IsAssignableFrom<List<DockerContainerCard>>(Assert.IsType<OkObjectResult>(list.Result).Value);
+        Assert.Null(Assert.Single(cards).ProxmoxLink);
+    }
+
+    [Fact]
+    public async Task RemoveProxmoxLink_ClearsLink()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var (pveId, vmId) = await SeedProxmoxGuestAsync(_userId);
+        var ctrl = BuildController();
+        await ctrl.SetProxmoxLink(conn.Id, "wp", new ContainerProxmoxLinkRequest(pveId, vmId), CancellationToken.None);
+
+        var del = await ctrl.RemoveProxmoxLink(conn.Id, "wp", CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(del);
+        Assert.False(await _dbContext.ContainerProxmoxLinks.AnyAsync(l => l.DockerConnectionId == conn.Id));
+    }
+
     private DockerInstancesController BuildController(Guid? userId = null, bool allowRemoval = false)
     {
         var watchMapper = new DockerWatchMapper(_encryptionMock.Object, new ImageReferenceParser());
@@ -1219,6 +1355,9 @@ public class DockerInstancesControllerTests : IAsyncLifetime
     {
         await _dbContext.DockerPruneRuns.ExecuteDeleteAsync();
         await _dbContext.ContainerIcons.ExecuteDeleteAsync();
+        await _dbContext.ContainerProxmoxLinks.ExecuteDeleteAsync();
+        await _dbContext.ProxmoxGuests.ExecuteDeleteAsync();
+        await _dbContext.ProxmoxConnections.ExecuteDeleteAsync();
         await _dbContext.DockerUpdateAttempts.ExecuteDeleteAsync();
         await _dbContext.DockerWatches.ExecuteDeleteAsync();
         await _dbContext.DockerConnections.ExecuteDeleteAsync();

@@ -541,7 +541,14 @@ function ConnectionBlock({
   const hasLxc = lxcGuests.length > 0
 
   return (
-    <section className="proxmox-conn" onContextMenu={(e) => { e.preventDefault(); setConnMenuPos({ x: e.clientX, y: e.clientY }) }}>
+    <section className="proxmox-conn" onContextMenu={(e) => {
+      // A right-click inside an open modal (LxcModal, NodeModal, …) bubbles up
+      // the React tree to here even though the modal is portaled to <body> — so
+      // ignore events that originated inside a dialog, otherwise the host menu
+      // hijacks the modal's right-click.
+      if ((e.target as HTMLElement).closest('[role="dialog"]')) return
+      e.preventDefault(); setConnMenuPos({ x: e.clientX, y: e.clientY })
+    }}>
       <div className="proxmox-conn-header">
         <div className="proxmox-conn-title">
           <h2>{connection.name}</h2>

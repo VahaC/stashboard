@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Stashboard.Api.Data;
 
@@ -10,9 +11,11 @@ using Stashboard.Api.Data;
 namespace Stashboard.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260617221555_AddProxmoxServiceAndContainerLinks")]
+    partial class AddProxmoxServiceAndContainerLinks
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
@@ -1814,9 +1817,6 @@ namespace Stashboard.Api.Migrations
                     b.Property<bool>("OfflineNotificationsEnabled")
                         .HasColumnType("INTEGER");
 
-                    b.Property<Guid?>("ProxmoxConnectionId")
-                        .HasColumnType("TEXT");
-
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("TEXT");
 
@@ -1828,8 +1828,6 @@ namespace Stashboard.Api.Migrations
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("DockerConnectionId");
-
-                    b.HasIndex("ProxmoxConnectionId");
 
                     b.HasIndex("UserId", "Name");
 
@@ -2202,11 +2200,6 @@ namespace Stashboard.Api.Migrations
                         .HasForeignKey("DockerConnectionId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("Stashboard.Core.Entities.ProxmoxConnectionEntity", "ProxmoxConnection")
-                        .WithMany()
-                        .HasForeignKey("ProxmoxConnectionId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("Stashboard.Api.Data.UserEntity", null)
                         .WithMany()
                         .HasForeignKey("UserId")
@@ -2216,8 +2209,6 @@ namespace Stashboard.Api.Migrations
                     b.Navigation("Category");
 
                     b.Navigation("DockerConnection");
-
-                    b.Navigation("ProxmoxConnection");
                 });
 
             modelBuilder.Entity("Stashboard.Core.Entities.WebResourceProxmoxGuestLinkEntity", b =>

@@ -16,7 +16,8 @@ namespace Stashboard.Api.Mapping;
 public interface IProxmoxConnectionMapper
 {
     ProxmoxConnectionResponse ToResponse(
-        ProxmoxConnectionEntity entity, IReadOnlyList<ProxmoxGuestEntity> guests);
+        ProxmoxConnectionEntity entity, IReadOnlyList<ProxmoxGuestEntity> guests,
+        IReadOnlyDictionary<int, (Guid ServiceId, string ServiceName)>? linkedServices = null);
 
     void ApplyUpsert(ProxmoxConnectionEntity entity, ProxmoxConnectionUpsertRequest request);
 
@@ -31,7 +32,8 @@ public interface IProxmoxConnectionMapper
 public sealed class ProxmoxConnectionMapper(IEncryptionService encryption) : IProxmoxConnectionMapper
 {
     public ProxmoxConnectionResponse ToResponse(
-        ProxmoxConnectionEntity entity, IReadOnlyList<ProxmoxGuestEntity> guests) =>
+        ProxmoxConnectionEntity entity, IReadOnlyList<ProxmoxGuestEntity> guests,
+        IReadOnlyDictionary<int, (Guid ServiceId, string ServiceName)>? linkedServices = null) =>
         new(
             entity.Id,
             entity.Name,
@@ -62,7 +64,7 @@ public sealed class ProxmoxConnectionMapper(IEncryptionService encryption) : IPr
             guests
                 .OrderBy(g => g.GuestType)   // node (0) first, then LXCs
                 .ThenBy(g => g.VmId)
-                .Select(ToGuestResponse)
+                .Select(g => ToGuestResponse(g, linkedServices))
                 .ToList(),
             entity.TelemetryPollSeconds,
             entity.WebhookToken,
@@ -70,11 +72,17 @@ public sealed class ProxmoxConnectionMapper(IEncryptionService encryption) : IPr
             entity.CreatedUtc,
             entity.UpdatedUtc);
 
-    private static ProxmoxGuestResponse ToGuestResponse(ProxmoxGuestEntity g) =>
-        new(
+    private static ProxmoxGuestResponse ToGuestResponse(
+        ProxmoxGuestEntity g, IReadOnlyDictionary<int, (Guid ServiceId, string ServiceName)>? linkedServices)
+    {
+        (Guid ServiceId, string ServiceName)? link =
+            linkedServices is not null && linkedServices.TryGetValue(g.VmId, out var l) ? l : null;
+        return new(
             g.VmId, g.Name, g.GuestType, g.IsRunning, g.PendingUpdates, g.LastError,
             g.IpAddress, g.UptimeSeconds, g.CpuCores, g.MemoryBytes, g.DiskBytes,
-            SplitTags(g.Tags), g.LastCheckedUtc, g.MonitoringEnabled, g.MonitoringSnoozedUntil);
+            SplitTags(g.Tags), g.LastCheckedUtc, g.MonitoringEnabled, g.MonitoringSnoozedUntil,
+            link?.ServiceId, link?.ServiceName);
+    }
 
     private static IReadOnlyList<string> SplitTags(string? tags) =>
         string.IsNullOrWhiteSpace(tags)

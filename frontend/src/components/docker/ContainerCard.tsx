@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Activity, Bell, FileText, Info, MoreHorizontal, Play, RefreshCw, Search, Square, SquareChevronRight, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Activity, Bell, FileText, Info, MoreHorizontal, Play, RefreshCw, Search, Server, Square, SquareChevronRight, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import type { DockerContainerCard, DockerWatch } from '@/lib/types'
+import type { DockerContainerCard, DockerContainerProxmoxLink, DockerWatch } from '@/lib/types'
 import { EntityCard } from '@/components/shared/EntityCard'
 import { ContainerIcon } from './atoms/ContainerIcon'
 import { FloatingMenu } from '@/components/shared/FloatingMenu'
@@ -95,6 +96,7 @@ export function ContainerCard({
           </span>
         ))
         : undefined}
+      extraMeta={card.proxmoxLink ? <ProxmoxRunsOnChip link={card.proxmoxLink} /> : undefined}
       onActivate={() => onOpen(defaultTab)}
       onContextMenu={openMenu}
       actionsLeft={!notFound && (
@@ -202,6 +204,24 @@ export function ContainerCard({
         </FloatingMenu>
       )}
     </EntityCard>
+  )
+}
+
+// V7.9 — "on <guest>" chip linking the container to the Proxmox guest it runs
+// inside. Deep-links to the guest's modal on the Proxmox page; stops propagation
+// so clicking it navigates instead of opening the container modal.
+function ProxmoxRunsOnChip({ link }: { link: DockerContainerProxmoxLink }) {
+  const kind = link.guestType === 'Qemu' || link.guestType === 2 ? 'VM' : 'LXC'
+  return (
+    <Link
+      to={`/proxmox?connection=${link.proxmoxConnectionId}&vmid=${link.vmId}`}
+      className="cc-chip cc-proxmox-chip"
+      onClick={(e) => e.stopPropagation()}
+      title={`Runs on Proxmox ${kind} ${link.vmId} — open LXC / VM`}
+    >
+      <Server className="h-3 w-3" />
+      on {link.guestName}
+    </Link>
   )
 }
 

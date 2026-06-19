@@ -42,10 +42,20 @@ export interface Service {
   dockerUpdateStatus: DockerUpdateStatus | null
   /** Id of the user-level Docker connection this service is assigned to, or null. */
   dockerConnectionId: string | null
+  /** V7.9 — id of the user-level Proxmox connection this service is associated with
+   *  (the "Proxmox host" picker), or null. The analogue of `dockerConnectionId`. */
+  proxmoxConnectionId: string | null
   /** V3.6 — read-only summary of the containers linked to this service. The
    *  service modal renders these as deep links into the Docker page where the
    *  tracking is managed. */
   linkedDockerWatches: LinkedDockerWatchSummary[] | null
+  /** V7.9 — aggregated update status of the Proxmox guests linked to this
+   *  service, or null when none are linked. Drives a Proxmox update badge shown
+   *  alongside the Docker one. */
+  proxmoxUpdateStatus: ProxmoxUpdateStatus | null
+  /** V7.9 — read-only summary of the Proxmox guests (LXC / VM) linked to this
+   *  service. The modal's Proxmox tab lists these with an unlink action. */
+  linkedProxmoxGuests: LinkedProxmoxGuestSummary[] | null
 }
 
 /** V3.6 — compact, read-only projection of a watch linked to a service. */
@@ -57,6 +67,25 @@ export interface LinkedDockerWatchSummary {
   imageReference: string
   enabled: boolean
   updateStatus: DockerUpdateStatus
+  lastCheckedUtc: string | null
+}
+
+/** V7.9 — the Proxmox analogue of {@link DockerUpdateStatus}; identical members
+ *  and integer values, so the same badge component renders both. */
+export type ProxmoxUpdateStatus = DockerUpdateStatus
+
+/** V7.9 — compact projection of a Proxmox guest linked to a service, carrying
+ *  the scan-derived state the modal renders + the stable (connection, vmid) key
+ *  for the deep link into the Proxmox page. */
+export interface LinkedProxmoxGuestSummary {
+  proxmoxConnectionId: string
+  vmId: number
+  name: string
+  guestType: ProxmoxGuestType
+  isRunning: boolean
+  pendingUpdates: number | null
+  monitoringEnabled: boolean
+  updateStatus: ProxmoxUpdateStatus
   lastCheckedUtc: string | null
 }
 
@@ -79,6 +108,8 @@ export interface ServiceUpsert {
   /** Id of an existing Docker connection to assign to the service, or null
    *  to unassign. */
   dockerConnectionId: string | null
+  /** V7.9 — id of an existing Proxmox connection to associate, or null. */
+  proxmoxConnectionId: string | null
 }
 
 export interface Category {
@@ -711,6 +742,17 @@ export interface DockerContainerCard {
   /** V7.8 — resolved card avatar (custom upload → official dashboard-icon →
    *  null). Null falls back to the placeholder treatment. */
   iconDataUri: string | null
+  /** V7.9 — the Proxmox guest this container is marked as running inside, or
+   *  null when no cross-link is set (or the target guest no longer exists). */
+  proxmoxLink: DockerContainerProxmoxLink | null
+}
+
+/** V7.9 — the Proxmox guest a Docker container is cross-linked to. */
+export interface DockerContainerProxmoxLink {
+  proxmoxConnectionId: string
+  vmId: number
+  guestName: string
+  guestType: ProxmoxGuestType
 }
 
 export interface StashboardFeatures {
@@ -1261,6 +1303,10 @@ export interface ProxmoxGuest {
    *  when not snoozed. While set the guest is skipped by checks exactly like
    *  monitoring-off, then auto-re-included once it passes. */
   monitoringSnoozedUntil: string | null
+  /** V7.9 — the service this guest is linked to (single service per guest, like a
+   *  Docker watch), or `null` when standalone. */
+  linkedServiceId: string | null
+  linkedServiceName: string | null
 }
 
 /** V6.2 — one `net<n>` / `mp<n>` / `rootfs` line from an LXC config, kept as the

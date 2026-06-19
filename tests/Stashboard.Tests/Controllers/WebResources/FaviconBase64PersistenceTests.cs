@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
@@ -153,15 +152,12 @@ public class FaviconBase64PersistenceTests : WebResourcesControllerTestBase
         var ctrl = BuildController();
 
         var imageBytes = new byte[] { 0x89, 0x50, 0x4E, 0x47 }; // PNG header bytes
-        var file = MakeFormFile(imageBytes, "logo.png", "image/png");
+        var dataUri = $"data:image/png;base64,{Convert.ToBase64String(imageBytes)}";
 
-        await ctrl.UploadLogo(svc.Id, file, CancellationToken.None);
+        await ctrl.UploadLogo(svc.Id, new ContainerIconUploadRequest(dataUri), CancellationToken.None);
 
         var dbRow = await _dbContext.WebResources.AsNoTracking().SingleAsync(s => s.Id == svc.Id);
-        Assert.NotNull(dbRow.LogoBase64);
-        Assert.StartsWith("data:image/png;base64,", dbRow.LogoBase64);
-        var expectedBase64 = Convert.ToBase64String(imageBytes);
-        Assert.Contains(expectedBase64, dbRow.LogoBase64);
+        Assert.Equal(dataUri, dbRow.LogoBase64);
     }
 
     [Fact]
@@ -170,9 +166,9 @@ public class FaviconBase64PersistenceTests : WebResourcesControllerTestBase
         var svc = await _dataFactory.ServiceAsync();
         var ctrl = BuildController();
 
-        var file = MakeFormFile(new byte[] { 0x47, 0x49, 0x46 }, "icon.gif", "image/gif");
+        var dataUri = $"data:image/gif;base64,{Convert.ToBase64String(new byte[] { 0x47, 0x49, 0x46 })}";
 
-        await ctrl.UploadLogo(svc.Id, file, CancellationToken.None);
+        await ctrl.UploadLogo(svc.Id, new ContainerIconUploadRequest(dataUri), CancellationToken.None);
 
         var dbRow = await _dbContext.WebResources.AsNoTracking().SingleAsync(s => s.Id == svc.Id);
         Assert.NotNull(dbRow.LogoBase64);
@@ -222,24 +218,5 @@ public class FaviconBase64PersistenceTests : WebResourcesControllerTestBase
         var dto = Assert.IsType<WebResourceResponse>(ok.Value);
         Assert.Equal("data:image/png;base64,CUSTOM==", dto.CustomLogoPath);
         Assert.Null(dto.FaviconUrl);
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private static IFormFile MakeFormFile(
-        byte[] content,
-        string fileName = "logo.png",
-        string contentType = "image/png")
-    {
-        var stream = new MemoryStream(content);
-        var mock = new Mock<IFormFile>();
-        mock.Setup(f => f.FileName).Returns(fileName);
-        mock.Setup(f => f.Length).Returns(content.Length);
-        mock.Setup(f => f.ContentType).Returns(contentType);
-        mock.Setup(f => f.CopyToAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .Callback<Stream, CancellationToken>((s, _) => { stream.Position = 0; stream.CopyTo(s); })
-            .Returns(Task.CompletedTask);
-        mock.Setup(f => f.OpenReadStream()).Returns(() => { stream.Position = 0; return stream; });
-        return mock.Object;
     }
 }

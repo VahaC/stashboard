@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 vi.mock('@/lib/api', () => ({ api: { get: vi.fn(), put: vi.fn(), post: vi.fn() } }))
 vi.mock('@/lib/queries', () => ({
   useFeatures: () => ({ data: { allowProxmoxUpdates: false, allowProxmoxConsole: false, allowProxmoxDestroy: false } }),
+  useServices: () => ({ data: [] }),
 }))
 
 import { api } from '@/lib/api'

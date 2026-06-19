@@ -79,11 +79,22 @@ public sealed record ProxmoxGuestResponse(
     /// <summary>V6.11 — active maintenance-window snooze until this UTC instant,
     /// or <c>null</c> when not snoozed. While set the guest is skipped by checks
     /// exactly like monitoring-off, then auto-re-included once it passes.</summary>
-    DateTime? MonitoringSnoozedUntil);
+    DateTime? MonitoringSnoozedUntil,
+    /// <summary>V7.9 — the service this guest is linked to, or <c>null</c> when
+    /// standalone. Mirrors the Docker watch's optional single service link: the
+    /// modal renders a "Linked service" dropdown, and the linked service shows a
+    /// Proxmox update badge on its dashboard card.</summary>
+    Guid? LinkedServiceId = null,
+    string? LinkedServiceName = null);
 
 /// <summary>V6.7 — toggle a single LXC's update monitoring on/off (the Proxmox
 /// analogue of enabling/disabling a Docker watch).</summary>
 public sealed record ProxmoxGuestMonitoringRequest(bool Enabled);
+
+/// <summary>V7.9 — link a guest to a single service (or unlink with
+/// <c>null</c>), the Proxmox analogue of a Docker watch's "Linked service"
+/// dropdown. Replaces any existing service link for this guest.</summary>
+public sealed record ProxmoxGuestServiceLinkRequest(Guid? WebResourceId);
 
 /// <summary>V6.11 — host-wide bulk monitoring toggle: enable or disable update
 /// monitoring for every LXC on the host in one call. The node row is never

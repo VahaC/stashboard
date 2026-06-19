@@ -125,9 +125,15 @@ public abstract class WebResourcesControllerTestBase : IAsyncLifetime
     /// <summary>Wipes all application rows from the test database. Called once per process run.</summary>
     private async Task ClearAllDataAsync()
     {
+        // V7.9 — link tables reference services / connections; clear them first.
+        await _dbContext.ContainerProxmoxLinks.ExecuteDeleteAsync();
+        await _dbContext.WebResourceProxmoxGuestLinks.ExecuteDeleteAsync();
         await _dbContext.WebResourceTags.ExecuteDeleteAsync();
         await _dbContext.Credentials.ExecuteDeleteAsync();
         await _dbContext.WebResources.ExecuteDeleteAsync();
+        await _dbContext.ProxmoxGuests.ExecuteDeleteAsync();
+        await _dbContext.ProxmoxConnections.ExecuteDeleteAsync();
+        await _dbContext.DockerConnections.ExecuteDeleteAsync();
         await _dbContext.Tags.ExecuteDeleteAsync();
         await _dbContext.Categories.ExecuteDeleteAsync();
         await _dbContext.Users.ExecuteDeleteAsync();

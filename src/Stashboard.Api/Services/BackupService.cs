@@ -12,7 +12,9 @@ namespace Stashboard.Api.Services;
 /// Exports / imports a single user's full configuration as portable JSON:
 /// categories, tags, Docker connections, services (with credentials + tags +
 /// the Docker connection link), Docker watches, Proxmox connections (with their
-/// per-guest monitoring intent), and the user's own settings.
+/// per-guest monitoring intent), the V7.9 service↔guest and container↔guest
+/// cross-links (keyed by the guest's stable (connection, vmid)), and the user's
+/// own settings.
 /// <para>
 /// Encrypted-at-rest values (credential values, TLS/SSH material, registry/AWS/
 /// GitHub secrets, Proxmox API token + SSH key) are decrypted on export and
@@ -91,6 +93,16 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             .GroupBy(i => i.ProxmoxConnectionId)
             .ToDictionary(grp => grp.Key, grp => grp.ToList());
 
+        // V7.9 — service↔guest and container↔guest cross-links. Both reference the
+        // target guest by its stable (connection, vmid) key so they re-attach after
+        // the guest rows are re-discovered by a scan on the target instance.
+        var serviceProxmoxLinks = await db.WebResourceProxmoxGuestLinks.AsNoTracking()
+            .Where(l => db.WebResources.Any(s => s.Id == l.WebResourceId && s.UserId == userId))
+            .ToListAsync(cancellationToken);
+        var containerProxmoxLinks = await db.ContainerProxmoxLinks.AsNoTracking()
+            .Where(l => l.UserId == userId)
+            .ToListAsync(cancellationToken);
+
         var dto = new BackupDto(
             ExportedUtc: DateTime.UtcNow,
             User: user is null ? null : new UserSettingsDto(
@@ -112,7 +124,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 s.OfflineNotificationsEnabled, s.HealthCheckUrl, s.HealthCheckMethod, s.ExpectedStatusRange,
                 s.Notes, s.CategoryId, s.LogoSource, s.CustomLogoPath, s.LogoBase64, s.DockerConnectionId,
                 s.Credentials.Select(c => new CredentialDto(c.Key, Dec(c.EncryptedValue)!, c.IsSecret)).ToList(),
-                s.WebResourceTags.Select(st => st.TagId).ToList())).ToList(),
+                s.WebResourceTags.Select(st => st.TagId).ToList(), s.ProxmoxConnectionId)).ToList(),
             DockerWatches: watches.Select(w => new DockerWatchDto(
                 w.Id, w.DockerConnectionId, w.WebResourceId, w.Label, w.Enabled, w.ImageReference,
                 w.RegistryHost, w.Repository, w.Tag, w.ContainerName,
@@ -133,7 +145,11 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                         g.VmId, g.GuestType, g.Name, g.MonitoringEnabled, g.MonitoringSnoozedUntil))
                     .ToList(),
                 (guestIconsByConnection.TryGetValue(c.Id, out var gi) ? gi : [])
-                    .Select(i => new GuestIconDto(i.VmId, i.LogoBase64!)).ToList())).ToList());
+                    .Select(i => new GuestIconDto(i.VmId, i.LogoBase64!)).ToList())).ToList(),
+            ServiceProxmoxLinks: serviceProxmoxLinks
+                .Select(l => new WebResourceProxmoxGuestLinkDto(l.WebResourceId, l.ProxmoxConnectionId, l.VmId)).ToList(),
+            ContainerProxmoxLinks: containerProxmoxLinks
+                .Select(l => new ContainerProxmoxLinkDto(l.DockerConnectionId, l.ContainerName, l.ProxmoxConnectionId, l.VmId)).ToList());
 
         return JsonSerializer.SerializeToUtf8Bytes(dto, JsonOpts);
     }
@@ -290,6 +306,10 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             }
             else { connectionId = existing.Id; }
 
+            // V7.9 — record the source→target mapping so the cross-link passes
+            // below can remap each link's ProxmoxConnectionId.
+            idMap[pc.Id] = connectionId;
+
             // Per-guest monitoring intent. Additive: only seed rows that don't
             // already exist for this host (keyed by VmId); the next scan fills in
             // the scan-derived fields and preserves these flags across re-discovery.
@@ -328,6 +348,30 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             }
         }
 
+        // ── V7.9 — container↔guest cross-links ──
+        // Both the Docker and Proxmox connections are mapped by now. Additive:
+        // only seed links that don't already exist (keyed by the (user, connection,
+        // container) natural key), and skip a link whose connection wasn't imported.
+        foreach (var l in dto.ContainerProxmoxLinks ?? [])
+        {
+            if (!idMap.TryGetValue(l.DockerConnectionId, out var dockerConnId)
+                || !idMap.TryGetValue(l.ProxmoxConnectionId, out var proxmoxConnId))
+                continue;
+
+            if (await db.ContainerProxmoxLinks.AnyAsync(x => x.UserId == userId
+                    && x.DockerConnectionId == dockerConnId && x.ContainerName == l.ContainerName, cancellationToken))
+                continue;
+
+            db.ContainerProxmoxLinks.Add(new ContainerProxmoxLinkEntity
+            {
+                UserId = userId,
+                DockerConnectionId = dockerConnId,
+                ContainerName = l.ContainerName,
+                ProxmoxConnectionId = proxmoxConnId,
+                VmId = l.VmId,
+            });
+        }
+
         await db.SaveChangesAsync(cancellationToken);
 
         // ── Services (merge by name + main URL) ──
@@ -363,6 +407,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 CustomLogoPath = s.CustomLogoPath,
                 LogoBase64 = s.LogoBase64,
                 DockerConnectionId = MapOrNull(idMap, s.DockerConnectionId),
+                ProxmoxConnectionId = MapOrNull(idMap, s.ProxmoxConnectionId),
             };
             foreach (var c in s.Credentials ?? [])
             {
@@ -435,6 +480,27 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             });
         }
 
+        // ── V7.9 — service↔guest links (skip duplicates) ──
+        // Services and Proxmox connections are both mapped by now. Skip a link
+        // whose service or connection wasn't imported, and one already present.
+        foreach (var l in dto.ServiceProxmoxLinks ?? [])
+        {
+            if (!idMap.TryGetValue(l.WebResourceId, out var webResourceId)
+                || !idMap.TryGetValue(l.ProxmoxConnectionId, out var proxmoxConnId))
+                continue;
+
+            if (await db.WebResourceProxmoxGuestLinks.AnyAsync(x => x.WebResourceId == webResourceId
+                    && x.ProxmoxConnectionId == proxmoxConnId && x.VmId == l.VmId, cancellationToken))
+                continue;
+
+            db.WebResourceProxmoxGuestLinks.Add(new WebResourceProxmoxGuestLinkEntity
+            {
+                WebResourceId = webResourceId,
+                ProxmoxConnectionId = proxmoxConnId,
+                VmId = l.VmId,
+            });
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         return imported;
     }
@@ -450,7 +516,9 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         List<DockerConnectionDto>? DockerConnections,
         List<ServiceDto>? Services,
         List<DockerWatchDto>? DockerWatches,
-        List<ProxmoxConnectionDto>? ProxmoxConnections = null);
+        List<ProxmoxConnectionDto>? ProxmoxConnections = null,
+        List<WebResourceProxmoxGuestLinkDto>? ServiceProxmoxLinks = null,
+        List<ContainerProxmoxLinkDto>? ContainerProxmoxLinks = null);
 
     private sealed record UserSettingsDto(
         string? DisplayName, string Theme, string DashboardSortMode, bool DashboardGroupByCategory,
@@ -478,7 +546,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         bool AdditionalUrlHealthCheckEnabled, bool OfflineNotificationsEnabled, string? HealthCheckUrl,
         HealthCheckMethod HealthCheckMethod, string? ExpectedStatusRange, string? Notes, Guid? CategoryId,
         LogoSource LogoSource, string? CustomLogoPath, string? LogoBase64, Guid? DockerConnectionId,
-        List<CredentialDto> Credentials, List<Guid> TagIds);
+        List<CredentialDto> Credentials, List<Guid> TagIds, Guid? ProxmoxConnectionId = null);
 
     private sealed record CredentialDto(string Key, string Value, bool IsSecret);
 
@@ -502,4 +570,10 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
 
     private sealed record ProxmoxGuestDto(
         int VmId, ProxmoxGuestType GuestType, string Name, bool MonitoringEnabled, DateTime? MonitoringSnoozedUntil);
+
+    // V7.9 — both link kinds reference the source connection guid (remapped via
+    // idMap on import) + the guest's stable vmid.
+    private sealed record WebResourceProxmoxGuestLinkDto(Guid WebResourceId, Guid ProxmoxConnectionId, int VmId);
+    private sealed record ContainerProxmoxLinkDto(
+        Guid DockerConnectionId, string ContainerName, Guid ProxmoxConnectionId, int VmId);
 }

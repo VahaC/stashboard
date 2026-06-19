@@ -45,7 +45,43 @@ public sealed record WebResourceResponse(
     /// this service. The service modal renders these as deep links into the
     /// Docker page where the tracking is actually managed. Empty when the
     /// service has no linked containers.</summary>
-    IReadOnlyList<LinkedDockerWatchSummary>? LinkedDockerWatches = null);
+    IReadOnlyList<LinkedDockerWatchSummary>? LinkedDockerWatches = null,
+    /// <summary>V7.9 — aggregated <see cref="ProxmoxUpdateStatus"/> of the Proxmox
+    /// guests linked to this service, or null when none are linked. Surfaced
+    /// alongside <see cref="DockerUpdateStatus"/> so the card can show both
+    /// update badges at once.</summary>
+    ProxmoxUpdateStatus? ProxmoxUpdateStatus = null,
+    /// <summary>V7.9 — read-only summary of the Proxmox guests (LXC / VM) linked
+    /// to this service. The service modal lists these with an unlink action; the
+    /// detail comes from the guests' existing scan data. Empty when none are
+    /// linked.</summary>
+    IReadOnlyList<LinkedProxmoxGuestSummary>? LinkedProxmoxGuests = null,
+    /// <summary>V7.9 — the user-level Proxmox connection this service is associated
+    /// with (the "Proxmox host" picker), or null. The analogue of
+    /// <see cref="DockerConnectionId"/>.</summary>
+    Guid? ProxmoxConnectionId = null);
+
+/// <summary>
+/// V7.9 — compact projection of a Proxmox guest linked to a service. Carries the
+/// guest's identity (by stable <c>(connection, vmid)</c> key) plus the scan-derived
+/// state the modal renders (live state pill + pending-update count + per-guest
+/// update status). The full guest is managed on the Proxmox page.
+/// </summary>
+public sealed record LinkedProxmoxGuestSummary(
+    Guid ProxmoxConnectionId,
+    int VmId,
+    string Name,
+    ProxmoxGuestType GuestType,
+    bool IsRunning,
+    int? PendingUpdates,
+    bool MonitoringEnabled,
+    ProxmoxUpdateStatus UpdateStatus,
+    DateTime? LastCheckedUtc);
+
+/// <summary>V7.9 — link one Proxmox guest (by <c>(connection, vmid)</c>) to a
+/// service. The node row (<c>VmId == 0</c>) is rejected — service links are
+/// guests only.</summary>
+public sealed record ProxmoxGuestLinkRequest(Guid ProxmoxConnectionId, int VmId);
 
 /// <summary>
 /// V3.6 — compact, read-only projection of a <c>DockerWatch</c> linked to a
@@ -83,7 +119,11 @@ public sealed record WebResourceUpsertRequest(
     bool OfflineNotificationsEnabled = true,
     /// <summary>Optional id of a user-level Docker connection to assign to the
     /// service. Setting it to null unassigns. The controller validates ownership.</summary>
-    Guid? DockerConnectionId = null);
+    Guid? DockerConnectionId = null,
+    /// <summary>V7.9 — optional id of a user-level Proxmox connection to associate
+    /// with the service (the "Proxmox host" picker). Null unassigns. The controller
+    /// validates ownership.</summary>
+    Guid? ProxmoxConnectionId = null);
 
 public sealed record CredentialUpsert(
     [Required, MaxLength(100)] string Key,

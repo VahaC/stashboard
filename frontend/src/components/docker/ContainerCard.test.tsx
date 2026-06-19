@@ -19,6 +19,7 @@ function makeCard(overrides: Partial<DockerContainerCard> = {}): DockerContainer
     watchId: null,
     webResourceId: null,
     iconDataUri: null,
+    proxmoxLink: null,
     ...overrides,
   }
 }

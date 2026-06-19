@@ -1498,6 +1498,99 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         Assert.Equal(0, await _db.ProxmoxGuestIcons.CountAsync());
     }
 
+    // ── V7.9 — guest ↔ service link ("Linked service" dropdown) ─────────────
+
+    private static ProxmoxConnectionResponse OkConn(ActionResult<ProxmoxConnectionResponse> r) =>
+        Assert.IsType<ProxmoxConnectionResponse>(Assert.IsType<OkObjectResult>(r.Result).Value);
+
+    [Fact]
+    public async Task SetGuestService_LinksGuestToService()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        await SeedGuestAsync(conn.Id, vmId: 105, pendingUpdates: 3, monitoringEnabled: true);
+        var serviceId = await SeedServiceAsync();
+        var ctrl = BuildController();
+
+        var response = OkConn(await ctrl.SetGuestService(
+            conn.Id, 105, new ProxmoxGuestServiceLinkRequest(serviceId), CancellationToken.None));
+
+        Assert.Equal(serviceId, response.Guests.Single(g => g.VmId == 105).LinkedServiceId);
+        Assert.True(await _db.WebResourceProxmoxGuestLinks
+            .AnyAsync(l => l.WebResourceId == serviceId && l.ProxmoxConnectionId == conn.Id && l.VmId == 105));
+    }
+
+    [Fact]
+    public async Task SetGuestService_ReplacesExistingLink_SingleServicePerGuest()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        await SeedGuestAsync(conn.Id, vmId: 105, pendingUpdates: 0, monitoringEnabled: true);
+        var svc1 = await SeedServiceAsync(name: "svc-1");
+        var svc2 = await SeedServiceAsync(name: "svc-2");
+        var ctrl = BuildController();
+
+        await ctrl.SetGuestService(conn.Id, 105, new ProxmoxGuestServiceLinkRequest(svc1), CancellationToken.None);
+        await ctrl.SetGuestService(conn.Id, 105, new ProxmoxGuestServiceLinkRequest(svc2), CancellationToken.None);
+
+        var rows = await _db.WebResourceProxmoxGuestLinks.AsNoTracking()
+            .Where(l => l.ProxmoxConnectionId == conn.Id && l.VmId == 105).ToListAsync();
+        Assert.Equal(svc2, Assert.Single(rows).WebResourceId);
+    }
+
+    [Fact]
+    public async Task SetGuestService_NullUnlinks()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        await SeedGuestAsync(conn.Id, vmId: 105, pendingUpdates: 0, monitoringEnabled: true);
+        var serviceId = await SeedServiceAsync();
+        var ctrl = BuildController();
+        await ctrl.SetGuestService(conn.Id, 105, new ProxmoxGuestServiceLinkRequest(serviceId), CancellationToken.None);
+
+        var response = OkConn(await ctrl.SetGuestService(
+            conn.Id, 105, new ProxmoxGuestServiceLinkRequest(null), CancellationToken.None));
+
+        Assert.Null(response.Guests.Single(g => g.VmId == 105).LinkedServiceId);
+        Assert.False(await _db.WebResourceProxmoxGuestLinks.AnyAsync(l => l.ProxmoxConnectionId == conn.Id && l.VmId == 105));
+    }
+
+    [Fact]
+    public async Task SetGuestService_NodeRow_BadRequest()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var serviceId = await SeedServiceAsync();
+        var ctrl = BuildController();
+
+        var result = await ctrl.SetGuestService(conn.Id, 0, new ProxmoxGuestServiceLinkRequest(serviceId), CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task SetGuestService_ForeignService_BadRequest()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        await SeedGuestAsync(conn.Id, vmId: 105, pendingUpdates: 1, monitoringEnabled: true);
+        var foreignService = await SeedServiceAsync(ownerId: _otherUserId);
+        var ctrl = BuildController();
+
+        var result = await ctrl.SetGuestService(conn.Id, 105, new ProxmoxGuestServiceLinkRequest(foreignService), CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.False(await _db.WebResourceProxmoxGuestLinks.AnyAsync(l => l.ProxmoxConnectionId == conn.Id && l.VmId == 105));
+    }
+
+    [Fact]
+    public async Task SetGuestService_ForeignHost_NotFound()
+    {
+        var conn = await SeedConnectionAsync(_otherUserId);
+        await SeedGuestAsync(conn.Id, vmId: 105, pendingUpdates: 1, monitoringEnabled: true);
+        var serviceId = await SeedServiceAsync();
+        var ctrl = BuildController(); // acting as _userId
+
+        var result = await ctrl.SetGuestService(conn.Id, 105, new ProxmoxGuestServiceLinkRequest(serviceId), CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
     private ProxmoxConnectionsController BuildController(Guid? userId = null)
     {
         var controller = new ProxmoxConnectionsController(
@@ -1616,6 +1709,8 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
 
     private async Task ClearAllDataAsync()
     {
+        await _db.ContainerProxmoxLinks.ExecuteDeleteAsync();
+        await _db.WebResourceProxmoxGuestLinks.ExecuteDeleteAsync();
         await _db.ProxmoxUpdateSessions.ExecuteDeleteAsync();
         await _db.ProxmoxMonitoringAudits.ExecuteDeleteAsync();
         await _db.ProxmoxDestroyAudits.ExecuteDeleteAsync();
@@ -1623,7 +1718,23 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         await _db.ProxmoxGuestIcons.ExecuteDeleteAsync();
         await _db.ProxmoxGuests.ExecuteDeleteAsync();
         await _db.ProxmoxConnections.ExecuteDeleteAsync();
+        await _db.WebResources.ExecuteDeleteAsync();
         await _db.Users.ExecuteDeleteAsync();
+    }
+
+    private async Task<Guid> SeedServiceAsync(Guid? ownerId = null, string name = "svc")
+    {
+        var svc = new WebResourceEntity
+        {
+            UserId = ownerId ?? _userId,
+            Name = name,
+            MainUrl = "https://svc.example.com",
+            HealthCheckMethod = HealthCheckMethod.Get,
+        };
+        _db.WebResources.Add(svc);
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+        return svc.Id;
     }
 
     private static string BuildTestConnectionString() =>

@@ -6,6 +6,7 @@ vi.mock('@/lib/api', () => ({ api: { get: vi.fn(), put: vi.fn(), post: vi.fn() }
 // The Logs gate needs the global console flag on; everything else inert.
 vi.mock('@/lib/queries', () => ({
   useFeatures: () => ({ data: { allowProxmoxUpdates: false, allowProxmoxConsole: true } }),
+  useServices: () => ({ data: [] }),
 }))
 // Keep the SSH transport out of the test — just observe open/close.
 vi.mock('@/lib/proxmox-logs', () => ({ openProxmoxLogs: vi.fn() }))

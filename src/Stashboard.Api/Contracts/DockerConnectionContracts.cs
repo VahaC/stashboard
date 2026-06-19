@@ -198,7 +198,25 @@ public sealed record DockerContainerCard(
     /// <summary>V7.8 — the resolved card avatar as a data URI: the user's custom
     /// upload when present, otherwise the official dashboard-icons logo derived
     /// from the image, otherwise <c>null</c> (the UI falls back to a placeholder).</summary>
-    string? IconDataUri = null);
+    string? IconDataUri = null,
+    /// <summary>V7.9 — the Proxmox guest this container is marked as running
+    /// inside, or <c>null</c> when no cross-link is set (or the linked guest no
+    /// longer exists). The card renders an "on &lt;guest&gt;" chip that deep-links
+    /// to that guest's modal.</summary>
+    DockerContainerProxmoxLink? ProxmoxLink = null);
+
+/// <summary>V7.9 — the Proxmox guest a Docker container is cross-linked to, with
+/// the guest's name/type resolved for the card chip and its
+/// <c>(connection, vmid)</c> key for the deep link.</summary>
+public sealed record DockerContainerProxmoxLink(
+    Guid ProxmoxConnectionId,
+    int VmId,
+    string GuestName,
+    Stashboard.Core.Enums.ProxmoxGuestType GuestType);
+
+/// <summary>V7.9 — set a container's "runs on" Proxmox guest cross-link by
+/// <c>(connection, vmid)</c>.</summary>
+public sealed record ContainerProxmoxLinkRequest(Guid ProxmoxConnectionId, int VmId);
 
 public sealed record DockerContainerPortMapping(
     int PrivatePort,

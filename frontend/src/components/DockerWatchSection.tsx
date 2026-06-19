@@ -1,6 +1,14 @@
-﻿import { useState } from 'react'
+﻿import { useMemo, useState } from 'react'
 import { Activity, AlertCircle, Check, ChevronDown, ChevronRight, Copy, Download, HelpCircle, Unlink, Plus, RefreshCw, Settings, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -15,6 +23,8 @@ import {
   useDockerUpdateCommand,
   useRotateConnectionWebhook,
   useServices,
+  useSetContainerProxmoxLink,
+  useRemoveContainerProxmoxLink,
   useTelegramSettings,
   useTestConnectionWatch,
   useTestDockerConnectionPing,
@@ -24,14 +34,17 @@ import {
   useUpdateDockerConnection,
   useUpsertService,
 } from '@/lib/queries'
+import { useProxmoxConnections } from '@/lib/proxmox-queries'
 import type {
   CheckScheduleType,
   DayOfWeek,
   DockerConnection,
   DockerConnectionUpsert,
+  DockerContainerProxmoxLink,
   DockerWatch,
   DockerWatchUpsert,
   LinkedDockerWatchSummary,
+  ProxmoxGuestType,
   Service,
 } from '@/lib/types'
 import {
@@ -336,6 +349,8 @@ function serviceToUpsert(s: Service, dockerConnectionId: string | null) {
     tags: s.tags,
     credentials: s.credentials.map((c) => ({ key: c.key, value: c.value, isSecret: c.isSecret })),
     dockerConnectionId,
+    // Preserve the Proxmox-host assignment — the Docker tab only owns the Docker one.
+    proxmoxConnectionId: s.proxmoxConnectionId,
   }
 }
 
@@ -411,6 +426,8 @@ export function DockerConnectionForm({
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [pingResult, setPingResult] = useState<{ ok: boolean; error: string | null } | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const isTcpTls = form.hostType === 'TcpTls'
   const isSsh = form.hostType === 'Ssh'
@@ -510,18 +527,27 @@ export function DockerConnectionForm({
 
   const onDelete = async () => {
     if (!existing) return
-    if (!confirm(`Delete connection "${existing.name}"?`)) return
+    setDeleteError(null)
     // A connection still used by services is refused server-side with a 409
-    // that names them — surfaced via extractError below.
+    // that names them — surfaced via deleteError below.
     try {
       await remove.mutateAsync(existing.id)
+      setConfirmDelete(false)
       onCancel()
     } catch (e: unknown) {
-      setError(extractError(e) ?? 'Failed to delete connection')
+      setDeleteError(extractError(e) ?? 'Failed to delete connection')
     }
   }
 
+  const hostType = existing ? resolveDockerHostType(existing.hostType) : 'LocalSocket'
+  const deleteHostDetail = hostType === 'TcpTls'
+    ? (existing?.hostUrl || 'remote')
+    : hostType === 'Ssh'
+      ? `ssh://${existing?.sshUsername ?? '?'}@${existing?.sshHost ?? '?'}`
+      : 'local socket'
+
   return (
+    <>
     <div className={`docker-watch-form ${showTitle ? '' : 'docker-watch-form-no-title'}`}>
       {showTitle && (
         <div className="docker-section-header">
@@ -745,7 +771,7 @@ export function DockerConnectionForm({
         </Button>
         <div className="docker-status-row-actions">
           {existing && (
-            <Button type="button" variant="ghost" size="sm" onClick={onDelete} disabled={remove.isPending}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => { setDeleteError(null); setConfirmDelete(true) }} disabled={remove.isPending}>
               <Trash2 className="h-3.5 w-3.5" />
               Delete
             </Button>
@@ -757,6 +783,52 @@ export function DockerConnectionForm({
         </div>
       </div>
     </div>
+
+    {existing && (
+      <Dialog open={confirmDelete} onOpenChange={(v) => { if (!v && !remove.isPending) setConfirmDelete(false) }}>
+        <DialogContent className="remove-confirm-dialog">
+          <DialogHeader>
+            <DialogTitle>Delete Docker host?</DialogTitle>
+            <DialogDescription className="sr-only">
+              Confirm deletion of Docker host {existing.name}
+            </DialogDescription>
+          </DialogHeader>
+
+          <dl className="remove-confirm-summary">
+            <dt>Host</dt>
+            <dd>{existing.name}</dd>
+            <dt>Connection</dt>
+            <dd>{deleteHostDetail}</dd>
+            <dt>Services</dt>
+            <dd>{existing.usageCount} service{existing.usageCount === 1 ? '' : 's'} using this host</dd>
+          </dl>
+
+          <p className="remove-confirm-warning">
+            This permanently removes the Docker host from Stashboard — its connection
+            settings and any TLS / SSH credentials. It does
+            <strong className="warning-strong"> not</strong> touch the Docker host itself or any of
+            its containers. A host still used by services can't be deleted until they're reassigned.
+          </p>
+
+          {deleteError && (
+            <p className="remove-confirm-error">
+              <AlertCircle className="h-3.5 w-3.5 inline" /> {deleteError}
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={remove.isPending} onClick={() => setConfirmDelete(false)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" disabled={remove.isPending} onClick={() => void onDelete()}>
+              <Trash2 className="h-3.5 w-3.5" />
+              {remove.isPending ? 'Deleting…' : 'Delete host'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )}
+    </>
   )
 }
 
@@ -785,7 +857,14 @@ interface FormState {
   awsRegion: string
   /** V3.6 — optional service to link this container to. '' = standalone. */
   webResourceId: string
+  /** V7.9 — optional Proxmox guest this container runs inside, as
+   *  `${proxmoxConnectionId}::${vmId}`. '' = not on Proxmox. Committed by the
+   *  watch form's Save button via the separate container-proxmox-link endpoint. */
+  proxmoxLink: string
 }
+
+const isProxmoxNodeGuest = (t: ProxmoxGuestType) => t === 'Node' || t === 0
+const proxmoxGuestKind = (t: ProxmoxGuestType) => (t === 'Qemu' || t === 2 ? 'VM' : 'LXC')
 
 /** Allowed values for the Hourly dropdown — must match the backend's
  *  `CheckScheduleEvaluator.AllowedHourlyValues`. */
@@ -824,6 +903,7 @@ const emptyForm: FormState = {
   registryAuthType: 'Auto',
   awsRegion: '',
   webResourceId: '',
+  proxmoxLink: '',
 }
 
 export interface DockerWatchFormProps {
@@ -848,18 +928,46 @@ export interface DockerWatchFormProps {
    *  Used by the container modal Watch tab where those panels live in their
    *  own dedicated tabs. */
   hideContainerPanels?: boolean
+  /** V7.9 — the Proxmox guest this container currently runs inside (or null).
+   *  Seeds the "Runs on Proxmox (optional)" field; committed by this form's Save. */
+  proxmoxLink?: DockerContainerProxmoxLink | null
 }
 
 export function DockerWatchForm({
   connectionId, existing, defaultServiceId = null,
   defaultContainerName = '', defaultImageReference = '',
   onCheckNow, onDelete, onCancelNew, onCreated, checkInFlight,
-  hideContainerPanels = false,
+  hideContainerPanels = false, proxmoxLink = null,
 }: DockerWatchFormProps) {
   const create = useCreateConnectionWatch(connectionId)
   const update = useUpdateConnectionWatch(connectionId)
   const testWatch = useTestConnectionWatch(connectionId)
   const servicesQuery = useServices()
+  const proxmoxConnectionsQuery = useProxmoxConnections()
+  const setProxmoxLink = useSetContainerProxmoxLink(connectionId)
+  const clearProxmoxLink = useRemoveContainerProxmoxLink(connectionId)
+  // The guest link as a composite select value; '' = not on Proxmox.
+  const currentProxmoxValue = proxmoxLink ? `${proxmoxLink.proxmoxConnectionId}::${proxmoxLink.vmId}` : ''
+
+  // V7.9 — group services by category for the "Linked service" dropdown, the
+  // same grouping the Services page uses (categoryName → "Uncategorized"),
+  // categories A→Z with "Uncategorized" last, services A→Z within each group.
+  const servicesByCategory = useMemo(() => {
+    const groups = new Map<string, Service[]>()
+    for (const s of servicesQuery.data ?? []) {
+      const key = s.categoryName?.trim() || 'Uncategorized'
+      const arr = groups.get(key) ?? []
+      arr.push(s)
+      groups.set(key, arr)
+    }
+    return [...groups.entries()]
+      .map(([name, items]) => [name, [...items].sort((a, b) => a.name.localeCompare(b.name))] as const)
+      .sort((a, b) => {
+        if (a[0] === 'Uncategorized') return 1
+        if (b[0] === 'Uncategorized') return -1
+        return a[0].localeCompare(b[0])
+      })
+  }, [servicesQuery.data])
   const telegramSettings = useTelegramSettings()
   const telegramConfigured = Boolean(
     telegramSettings.data
@@ -884,6 +992,7 @@ export function DockerWatchForm({
         registryAuthType: resolveRegistryAuthType(existing.registryAuthType),
         awsRegion: existing.awsRegion ?? '',
         webResourceId: existing.webResourceId ?? '',
+        proxmoxLink: currentProxmoxValue,
       }
     : {
         ...emptyForm,
@@ -891,6 +1000,7 @@ export function DockerWatchForm({
         containerName: defaultContainerName,
         imageReference: defaultImageReference,
         label: defaultContainerName,
+        proxmoxLink: currentProxmoxValue,
       })
   const [user, setUser] = useState<SecretField>(() => existingSecret(existing?.hasRegistryCredentials ?? false))
   const [password, setPassword] = useState<SecretField>(() => existingSecret(existing?.hasRegistryCredentials ?? false))
@@ -927,6 +1037,20 @@ export function DockerWatchForm({
     }
   }
 
+  // V7.9 — commit the "Runs on Proxmox" cross-link (separate endpoint), only when
+  // it actually changed. Keyed by container name, so it works watched or not.
+  const commitProxmoxLink = async () => {
+    if (form.proxmoxLink === currentProxmoxValue) return
+    const containerName = form.containerName.trim()
+    if (!containerName) return
+    if (!form.proxmoxLink) {
+      await clearProxmoxLink.mutateAsync(containerName)
+      return
+    }
+    const [proxmoxConnectionId, vmStr] = form.proxmoxLink.split('::')
+    await setProxmoxLink.mutateAsync({ containerName, proxmoxConnectionId, vmId: Number(vmStr) })
+  }
+
   const save = async () => {
     setError(null)
     setFieldErrors({})
@@ -943,6 +1067,7 @@ export function DockerWatchForm({
         await create.mutateAsync(payload)
         onCreated?.()
       }
+      await commitProxmoxLink()
     } catch (e: unknown) {
       const { fieldErrors: fe, globalError } = parseApiErrors(e)
       setFieldErrors(fe)
@@ -1043,39 +1168,79 @@ export function DockerWatchForm({
       {error && <p className="service-modal-error">{error}</p>}
 
       <div className="docker-section-grid">
-        <div className="service-modal-field">
-          <Label className="service-modal-label">
-            Label <span className="service-modal-label-help">(e.g. app, db)</span>
-          </Label>
-          <Input
-            placeholder="app"
-            value={form.label}
-            onChange={(e) => setForm({ ...form, label: e.target.value })}
-            className={labelError ? 'border-destructive' : ''}
-          />
-          {labelError && <p className="service-modal-field-error">{labelError}</p>}
-        </div>
+        {/* V7.9 — Label + Linked service + Runs on Proxmox share one row on
+            desktop and stack on narrow screens. */}
+        <div className="docker-watch-link-row docker-section-field-full">
+          <div className="service-modal-field">
+            <Label className="service-modal-label">
+              Label <span className="service-modal-label-help">(e.g. app, db)</span>
+            </Label>
+            <Input
+              placeholder="app"
+              value={form.label}
+              onChange={(e) => setForm({ ...form, label: e.target.value })}
+              className={labelError ? 'border-destructive' : ''}
+            />
+            {labelError && <p className="service-modal-field-error">{labelError}</p>}
+          </div>
 
-        <div className="service-modal-field">
-          <Label className="service-modal-label">
-            Linked service <span className="service-modal-label-help">(optional)</span>
-            <span
-              title="Link this container to a service so its update status shows on the dashboard. Leave as standalone to track it on its own."
-              className="docker-label-help"
+          <div className="service-modal-field">
+            <Label className="service-modal-label">
+              Linked service <span className="service-modal-label-help">(optional)</span>
+              <span
+                title="Link this container to a service so its update status shows on the dashboard. Leave as standalone to track it on its own."
+                className="docker-label-help"
+              >
+                <HelpCircle className="h-3 w-3 inline" />
+              </span>
+            </Label>
+            <select
+              className="service-modal-select"
+              value={form.webResourceId}
+              onChange={(e) => setForm({ ...form, webResourceId: e.target.value })}
             >
-              <HelpCircle className="h-3 w-3 inline" />
-            </span>
-          </Label>
-          <select
-            className="service-modal-select"
-            value={form.webResourceId}
-            onChange={(e) => setForm({ ...form, webResourceId: e.target.value })}
-          >
-            <option value="">— standalone container —</option>
-            {(servicesQuery.data ?? []).map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
+              <option value="">— standalone container —</option>
+              {servicesByCategory.map(([groupName, items]) => (
+                <optgroup key={groupName} label={groupName}>
+                  {items.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+
+          <div className="service-modal-field">
+            <Label className="service-modal-label">
+              Runs on Proxmox <span className="service-modal-label-help">(optional)</span>
+              <span
+                title="The Proxmox LXC / VM this container physically runs inside (Docker living in a Proxmox LXC / VM). The container card then shows an 'on <name>' chip linking to it. Saved with this form's Save button."
+                className="docker-label-help"
+              >
+                <HelpCircle className="h-3 w-3 inline" />
+              </span>
+            </Label>
+            <select
+              className="service-modal-select"
+              value={form.proxmoxLink}
+              onChange={(e) => setForm({ ...form, proxmoxLink: e.target.value })}
+            >
+              <option value="">— not on Proxmox —</option>
+              {(proxmoxConnectionsQuery.data ?? []).map((c) => {
+                const guests = c.guests.filter((g) => !isProxmoxNodeGuest(g.guestType))
+                if (guests.length === 0) return null
+                return (
+                  <optgroup key={c.id} label={c.name}>
+                    {guests.map((g) => (
+                      <option key={g.vmId} value={`${c.id}::${g.vmId}`}>
+                        {g.name} · {proxmoxGuestKind(g.guestType)} {g.vmId}
+                      </option>
+                    ))}
+                  </optgroup>
+                )
+              })}
+            </select>
+          </div>
         </div>
 
         <div className="service-modal-field docker-section-field-full">

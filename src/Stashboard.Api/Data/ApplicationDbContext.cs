@@ -28,6 +28,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<DockerWatchEntity> DockerWatches => Set<DockerWatchEntity>();
     public DbSet<DockerUpdateAttemptEntity> DockerUpdateAttempts => Set<DockerUpdateAttemptEntity>();
     public DbSet<ContainerIconEntity> ContainerIcons => Set<ContainerIconEntity>();
+    public DbSet<ContainerProxmoxLinkEntity> ContainerProxmoxLinks => Set<ContainerProxmoxLinkEntity>();
+    public DbSet<WebResourceProxmoxGuestLinkEntity> WebResourceProxmoxGuestLinks => Set<WebResourceProxmoxGuestLinkEntity>();
     public DbSet<ComposeChangeAuditEntity> ComposeChangeAudits => Set<ComposeChangeAuditEntity>();
     public DbSet<HostShellSessionEntity> HostShellSessions => Set<HostShellSessionEntity>();
     public DbSet<DockerExecSessionEntity> DockerExecSessions => Set<DockerExecSessionEntity>();
@@ -115,6 +117,11 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.HasOne(s => s.DockerConnection)
                 .WithMany()
                 .HasForeignKey(s => s.DockerConnectionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            // V7.9 — optional Proxmox host association, mirroring the Docker one.
+            e.HasOne(s => s.ProxmoxConnection)
+                .WithMany()
+                .HasForeignKey(s => s.ProxmoxConnectionId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
@@ -360,6 +367,49 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.HasOne(g => g.ProxmoxConnection)
                 .WithMany()
                 .HasForeignKey(g => g.ProxmoxConnectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<WebResourceProxmoxGuestLinkEntity>(e =>
+        {
+            // V7.9 — a service↔guest link, keyed by the guest's stable
+            // (connection, vmid) natural key. One link per (service, connection, vmid).
+            e.HasIndex(l => new { l.WebResourceId, l.ProxmoxConnectionId, l.VmId }).IsUnique();
+            // Speeds up resolving every link's guest detail per host.
+            e.HasIndex(l => new { l.ProxmoxConnectionId, l.VmId });
+            // Deleting the service cascades its links away (the guests live on).
+            e.HasOne(l => l.WebResource)
+                .WithMany(s => s.ProxmoxGuestLinks)
+                .HasForeignKey(l => l.WebResourceId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Deleting the Proxmox host removes links pointing at its guests —
+            // the link is meaningless without the host, mirroring the guest /
+            // icon convention.
+            e.HasOne<ProxmoxConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(l => l.ProxmoxConnectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ContainerProxmoxLinkEntity>(e =>
+        {
+            // V7.9 — one cross-link per (user, connection, container), mirroring
+            // ContainerIconEntity. Unique so the controller can upsert by the triple.
+            e.HasIndex(l => new { l.UserId, l.DockerConnectionId, l.ContainerName }).IsUnique();
+            // Deleting the Docker host removes its container links.
+            e.HasOne<DockerConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(l => l.DockerConnectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Deleting the Proxmox host removes links pointing at its guests.
+            e.HasOne<ProxmoxConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(l => l.ProxmoxConnectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Owner cascade — deleting a user removes their container links.
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(l => l.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

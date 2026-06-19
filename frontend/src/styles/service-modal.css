@@ -74,6 +74,12 @@
   opacity: 0.5;
 }
 
+.service-modal-tab-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+}
+
 .service-modal-tab-dot {
   display: inline-block;
   width: 0.5rem;
@@ -200,7 +206,7 @@
 }
 
 .service-modal-select {
-  height: 2rem;
+  height: 2.25rem;
   width: 100%;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
@@ -566,6 +572,20 @@
 
 .docker-section-field-full {
   grid-column: 1 / -1;
+}
+
+/* V7.9 — Label + Linked service + Runs on Proxmox in one row on desktop,
+   stacked on narrow screens. */
+.docker-watch-link-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .docker-watch-link-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 /* V7.1 — host→container Compose path mapping: two prefix inputs side by side,

@@ -7,6 +7,7 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  ExternalLink,
   FileText,
   HardDrive,
   Info,
@@ -50,6 +51,7 @@ import {
   useProxmoxTaskLog,
   useProxmoxUpdateCommand,
   useResetGuestIcon,
+  useSetProxmoxGuestService,
   useSetProxmoxLxcMonitoring,
   useSnoozeProxmoxLxc,
   useUpdateProxmoxLxcConfig,
@@ -81,7 +83,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { useFeatures } from '@/lib/queries'
+import { useFeatures, useServices } from '@/lib/queries'
+import { Link } from 'react-router-dom'
 import { LxcConsolePanel } from '@/components/proxmox/LxcConsolePanel'
 import { LxcDestroyDialog } from '@/components/proxmox/LxcDestroyDialog'
 import { LxcPowerConfirmDialog, type LxcPowerAction } from '@/components/proxmox/LxcPowerConfirmDialog'
@@ -322,6 +325,92 @@ function GuestIconSection({ connectionId, vmId, name }: { connectionId: string; 
   )
 }
 
+// ── Linked service (Overview tab) ────────────────────────────────────────────
+
+/**
+ * V7.9 — link this guest to a single Stashboard service, the Proxmox analogue of
+ * a Docker watch's "Linked service" dropdown. Picking a service (or "standalone")
+ * applies immediately; the linked service then shows a Proxmox update badge on its
+ * dashboard card. Deep-links to the linked service.
+ */
+function GuestServiceLinkSection({ connectionId, guest }: { connectionId: string; guest: ProxmoxGuest }) {
+  const servicesQuery = useServices()
+  const setService = useSetProxmoxGuestService(connectionId)
+  const [error, setError] = useState<string | null>(null)
+
+  const services = servicesQuery.data ?? []
+  // Group services by category — the same grouping the Services page uses
+  // (categoryName → "Uncategorized"), categories A→Z with "Uncategorized" last.
+  const servicesByCategory = useMemo(() => {
+    const groups = new Map<string, typeof services>()
+    for (const s of services) {
+      const key = s.categoryName?.trim() || 'Uncategorized'
+      const arr = groups.get(key) ?? []
+      arr.push(s)
+      groups.set(key, arr)
+    }
+    return [...groups.entries()]
+      .map(([name, items]) => [name, [...items].sort((a, b) => a.name.localeCompare(b.name))] as const)
+      .sort((a, b) => {
+        if (a[0] === 'Uncategorized') return 1
+        if (b[0] === 'Uncategorized') return -1
+        return a[0].localeCompare(b[0])
+      })
+  }, [servicesQuery.data])
+
+  // Auto-apply on select — this lives on Overview (no Save button), consistent
+  // with the Icon control right above it.
+  const onChange = async (value: string) => {
+    setError(null)
+    try {
+      await setService.mutateAsync({ vmId: guest.vmId, webResourceId: value || null })
+    } catch (e) {
+      setError(getApiErrorMessage(e) ?? 'Failed to update linked service')
+    }
+  }
+
+  return (
+    <div className="container-modal-proxmox-link">
+      <div className="docker-connection-picker-row" style={{ alignItems: 'center' }}>
+        <select
+          className="service-modal-select"
+          style={{ flex: 1, minWidth: 0 }}
+          value={guest.linkedServiceId ?? ''}
+          disabled={setService.isPending || servicesQuery.isLoading}
+          onChange={(e) => void onChange(e.target.value)}
+        >
+          <option value="">— standalone (no service) —</option>
+          {servicesByCategory.map(([groupName, items]) => (
+            <optgroup key={groupName} label={groupName}>
+              {items.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        {guest.linkedServiceId && (
+          <Link
+            to={`/?service=${guest.linkedServiceId}`}
+            className="docker-instances-card-watch-link"
+            style={{ marginLeft: '0.5rem', flexShrink: 0, whiteSpace: 'nowrap' }}
+          >
+            <ExternalLink className="h-3 w-3" /> Open service
+          </Link>
+        )}
+      </div>
+      <p className="text-xs text-[var(--muted-foreground)] mt-1">
+        Link this LXC / VM to a service to show its pending-update status on the service's
+        dashboard card. A service can link both Docker containers and Proxmox LXCs / VMs.
+      </p>
+      {error && (
+        <p className="docker-instances-card-action-error">
+          <AlertCircle className="h-3.5 w-3.5 inline" /> {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ── Lifecycle (shared by the Overview tab) ───────────────────────────────────
 
 function LifecycleSection({ guest, connection, isVm, onClose }: { guest: ProxmoxGuest; connection: ProxmoxConnection; isVm: boolean; onClose: () => void }) {
@@ -478,6 +567,11 @@ function WatchTab({ guest, connection }: { guest: ProxmoxGuest; connection: Prox
 
   return (
     <div className="container-modal-overview">
+      <section className="container-modal-section">
+        <h3 className="container-modal-section-title">Linked service</h3>
+        <GuestServiceLinkSection connectionId={connection.id} guest={guest} />
+      </section>
+
       <section className="container-modal-section">
         <h3 className="container-modal-section-title">Monitoring</h3>
         {/* Docker-watch parity: the same checkbox + helper-text pattern as the

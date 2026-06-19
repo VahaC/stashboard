@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 vi.mock('@/lib/api', () => ({ api: { get: vi.fn(), put: vi.fn(), post: vi.fn() } }))
 // useFeatures (pulled in by sibling tabs) — keep it inert.
-vi.mock('@/lib/queries', () => ({ useFeatures: () => ({ data: { allowProxmoxUpdates: false, allowProxmoxConsole: false } }) }))
+vi.mock('@/lib/queries', () => ({ useFeatures: () => ({ data: { allowProxmoxUpdates: false, allowProxmoxConsole: false } }), useServices: () => ({ data: [] }) }))
 
 import { api } from '@/lib/api'
 import { LxcModal } from './LxcModal'

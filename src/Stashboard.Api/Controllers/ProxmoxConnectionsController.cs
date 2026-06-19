@@ -58,8 +58,24 @@ public class ProxmoxConnectionsController(
         var byConnection = guests.GroupBy(g => g.ProxmoxConnectionId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<ProxmoxGuestEntity>)g.ToList());
 
+        // V7.9 — per-guest linked service, across all the user's hosts at once.
+        var allLinks = await db.WebResourceProxmoxGuestLinks.AsNoTracking()
+            .Where(l => ids.Contains(l.ProxmoxConnectionId))
+            .Join(db.WebResources.Where(s => s.UserId == userId),
+                l => l.WebResourceId, s => s.Id,
+                (l, s) => new { l.ProxmoxConnectionId, l.VmId, ServiceId = s.Id, ServiceName = s.Name })
+            .ToListAsync(cancellationToken);
+        var linksByConnection = allLinks
+            .GroupBy(l => l.ProxmoxConnectionId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyDictionary<int, (Guid, string)>)g
+                    .GroupBy(x => x.VmId)
+                    .ToDictionary(x => x.Key, x => (x.First().ServiceId, x.First().ServiceName)));
+
         return Ok(connections
-            .Select(c => mapper.ToResponse(c, byConnection.GetValueOrDefault(c.Id, [])))
+            .Select(c => mapper.ToResponse(
+                c, byConnection.GetValueOrDefault(c.Id, []), linksByConnection.GetValueOrDefault(c.Id)))
             .ToList());
     }
 
@@ -68,7 +84,7 @@ public class ProxmoxConnectionsController(
     {
         var connection = await LoadOwnedAsync(id, tracking: false, cancellationToken);
         if (connection is null) return NotFound();
-        return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+        return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
     }
 
     [HttpPost]
@@ -108,7 +124,7 @@ public class ProxmoxConnectionsController(
             return Conflict(new { error = $"A Proxmox host with name '{connection.Name}' already exists." });
         }
 
-        return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+        return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
     }
 
     [HttpDelete("{id:guid}")]
@@ -144,7 +160,7 @@ public class ProxmoxConnectionsController(
         if (connection is null) return NotFound();
 
         await scanService.CheckConnectionAsync(connection, cancellationToken);
-        return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+        return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
     }
 
     /// <summary>
@@ -197,7 +213,7 @@ public class ProxmoxConnectionsController(
         }
         await db.SaveChangesAsync(cancellationToken);   // no-op SQL when nothing actually changed
 
-        return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+        return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
     }
 
     // ── V7.8 — guest card icons ──────────────────────────────────────────────
@@ -330,7 +346,52 @@ public class ProxmoxConnectionsController(
 
         await db.SaveChangesAsync(cancellationToken);
 
-        return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+        return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
+    }
+
+    /// <summary>
+    /// V7.9 — link this guest to a single service (or unlink with a null
+    /// <c>webResourceId</c>), the Proxmox analogue of a Docker watch's "Linked
+    /// service" dropdown. Replaces any existing service link for the guest, so a
+    /// guest belongs to at most one service. Returns the whole host so the client's
+    /// cached card list refreshes with the new link.
+    /// </summary>
+    [HttpPut("{id:guid}/guests/{vmId:int}/service")]
+    public async Task<ActionResult<ProxmoxConnectionResponse>> SetGuestService(
+        Guid id, int vmId, [FromBody] ProxmoxGuestServiceLinkRequest request, CancellationToken cancellationToken)
+    {
+        if (vmId == 0)
+            return BadRequest(new { error = "The Proxmox node cannot be linked — link an LXC or VM guest." });
+
+        var connection = await LoadOwnedAsync(id, tracking: false, cancellationToken);
+        if (connection is null) return NotFound();
+
+        var guestExists = await db.ProxmoxGuests.AsNoTracking().AnyAsync(
+            g => g.ProxmoxConnectionId == id && g.VmId == vmId && g.GuestType != ProxmoxGuestType.Node,
+            cancellationToken);
+        if (!guestExists) return NotFound();
+
+        var userId = UserId;
+        if (request.WebResourceId is { } serviceId
+            && !await db.WebResources.AnyAsync(s => s.Id == serviceId && s.UserId == userId, cancellationToken))
+            return BadRequest(new { error = "Service does not exist." });
+
+        // Single-service invariant: drop any existing link(s) for this guest, then
+        // add the chosen one (a null request just clears).
+        var existing = await db.WebResourceProxmoxGuestLinks
+            .Where(l => l.ProxmoxConnectionId == id && l.VmId == vmId)
+            .ToListAsync(cancellationToken);
+        if (existing.Count > 0) db.WebResourceProxmoxGuestLinks.RemoveRange(existing);
+        if (request.WebResourceId is { } svc)
+            db.WebResourceProxmoxGuestLinks.Add(new WebResourceProxmoxGuestLinkEntity
+            {
+                WebResourceId = svc,
+                ProxmoxConnectionId = id,
+                VmId = vmId,
+            });
+        await db.SaveChangesAsync(cancellationToken);
+
+        return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
     }
 
     /// <summary>
@@ -366,7 +427,7 @@ public class ProxmoxConnectionsController(
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+        return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
     }
 
     /// <summary>
@@ -407,7 +468,7 @@ public class ProxmoxConnectionsController(
             AddMonitoringAudit(connection, guest, ProxmoxMonitoringChangeType.SnoozeCleared, bulk: false);
 
         await db.SaveChangesAsync(cancellationToken);
-        return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+        return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
     }
 
     /// <summary>Writes one monitoring-change audit row (host / guest details
@@ -464,11 +525,11 @@ public class ProxmoxConnectionsController(
             guest.PendingUpdates = null;
             guest.UpdatedUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
-            return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+            return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
         }
 
         await scanService.CheckConnectionAsync(connection, cancellationToken);
-        return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+        return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
     }
 
     /// <summary>V6.2 — read one LXC's full configuration + live status for the
@@ -648,7 +709,7 @@ public class ProxmoxConnectionsController(
             }
         }
 
-        return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+        return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
     }
 
     // ── V6.14 — QEMU VM read endpoints (Config / Stats / Tasks) ──────────────────
@@ -905,7 +966,7 @@ public class ProxmoxConnectionsController(
         // Re-scan so the brand-new container appears as a card immediately (the
         // scan's upsert adds the new guest), then return the refreshed host.
         await scanService.CheckConnectionAsync(connection, cancellationToken);
-        return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+        return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
     }
 
     /// <summary>V6.13.1 — the next free guest id (<c>GET /cluster/nextid</c>) to
@@ -1519,7 +1580,7 @@ public class ProxmoxConnectionsController(
             connection.WebhookToken = candidate;
             connection.UpdatedUtc = DateTime.UtcNow;
             await db.SaveChangesAsync(cancellationToken);
-            return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+            return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
         }
 
         return StatusCode(StatusCodes.Status500InternalServerError,
@@ -1536,13 +1597,13 @@ public class ProxmoxConnectionsController(
         if (connection is null) return NotFound();
 
         if (connection.WebhookToken is null && connection.LastWebhookReceivedUtc is null)
-            return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+            return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
 
         connection.WebhookToken = null;
         connection.LastWebhookReceivedUtc = null;
         connection.UpdatedUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
-        return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+        return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
     }
 
     /// <summary>
@@ -1646,6 +1707,29 @@ public class ProxmoxConnectionsController(
         await db.ProxmoxGuests.AsNoTracking()
             .Where(g => g.ProxmoxConnectionId == connectionId)
             .ToListAsync(cancellationToken);
+
+    /// <summary>V7.9 — map a connection with its guests' linked-service info resolved.</summary>
+    private async Task<ProxmoxConnectionResponse> ToResponseAsync(
+        ProxmoxConnectionEntity connection, IReadOnlyList<ProxmoxGuestEntity> guests, CancellationToken cancellationToken) =>
+        mapper.ToResponse(connection, guests, await LoadGuestServiceLinksAsync(connection.Id, cancellationToken));
+
+    /// <summary>V7.9 — each guest's linked service on this host, keyed by vmid.
+    /// Restricted to services the current user owns (the link is single-service
+    /// per guest, so first-wins is exact).</summary>
+    private async Task<IReadOnlyDictionary<int, (Guid ServiceId, string ServiceName)>> LoadGuestServiceLinksAsync(
+        Guid connectionId, CancellationToken cancellationToken)
+    {
+        var userId = UserId;
+        var links = await db.WebResourceProxmoxGuestLinks.AsNoTracking()
+            .Where(l => l.ProxmoxConnectionId == connectionId)
+            .Join(db.WebResources.Where(s => s.UserId == userId),
+                l => l.WebResourceId, s => s.Id,
+                (l, s) => new { l.VmId, ServiceId = s.Id, ServiceName = s.Name })
+            .ToListAsync(cancellationToken);
+        return links
+            .GroupBy(l => l.VmId)
+            .ToDictionary(g => g.Key, g => (g.First().ServiceId, g.First().ServiceName));
+    }
 
     private static bool IsUniqueNameViolation(DbUpdateException ex) =>
         UniqueConstraintViolation.Matches(ex,

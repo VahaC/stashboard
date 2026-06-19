@@ -673,6 +673,21 @@
 }
 .dark .dock .docker-instances-card-port { background: var(--accent); }
 
+/* V7.9 — "on <guest>" chip linking a container to its Proxmox host. Same chip
+   scale as the port chips, tinted Proxmox orange, with room for the leading icon. */
+.cc-proxmox-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, #e57000 16%, transparent);
+  color: #e57000;
+  text-decoration: none;
+}
+.cc-proxmox-chip:hover { text-decoration: underline; }
+
 @media (max-width: 380px) {
   .dock .cc-actions-secondary .ui-button-ghost { width: 26px; height: 26px; }
   .dock .cc-lifecycle .ui-button { padding: 4px 7px; }

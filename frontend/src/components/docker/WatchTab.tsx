@@ -61,6 +61,7 @@ export function WatchTab({ connectionId, card, serviceContext }: WatchTabProps) 
       onCreated={() => setCreating(false)}
       checkInFlight={checkNow.isPending}
       hideContainerPanels
+      proxmoxLink={card.proxmoxLink}
     />
   )
 }

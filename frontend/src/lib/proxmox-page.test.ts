@@ -34,6 +34,8 @@ const guest = (over: Partial<ProxmoxGuest> = {}): ProxmoxGuest => ({
   lastCheckedUtc: null,
   monitoringEnabled: true,
   monitoringSnoozedUntil: null,
+  linkedServiceId: null,
+  linkedServiceName: null,
   ...over,
 })
 

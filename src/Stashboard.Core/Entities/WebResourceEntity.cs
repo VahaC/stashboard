@@ -76,10 +76,27 @@ public class WebResourceEntity : AuditableEntity
     public Guid? DockerConnectionId { get; set; }
     public DockerConnectionEntity? DockerConnection { get; set; }
 
+    /// <summary>V7.9 — optional reference to a user-level
+    /// <see cref="ProxmoxConnectionEntity"/>, the exact analogue of
+    /// <see cref="DockerConnectionId"/>: the service modal's Proxmox tab shows a
+    /// "Proxmox host" picker mirroring the Docker host picker. Individual guests
+    /// are still linked from the Proxmox page (<see cref="ProxmoxGuestLinks"/>);
+    /// this is the host the service is associated with.</summary>
+    public Guid? ProxmoxConnectionId { get; set; }
+    public ProxmoxConnectionEntity? ProxmoxConnection { get; set; }
+
     /// <summary>Docker watches attached to this service — one per container the user
     /// wants tracked. A composite service (e.g. WordPress = app container + MariaDB
     /// container) ends up with multiple entries. Empty when the user hasn't enabled
     /// Docker tracking. The dashboard aggregates these statuses to drive the
     /// "Update available" badge without a per-card fetch.</summary>
     public ICollection<DockerWatchEntity> DockerWatches { get; set; } = new List<DockerWatchEntity>();
+
+    /// <summary>V7.9 — Proxmox guests (LXC / VM) linked to this service. Unlike
+    /// <see cref="DockerWatches"/> these are not owned here — the guests are
+    /// auto-discovered on their Proxmox connection; the link rows just reference
+    /// them by <c>(connection, vmid)</c>. The dashboard aggregates the linked
+    /// guests' pending-update state into a Proxmox "Update available" badge, shown
+    /// alongside the Docker one. Empty when no Proxmox guest is linked.</summary>
+    public ICollection<WebResourceProxmoxGuestLinkEntity> ProxmoxGuestLinks { get; set; } = new List<WebResourceProxmoxGuestLinkEntity>();
 }

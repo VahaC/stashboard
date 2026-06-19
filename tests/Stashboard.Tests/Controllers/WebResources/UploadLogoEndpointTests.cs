@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
@@ -9,41 +8,28 @@ namespace Stashboard.Tests.Controllers.WebResources;
 
 public class UploadLogoEndpointTests : WebResourcesControllerTestBase
 {
-    private static IFormFile MakeFormFile(
-        string content = "fake-image-data",
-        string fileName = "logo.png",
-        string contentType = "image/png")
-    {
-        var bytes = System.Text.Encoding.UTF8.GetBytes(content);
-        var stream = new MemoryStream(bytes);
-        var mock = new Mock<IFormFile>();
-        mock.Setup(f => f.FileName).Returns(fileName);
-        mock.Setup(f => f.Length).Returns(bytes.Length);
-        mock.Setup(f => f.ContentType).Returns(contentType);
-        mock.Setup(f => f.CopyToAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .Callback<Stream, CancellationToken>((s, _) => { stream.Position = 0; stream.CopyTo(s); })
-            .Returns(Task.CompletedTask);
-        mock.Setup(f => f.OpenReadStream()).Returns(() => { stream.Position = 0; return stream; });
-        return mock.Object;
-    }
+    // A 3-byte payload base64-encodes to "AQID" — a minimal valid image data URI
+    // for the endpoint's ImageDataUri validation.
+    private static ContainerIconUploadRequest MakeRequest(string mime = "image/png")
+        => new($"data:{mime};base64,AQID");
 
     [Fact]
-    public async Task UploadLogo_ReturnsOk_AndDatabaseHasCustomLogoPath()
+    public async Task UploadLogo_ReturnsOk_AndStoresBase64InDatabase_WithNoFilePath()
     {
         var svc = await _dataFactory.ServiceAsync();
         var ctrl = BuildController();
+        var request = MakeRequest();
 
-        var result = await ctrl.UploadLogo(svc.Id, MakeFormFile(), CancellationToken.None);
+        var result = await ctrl.UploadLogo(svc.Id, request, CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
-        var path = ok.Value!.GetType().GetProperty("path")!.GetValue(ok.Value) as string;
-        Assert.NotNull(path);
-        Assert.StartsWith("/uploads/logos/", path);
-        Assert.EndsWith(".png", path);
+        var dataUri = ok.Value!.GetType().GetProperty("dataUri")!.GetValue(ok.Value) as string;
+        Assert.Equal(request.DataUri, dataUri);
 
-        // Verify DB was updated
+        // The image lives purely in the database — base64 set, no file reference.
         var dbRow = await _dbContext.WebResources.AsNoTracking().SingleAsync(s => s.Id == svc.Id);
-        Assert.Equal(path, dbRow.CustomLogoPath);
+        Assert.Equal(request.DataUri, dbRow.LogoBase64);
+        Assert.Null(dbRow.CustomLogoPath);
     }
 
     [Fact]
@@ -55,59 +41,49 @@ public class UploadLogoEndpointTests : WebResourcesControllerTestBase
             (await _dbContext.WebResources.AsNoTracking().SingleAsync(s => s.Id == svc.Id)).LogoSource);
 
         var ctrl = BuildController();
-        await ctrl.UploadLogo(svc.Id, MakeFormFile(), CancellationToken.None);
+        await ctrl.UploadLogo(svc.Id, MakeRequest(), CancellationToken.None);
 
         var dbRow = await _dbContext.WebResources.AsNoTracking().SingleAsync(s => s.Id == svc.Id);
         Assert.Equal(LogoSource.Custom, dbRow.LogoSource);
     }
 
     [Fact]
-    public async Task UploadLogo_PreservesFileExtension_InDatabasePath()
+    public async Task UploadLogo_ClearsLegacyFilePath_OnReupload()
     {
         var svc = await _dataFactory.ServiceAsync();
-        var ctrl = BuildController();
+        var editable = await _dbContext.WebResources.SingleAsync(s => s.Id == svc.Id);
+        editable.CustomLogoPath = "/uploads/logos/legacy.png";
+        editable.LogoSource = LogoSource.Custom;
+        await _dbContext.SaveChangesAsync();
 
-        await ctrl.UploadLogo(svc.Id, MakeFormFile(fileName: "icon.svg", contentType: "image/svg+xml"), CancellationToken.None);
+        var ctrl = BuildController();
+        await ctrl.UploadLogo(svc.Id, MakeRequest(), CancellationToken.None);
 
         var dbRow = await _dbContext.WebResources.AsNoTracking().SingleAsync(s => s.Id == svc.Id);
-        Assert.True(dbRow.CustomLogoPath!.EndsWith(".svg"));
+        Assert.Null(dbRow.CustomLogoPath);
+        Assert.NotNull(dbRow.LogoBase64);
     }
 
     [Theory]
-    [InlineData("image/png", "logo.png")]
-    [InlineData("image/jpeg", "logo.jpg")]
-    [InlineData("image/svg+xml", "logo.svg")]
-    [InlineData("image/webp", "logo.webp")]
-    public async Task UploadLogo_AcceptsImageContentType_AndSavesPathInDatabase(string contentType, string fileName)
+    [InlineData("image/png")]
+    [InlineData("image/jpeg")]
+    [InlineData("image/svg+xml")]
+    [InlineData("image/webp")]
+    public async Task UploadLogo_AcceptsImageDataUri_AndStoresInDatabase(string mime)
     {
         var svc = await _dataFactory.ServiceAsync();
         var ctrl = BuildController();
 
-        var result = await ctrl.UploadLogo(svc.Id, MakeFormFile(fileName: fileName, contentType: contentType), CancellationToken.None);
+        var result = await ctrl.UploadLogo(svc.Id, MakeRequest(mime), CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result.Result);
         var dbRow = await _dbContext.WebResources.AsNoTracking().SingleAsync(s => s.Id == svc.Id);
-        Assert.NotNull(dbRow.CustomLogoPath);
+        Assert.NotNull(dbRow.LogoBase64);
         Assert.Equal(LogoSource.Custom, dbRow.LogoSource);
     }
 
     [Fact]
-    public async Task UploadLogo_TwoUploads_GenerateUniquePaths_InDatabase()
-    {
-        var svc1 = await _dataFactory.ServiceAsync(name: "S1");
-        var svc2 = await _dataFactory.ServiceAsync(name: "S2");
-        var ctrl = BuildController();
-
-        await ctrl.UploadLogo(svc1.Id, MakeFormFile(), CancellationToken.None);
-        await ctrl.UploadLogo(svc2.Id, MakeFormFile(), CancellationToken.None);
-
-        var path1 = (await _dbContext.WebResources.AsNoTracking().SingleAsync(s => s.Id == svc1.Id)).CustomLogoPath;
-        var path2 = (await _dbContext.WebResources.AsNoTracking().SingleAsync(s => s.Id == svc2.Id)).CustomLogoPath;
-        Assert.NotEqual(path1, path2);
-    }
-
-    [Fact]
-    public async Task UploadLogo_ReturnsBadRequest_WhenFileIsNull_AndDatabaseIsUnchanged()
+    public async Task UploadLogo_ReturnsBadRequest_WhenRequestIsNull_AndDatabaseIsUnchanged()
     {
         var svc = await _dataFactory.ServiceAsync();
         var ctrl = BuildController();
@@ -116,41 +92,38 @@ public class UploadLogoEndpointTests : WebResourcesControllerTestBase
 
         Assert.IsType<BadRequestObjectResult>(result.Result);
         var dbRow = await _dbContext.WebResources.AsNoTracking().SingleAsync(s => s.Id == svc.Id);
-        Assert.Null(dbRow.CustomLogoPath);
+        Assert.Null(dbRow.LogoBase64);
         Assert.Equal(LogoSource.AutoFavicon, dbRow.LogoSource);
     }
 
     [Fact]
-    public async Task UploadLogo_ReturnsBadRequest_WhenFileIsEmpty_AndDatabaseIsUnchanged()
+    public async Task UploadLogo_ReturnsBadRequest_WhenDataUriIsEmpty_AndDatabaseIsUnchanged()
     {
         var svc = await _dataFactory.ServiceAsync();
         var ctrl = BuildController();
-        var emptyFile = new Mock<IFormFile>();
-        emptyFile.Setup(f => f.Length).Returns(0);
-        emptyFile.Setup(f => f.ContentType).Returns("image/png");
 
-        var result = await ctrl.UploadLogo(svc.Id, emptyFile.Object, CancellationToken.None);
+        var result = await ctrl.UploadLogo(svc.Id, new ContainerIconUploadRequest(""), CancellationToken.None);
 
         Assert.IsType<BadRequestObjectResult>(result.Result);
         var dbRow = await _dbContext.WebResources.AsNoTracking().SingleAsync(s => s.Id == svc.Id);
-        Assert.Null(dbRow.CustomLogoPath);
+        Assert.Null(dbRow.LogoBase64);
     }
 
     [Theory]
-    [InlineData("application/pdf", "doc.pdf")]
-    [InlineData("text/html", "page.html")]
-    [InlineData("application/octet-stream", "binary.bin")]
-    [InlineData("video/mp4", "video.mp4")]
-    public async Task UploadLogo_ReturnsBadRequest_WhenNotAnImage_AndDatabaseIsUnchanged(string contentType, string fileName)
+    [InlineData("data:application/pdf;base64,AQID")]
+    [InlineData("data:text/html;base64,AQID")]
+    [InlineData("data:image/png;base64,not-valid-base64!!")]
+    [InlineData("https://example.com/logo.png")]
+    public async Task UploadLogo_ReturnsBadRequest_WhenNotAValidImageDataUri_AndDatabaseIsUnchanged(string dataUri)
     {
         var svc = await _dataFactory.ServiceAsync();
         var ctrl = BuildController();
 
-        var result = await ctrl.UploadLogo(svc.Id, MakeFormFile(fileName: fileName, contentType: contentType), CancellationToken.None);
+        var result = await ctrl.UploadLogo(svc.Id, new ContainerIconUploadRequest(dataUri), CancellationToken.None);
 
         Assert.IsType<BadRequestObjectResult>(result.Result);
         var dbRow = await _dbContext.WebResources.AsNoTracking().SingleAsync(s => s.Id == svc.Id);
-        Assert.Null(dbRow.CustomLogoPath);
+        Assert.Null(dbRow.LogoBase64);
         Assert.Equal(LogoSource.AutoFavicon, dbRow.LogoSource);
     }
 
@@ -160,7 +133,7 @@ public class UploadLogoEndpointTests : WebResourcesControllerTestBase
         var nonExistentId = Guid.NewGuid();
         var ctrl = BuildController();
 
-        var result = await ctrl.UploadLogo(nonExistentId, MakeFormFile(), CancellationToken.None);
+        var result = await ctrl.UploadLogo(nonExistentId, MakeRequest(), CancellationToken.None);
 
         Assert.IsType<NotFoundResult>(result.Result);
         Assert.False(await _dbContext.WebResources.AnyAsync(s => s.Id == nonExistentId));
@@ -172,13 +145,13 @@ public class UploadLogoEndpointTests : WebResourcesControllerTestBase
         var svc = await _dataFactory.ServiceAsync(userId: _otherUserId);
         var ctrl = BuildController();
 
-        var result = await ctrl.UploadLogo(svc.Id, MakeFormFile(), CancellationToken.None);
+        var result = await ctrl.UploadLogo(svc.Id, MakeRequest(), CancellationToken.None);
 
         Assert.IsType<NotFoundResult>(result.Result);
 
         // Other user's row unchanged in DB
         var dbRow = await _dbContext.WebResources.AsNoTracking().SingleAsync(s => s.Id == svc.Id);
-        Assert.Null(dbRow.CustomLogoPath);
+        Assert.Null(dbRow.LogoBase64);
         Assert.Equal(LogoSource.AutoFavicon, dbRow.LogoSource);
         Assert.Equal(_otherUserId, dbRow.UserId);
     }

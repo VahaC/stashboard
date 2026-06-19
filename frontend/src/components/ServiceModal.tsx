@@ -7,19 +7,23 @@ import { Textarea } from '@/components/ui/textarea'
 import type { Service, ServiceStatus, ServiceUpsert } from '@/lib/types'
 import { resolveDockerUpdateStatus } from '@/lib/types'
 import { useCategories, useCheckNow, useDeleteService, useRefreshFavicon, useUploadLogo, useUpsertService } from '@/lib/queries'
-import { Check, Copy, Eye, EyeOff, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Activity, Check, Container, Copy, Eye, EyeOff, Info, KeyRound, Plus, RefreshCw, Server, Trash2 } from 'lucide-react'
 import { parseApiErrors } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { DockerWatchSection } from '@/components/DockerWatchSection'
+import { ProxmoxLinkSection } from '@/components/ProxmoxLinkSection'
 import '@/styles/service-modal.css'
+
+export type ModalTab = 'general' | 'healthcheck' | 'credentials' | 'docker' | 'proxmox'
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   service: Service | null
+  /** Tab to open on mount; defaults to General. The card's "⋮" menu uses this to
+   *  jump straight to a tab. */
+  initialTab?: ModalTab
 }
-
-type ModalTab = 'general' | 'healthcheck' | 'credentials' | 'docker'
 
 const empty: ServiceUpsert = {
   name: '',
@@ -38,6 +42,7 @@ const empty: ServiceUpsert = {
   tags: [],
   credentials: [],
   dockerConnectionId: null,
+  proxmoxConnectionId: null,
 }
 
 type CredRow = { uid: string; key: string; value: string; isSecret: boolean; reveal: boolean; copied: 'key' | 'value' | null }
@@ -59,7 +64,7 @@ const buildAutoIconPreview = (mainUrl: string) => {
 const resolveStatus = (s: ServiceStatus) =>
   typeof s === 'number' ? (['Unknown', 'Up', 'Down', 'NeedsAttention'][s] as string) : s
 
-export function ServiceModal({ open, onOpenChange, service }: Props) {
+export function ServiceModal({ open, onOpenChange, service, initialTab }: Props) {
   const { data: categories = [] } = useCategories()
   const upsert = useUpsertService()
   const del = useDeleteService()
@@ -67,7 +72,7 @@ export function ServiceModal({ open, onOpenChange, service }: Props) {
   const uploadLogo = useUploadLogo()
   const refreshFavicon = useRefreshFavicon()
 
-  const [activeTab, setActiveTab] = useState<ModalTab>('general')
+  const [activeTab, setActiveTab] = useState<ModalTab>(initialTab ?? 'general')
   const [form, setForm] = useState<ServiceUpsert>(() => service
     ? {
         name: service.name,
@@ -86,6 +91,7 @@ export function ServiceModal({ open, onOpenChange, service }: Props) {
         tags: service.tags,
         credentials: [],
         dockerConnectionId: service.dockerConnectionId,
+        proxmoxConnectionId: service.proxmoxConnectionId,
       }
     : empty
   )
@@ -129,6 +135,9 @@ export function ServiceModal({ open, onOpenChange, service }: Props) {
   }, [service])
   const dockerHasUpdate = service?.dockerUpdateStatus != null
     && resolveDockerUpdateStatus(service.dockerUpdateStatus) === 'UpdateAvailable'
+  const proxmoxHasUpdate = service?.proxmoxUpdateStatus != null
+    && resolveDockerUpdateStatus(service.proxmoxUpdateStatus) === 'UpdateAvailable'
+  const linkedProxmoxCount = service?.linkedProxmoxGuests?.length ?? 0
 
   const save = async () => {
     setError(null)
@@ -140,11 +149,12 @@ export function ServiceModal({ open, onOpenChange, service }: Props) {
       credentials: credRows
         .filter((c) => c.key.trim().length > 0)
         .map((c) => ({ key: c.key, value: c.value, isSecret: c.isSecret })),
-      // The Docker tab manages this field via its own upsert call and refreshes
-      // the services cache. Reading it from `form` would send the stale
-      // initial value and clobber a connection the user just assigned in this
-      // same modal session.
+      // The Docker / Proxmox tabs manage these fields via their own upsert calls
+      // and refresh the services cache. Reading them from `form` would send the
+      // stale initial value and clobber a host the user just assigned in this same
+      // modal session.
       dockerConnectionId: service?.dockerConnectionId ?? null,
+      proxmoxConnectionId: service?.proxmoxConnectionId ?? null,
     }
     try {
       await upsert.mutateAsync({ id: service?.id, data: payload })
@@ -168,8 +178,8 @@ export function ServiceModal({ open, onOpenChange, service }: Props) {
     if (!file || !service) return
     const objectUrl = URL.createObjectURL(file)
     setLocalLogoPreview(objectUrl)
-    const path = await uploadLogo.mutateAsync({ id: service.id, file })
-    setForm((f) => ({ ...f, customLogoPath: path, logoSource: 'Custom' }))
+    const dataUri = await uploadLogo.mutateAsync({ id: service.id, file })
+    setForm((f) => ({ ...f, customLogoPath: dataUri, logoSource: 'Custom' }))
   }
 
   const addCredential = () => setCredRows((rows) => [
@@ -227,28 +237,42 @@ export function ServiceModal({ open, onOpenChange, service }: Props) {
         <div className="service-modal-tabs" role="tablist">
           <TabButton
             label="General"
+            icon={Info}
             active={activeTab === 'general'}
             onClick={() => setActiveTab('general')}
           />
           <TabButton
             label="Healthcheck"
+            icon={Activity}
             active={activeTab === 'healthcheck'}
             onClick={() => setActiveTab('healthcheck')}
             indicatorClass={healthcheckIndicator != null ? dotClass(healthcheckIndicator) : null}
           />
           <TabButton
             label="Credentials"
+            icon={KeyRound}
             active={activeTab === 'credentials'}
             onClick={() => setActiveTab('credentials')}
             count={credRows.length || null}
           />
           <TabButton
             label="Docker"
+            icon={Container}
             active={activeTab === 'docker'}
             onClick={() => setActiveTab('docker')}
             badge={dockerHasUpdate ? 'Update' : null}
             disabled={!service}
             disabledHint="Save the service first to configure Docker tracking."
+          />
+          <TabButton
+            label="Proxmox"
+            icon={Server}
+            active={activeTab === 'proxmox'}
+            onClick={() => setActiveTab('proxmox')}
+            count={linkedProxmoxCount || null}
+            badge={proxmoxHasUpdate ? 'Update' : null}
+            disabled={!service}
+            disabledHint="Save the service first to link Proxmox guests."
           />
         </div>
 
@@ -583,6 +607,17 @@ export function ServiceModal({ open, onOpenChange, service }: Props) {
               )
           )}
 
+          {/* ── PROXMOX TAB ───────────────────────────────────────────── */}
+          {activeTab === 'proxmox' && (
+            service
+              ? <ProxmoxLinkSection service={service} />
+              : (
+                <div className="service-modal-tab-placeholder">
+                  Save the service first — Proxmox guests are linked per existing service.
+                </div>
+              )
+          )}
+
         </div>
 
         {/* Footer */}
@@ -603,6 +638,7 @@ export function ServiceModal({ open, onOpenChange, service }: Props) {
 
 interface TabButtonProps {
   label: string
+  icon: typeof Info
   active: boolean
   onClick: () => void
   indicatorClass?: string | null
@@ -612,7 +648,7 @@ interface TabButtonProps {
   disabledHint?: string
 }
 
-function TabButton({ label, active, onClick, indicatorClass, count, badge, disabled, disabledHint }: TabButtonProps) {
+function TabButton({ label, icon: Icon, active, onClick, indicatorClass, count, badge, disabled, disabledHint }: TabButtonProps) {
   return (
     <button
       type="button"
@@ -624,6 +660,7 @@ function TabButton({ label, active, onClick, indicatorClass, count, badge, disab
       className="service-modal-tab"
       onClick={onClick}
     >
+      <Icon className="service-modal-tab-icon" aria-hidden />
       {label}
       {count != null && count > 0 && (
         <span className="service-modal-label-help">({count})</span>
