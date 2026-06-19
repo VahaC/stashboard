@@ -11,6 +11,9 @@ export interface EntityCardProps {
   state: string
   /** Primary name (top-left). */
   name: ReactNode
+  /** Optional leading avatar rendered before the name (e.g. a container icon).
+   *  Omitted ⇒ nothing changes for callers that don't set it (the LXC card). */
+  icon?: ReactNode
   /** Extra inline content after the name (e.g. a watch chip). */
   headerExtra?: ReactNode
   /** Rendered before the state badge in the top-right (e.g. an update badge). */
@@ -49,9 +52,38 @@ export interface EntityCardProps {
  * slots; the frame, click semantics, and layout live here.
  */
 export function EntityCard({
-  state, name, headerExtra, updateBadge, subtitle, subtitleTitle,
+  state, name, icon, headerExtra, updateBadge, subtitle, subtitleTitle,
   statusLine, chips, extraMeta, clickable = true, dimmed = false, onActivate, onContextMenu, actionsLeft, actionsRight, error, children,
 }: EntityCardProps) {
+  // Only the image + status lines sit beside the icon — they're short and align
+  // with the icon's height. The ports row and any extra meta stay full-width
+  // below so they aren't squeezed into the narrow column (ports would otherwise
+  // truncate). Without an icon everything stays in the body's original single
+  // column so the LXC card is untouched.
+  const besideIcon = (
+    <>
+      {subtitle != null && (
+        <div className="cc-image docker-instances-card-image" title={subtitleTitle}>
+          {subtitle}
+        </div>
+      )}
+      {statusLine != null && (
+        <div className="cc-meta docker-instances-card-meta">{statusLine}</div>
+      )}
+    </>
+  )
+
+  const fullWidth = (
+    <>
+      {chips != null && (
+        <div className="cc-meta docker-instances-card-meta docker-instances-card-ports">{chips}</div>
+      )}
+      {extraMeta != null && (
+        <div className="cc-meta docker-instances-card-meta docker-instances-card-ports">{extraMeta}</div>
+      )}
+    </>
+  )
+
   return (
     <div className={cn('cc docker-instances-card', dimmed && 'cc-dimmed')} data-container-state={state.toLowerCase()} onContextMenu={onContextMenu}>
       <div
@@ -74,20 +106,13 @@ export function EntityCard({
           </div>
         </div>
 
-        {subtitle != null && (
-          <div className="cc-image docker-instances-card-image" title={subtitleTitle}>
-            {subtitle}
+        {icon ? (
+          <div className="cc-lead">
+            <span className="cc-lead-icon">{icon}</span>
+            <div className="cc-lead-content">{besideIcon}</div>
           </div>
-        )}
-        {statusLine != null && (
-          <div className="cc-meta docker-instances-card-meta">{statusLine}</div>
-        )}
-        {chips != null && (
-          <div className="cc-meta docker-instances-card-meta docker-instances-card-ports">{chips}</div>
-        )}
-        {extraMeta != null && (
-          <div className="cc-meta docker-instances-card-meta docker-instances-card-ports">{extraMeta}</div>
-        )}
+        ) : besideIcon}
+        {fullWidth}
       </div>
 
       <div className="cc-rule" aria-hidden />

@@ -32,7 +32,10 @@ import {
 import {
   useConnectionWatches,
   useDockerInstanceInspect,
+  useUploadContainerIcon,
+  useResetContainerIcon,
 } from '@/lib/queries'
+import { ContainerIcon } from '@/components/docker/atoms/ContainerIcon'
 import type {
   DockerContainerCard,
   DockerWatch,
@@ -238,6 +241,11 @@ function OverviewTab({
         <ContainerSummaryDL card={card} />
       </section>
 
+      <section className="container-modal-section">
+        <h3 className="container-modal-section-title">Icon</h3>
+        <ContainerIconSection connectionId={connectionId} card={card} />
+      </section>
+
       {!notFound && (
         <section className="container-modal-section">
           <h3 className="container-modal-section-title">Lifecycle</h3>
@@ -305,6 +313,68 @@ function OverviewTab({
         }}
         onCancel={() => setRemoveDialogOpen(false)}
       />
+    </div>
+  )
+}
+
+// ── Icon management (overview) ───────────────────────────────────────────────
+
+/**
+ * V7.8 — set or clear a container's custom card icon. A preview of the current
+ * avatar (custom upload → official → placeholder), an upload button reusing the
+ * same `<input type="file" accept="image/*">` pattern as the service logo, and a
+ * Reset-to-auto button that drops the override. Both mutations invalidate the
+ * card list so the new avatar shows up immediately.
+ */
+function ContainerIconSection({
+  connectionId, card,
+}: {
+  connectionId: string
+  card: DockerContainerCard
+}) {
+  const upload = useUploadContainerIcon(connectionId)
+  const reset = useResetContainerIcon(connectionId)
+  const [error, setError] = useState<string | null>(null)
+  const busy = upload.isPending || reset.isPending
+
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setError(null)
+    try {
+      await upload.mutateAsync({ containerName: card.name, file })
+    } catch (err) {
+      setError(getApiErrorMessage(err) ?? 'Upload failed')
+    }
+  }
+
+  const onReset = async () => {
+    setError(null)
+    try {
+      await reset.mutateAsync(card.name)
+    } catch (err) {
+      setError(getApiErrorMessage(err) ?? 'Reset failed')
+    }
+  }
+
+  return (
+    <div className="container-modal-icon-row">
+      <ContainerIcon dataUri={card.iconDataUri} name={card.name} />
+      <div className="container-modal-actions">
+        <label className="service-modal-upload">
+          Upload
+          <input type="file" accept="image/*" className="sr-only" disabled={busy} onChange={onFile} />
+        </label>
+        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onReset}>
+          Reset to auto
+        </Button>
+      </div>
+      {error && (
+        <p className="docker-instances-card-action-error">
+          <AlertCircle className="h-3.5 w-3.5 inline" /> {error}
+        </p>
+      )}
     </div>
   )
 }

@@ -40,6 +40,7 @@ public class DockerInstancesControllerTests : IAsyncLifetime
     private readonly Mock<IDockerProjectUpdater> _projectUpdaterMock = new();
     private readonly Mock<IDockerUpdateChecker> _updateCheckerMock = new();
     private readonly Mock<IDockerPruneRunner> _pruneRunnerMock = new();
+    private readonly Mock<IContainerIconResolver> _iconResolverMock = new();
     private IDataFactory _dataFactory = default!;
 
     private static bool _schemaReady;
@@ -66,6 +67,11 @@ public class DockerInstancesControllerTests : IAsyncLifetime
                 CurrentDigest: "sha256:new", LatestDigest: "sha256:new",
                 CurrentVersionTag: "v1", LatestVersionTag: "v1",
                 Error: null, CheckedAtUtc: DateTime.UtcNow));
+
+        // Default: no official icon resolves. Icon-specific tests override.
+        _iconResolverMock
+            .Setup(r => r.ResolveIconForImageAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
     }
 
     public async Task InitializeAsync()
@@ -125,6 +131,156 @@ public class DockerInstancesControllerTests : IAsyncLifetime
         _hostClientMock.Verify(h => h.ListContainerDetailsAsync(
             It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    // ── V7.8 — container icons ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task ListContainers_SetsIconDataUri_CustomThenOfficialThenNull()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+
+        // "wp" has a custom upload; "redis" resolves an official icon; "mystery"
+        // resolves neither.
+        _dbContext.ContainerIcons.Add(new ContainerIconEntity
+        {
+            Id = Guid.NewGuid(),
+            UserId = _userId,
+            DockerConnectionId = conn.Id,
+            ContainerName = "wp",
+            IconSource = ContainerIconSource.Custom,
+            LogoBase64 = "data:image/png;base64,CUSTOM",
+            CustomLogoPath = "/uploads/container-icons/wp.png",
+            CreatedUtc = DateTime.UtcNow,
+        });
+        await _dbContext.SaveChangesAsync();
+        _dbContext.ChangeTracker.Clear();
+
+        _iconResolverMock
+            .Setup(r => r.ResolveIconForImageAsync("redis:7", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("data:image/webp;base64,OFFICIAL");
+
+        _hostClientMock
+            .Setup(h => h.ListContainerDetailsAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<DockerContainerDetail>
+            {
+                MakeDetail(id: "a", name: "wp", image: "wordpress:6", state: "running"),
+                MakeDetail(id: "b", name: "redis", image: "redis:7", state: "running"),
+                MakeDetail(id: "c", name: "mystery", image: "obscure/thing:1", state: "running"),
+            });
+
+        var ctrl = BuildController();
+        var result = await ctrl.ListContainers(conn.Id, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var cards = Assert.IsAssignableFrom<List<DockerContainerCard>>(ok.Value);
+        Assert.Equal("data:image/png;base64,CUSTOM", cards.Single(c => c.Name == "wp").IconDataUri);
+        Assert.Equal("data:image/webp;base64,OFFICIAL", cards.Single(c => c.Name == "redis").IconDataUri);
+        Assert.Null(cards.Single(c => c.Name == "mystery").IconDataUri);
+
+        // The resolver is never consulted for the container that already has a
+        // custom upload.
+        _iconResolverMock.Verify(r => r.ResolveIconForImageAsync("wordpress:6", It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UploadIcon_WritesCustomRow_WithBase64()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var ctrl = BuildController();
+
+        var result = await ctrl.UploadIcon(conn.Id, "wp", PngRequest(), CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+
+        var row = await _dbContext.ContainerIcons.AsNoTracking()
+            .SingleAsync(i => i.DockerConnectionId == conn.Id && i.ContainerName == "wp");
+        Assert.Equal(ContainerIconSource.Custom, row.IconSource);
+        Assert.StartsWith("data:image/png;base64,", row.LogoBase64);
+        Assert.Equal(_userId, row.UserId);
+    }
+
+    [Fact]
+    public async Task UploadIcon_SecondUpload_UpdatesRowInPlace()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var ctrl = BuildController();
+
+        await ctrl.UploadIcon(conn.Id, "wp", PngRequest("first"), CancellationToken.None);
+        await ctrl.UploadIcon(conn.Id, "wp", WebpRequest("second"), CancellationToken.None);
+
+        var rows = await _dbContext.ContainerIcons.AsNoTracking()
+            .Where(i => i.DockerConnectionId == conn.Id && i.ContainerName == "wp")
+            .ToListAsync();
+        var row = Assert.Single(rows);
+        Assert.StartsWith("data:image/webp;base64,", row.LogoBase64);
+    }
+
+    [Fact]
+    public async Task UploadIcon_RejectsNonImage()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var ctrl = BuildController();
+
+        var result = await ctrl.UploadIcon(conn.Id, "wp",
+            new ContainerIconUploadRequest("data:application/pdf;base64,JVBERi0="), CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal(0, await _dbContext.ContainerIcons.CountAsync());
+    }
+
+    [Fact]
+    public async Task UploadIcon_Returns404_WhenConnectionForeign()
+    {
+        var conn = await SeedConnectionAsync(_otherUserId);
+        var ctrl = BuildController();
+
+        var result = await ctrl.UploadIcon(conn.Id, "wp", PngRequest(), CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+        Assert.Equal(0, await _dbContext.ContainerIcons.CountAsync());
+    }
+
+    [Fact]
+    public async Task ResetIcon_RemovesRow_AndRevertsToAuto()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var ctrl = BuildController();
+        await ctrl.UploadIcon(conn.Id, "wp", PngRequest(), CancellationToken.None);
+        Assert.Equal(1, await _dbContext.ContainerIcons.CountAsync());
+
+        var result = await ctrl.ResetIcon(conn.Id, "wp", CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.Equal(0, await _dbContext.ContainerIcons.CountAsync());
+    }
+
+    [Fact]
+    public async Task ResetIcon_IsIdempotent_WhenNoOverrideExists()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var ctrl = BuildController();
+
+        var result = await ctrl.ResetIcon(conn.Id, "wp", CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+    }
+
+    [Fact]
+    public async Task ResetIcon_Returns404_WhenConnectionForeign()
+    {
+        var conn = await SeedConnectionAsync(_otherUserId);
+        var ctrl = BuildController();
+
+        var result = await ctrl.ResetIcon(conn.Id, "wp", CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result);
+    }
+
+    private static ContainerIconUploadRequest PngRequest(string content = "fake-image-data") =>
+        new($"data:image/png;base64,{Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(content))}");
+
+    private static ContainerIconUploadRequest WebpRequest(string content = "fake-image-data") =>
+        new($"data:image/webp;base64,{Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(content))}");
 
     [Fact]
     public async Task Start_WritesSuccessAuditRow_OnOk()
@@ -965,7 +1121,7 @@ public class DockerInstancesControllerTests : IAsyncLifetime
             _dbContext, connectionMapper, watchMapper,
             _hostClientMock.Object, _logStreamerMock.Object, _statsStreamerMock.Object,
             _projectUpdaterMock.Object, _updateCheckerMock.Object,
-            _pruneRunnerMock.Object, opts);
+            _pruneRunnerMock.Object, _iconResolverMock.Object, opts);
 
         var identity = new ClaimsIdentity(
             new[] { new Claim(StashboardClaims.UserId, (userId ?? _userId).ToString()) }, "Test");
@@ -1062,6 +1218,7 @@ public class DockerInstancesControllerTests : IAsyncLifetime
     private async Task ClearAllDataAsync()
     {
         await _dbContext.DockerPruneRuns.ExecuteDeleteAsync();
+        await _dbContext.ContainerIcons.ExecuteDeleteAsync();
         await _dbContext.DockerUpdateAttempts.ExecuteDeleteAsync();
         await _dbContext.DockerWatches.ExecuteDeleteAsync();
         await _dbContext.DockerConnections.ExecuteDeleteAsync();

@@ -25,7 +25,7 @@
 
 ## V7 — Visual Compose editor (Docker)
 
-> The visual Compose editor track for the Docker page. V7.0–V7.7 have
+> The visual Compose editor track for the Docker page. V7.0–V7.8 have
 > shipped, completing the V7 track.
 
 ---
@@ -508,145 +508,57 @@ do that a raw text editor structurally cannot.
 
 ---
 
-## V7.8 — Container card icons (image 7.8.0)
-
-> Container cards on `/docker` (and inside `ServiceModal → Docker`) get a
-> leading avatar: the service's **official icon** (auto, from the
-> `homarr-labs/dashboard-icons` set), a **custom image** the user uploaded, or
-> a **placeholder** when neither resolves. Reuses the existing `WebResource`
-> logo machinery (the `LogoSource` enum, `LogoBase64` data-URI storage, the
-> `IFormFile` upload endpoint + `/uploads/…` static serving, the
-> `service-card-logo` visual) and `IImageReferenceParser` for slug derivation —
-> so this is mostly wiring, not new ground.
-
-**Resolution chain** (per card, highest priority first):
-
-1. **Custom** — the user uploaded an image → `LogoBase64` from the new
-   `ContainerIcon` row.
-2. **Official (auto)** — backend derives a slug from the image reference and
-   resolves it against the dashboard-icons set, cached.
-3. **Placeholder** — an inline `Box` glyph + name initials (the
-   `service-card-logo` fallback treatment).
-
-### Phase V7.8.0 — Official icon resolver (backend)
+### ✅ Phase V7.8 — Container card icons (image 7.8.0)
 
 **Complexity:** Low–Medium
 **Value:** Most homelab images map cleanly to a well-known service logo; surfacing
 it makes the Docker page scannable at a glance instead of a wall of identical cards.
 
-**Scope:**
+> Container cards on `/docker` (and inside `ServiceModal → Docker`) get a leading
+> avatar resolved per card, highest priority first: a **custom image** the user
+> uploaded → the service's **official icon** (auto, from the
+> `homarr-labs/dashboard-icons` set) → a **placeholder** (a `Box` glyph + name
+> initials). Reuses the existing `WebResource` logo machinery and
+> `IImageReferenceParser` for slug derivation, so it was mostly wiring.
 
-- A new `IContainerIconResolver` / `ContainerIconResolver` in
-  `Infrastructure/Services`, built on the **exact `FaviconService` pattern**
-  (`IHttpClientFactory` + `IMemoryCache`, 24h cache, best-effort, returns
-  `null` on failure).
-- `SlugFor(imageReference)` via the existing **`IImageReferenceParser`**:
-  `lscr.io/linuxserver/jellyfin:latest` → repository `linuxserver/jellyfin` →
-  last segment `jellyfin`. Plus a small alias table for docker-repo ↔
-  dashboard-icons slug mismatches (`library/postgres` → `postgresql`,
-  `ghcr.io/home-assistant/…` → `home-assistant`, …) and arch/tag cleanup.
-- `ResolveIconDataUriAsync(slug)` — `GET {base}/webp/{slug}.webp`, returned as a
-  `data:image/webp;base64,…` URI (reuses the `DownloadAsBase64Async` logic).
-  **Negative results are cached too** so a miss doesn't re-hit the CDN every
-  refresh. Base URL constant
-  `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons` (single line, leaves
-  room for a later self-hosted-base config).
+**What shipped:**
 
-**Out of scope:** a configurable/self-hosted icon base URL (deferred); per-arch
-icon variants.
+- An `IContainerIconResolver` / `ContainerIconResolver` (in
+  `Infrastructure/Services`, built on the exact `FaviconService` pattern —
+  `IHttpClientFactory` + `IMemoryCache`, 24h cache, best-effort, `null` on
+  failure). `SlugFor` parses the image via `IImageReferenceParser` and takes the
+  repository's last segment (host / namespace / arch prefix / tag all drop away),
+  plus a small alias table (`postgres → postgresql`, `pihole → pi-hole`,
+  `homeassistant → home-assistant`). `ResolveIconDataUriAsync` fetches
+  `{base}/webp/{slug}.webp` as a `data:image/webp;base64,…` URI and caches the
+  result — **misses too**, so a refresh doesn't re-hit the CDN. Base URL is the
+  single-line constant `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons`.
+- A `ContainerIconEntity : AuditableEntity` mirroring the `WebResource` logo
+  fields (`UserId`, `DockerConnectionId`, `ContainerName`, `IconSource`,
+  `LogoBase64`, `CustomLogoPath`), unique on `(UserId, DockerConnectionId,
+  ContainerName)` — the `(connection, name)` key is stable even though containers
+  are ephemeral. `POST …/containers/{name}/icon` (a copy of
+  `WebResourcesController.UploadLogo`) stores the upload as base64 + a file under
+  `/uploads/container-icons/` and upserts the row to `Custom`; `DELETE …/icon`
+  reverts to `Auto`. `GET containers` builds an `iconByContainer` dictionary and
+  sets a final `IconDataUri` per card (custom → official → `null`); the resolver
+  is only consulted when there's no custom image.
+- Frontend: `EntityCard` gained an optional `icon?: ReactNode` slot (a leading
+  avatar column under the header), a `ContainerIcon` atom (rounded 32px avatar,
+  `object-contain`, `Box` + initials fallback), the `cc-card-icon` styling, and
+  custom-icon management in the `ContainerModal` overview tab (preview + upload +
+  **Reset to auto**, react-query mutations that invalidate the card list).
+- **Proxmox parity.** The same icon slot is wired onto **Proxmox LXC / VM** cards:
+  a new `ProxmoxGuestIconEntity` (custom uploads, keyed by `(user, connection,
+  vmid)`) + a `GET …/guest-icons` map endpoint (custom → official OS icon → none),
+  the official icon derived from the guest's `ostype` (lazily captured by the scan
+  onto `ProxmoxGuestEntity.OsType` and mapped to a dashboard-icons OS slug). Also
+  made same-row cards share one height.
 
-**Tests:** mock `HttpMessageHandler` (Moq.Protected) + fake `IHttpClientFactory`
-(as in the `FaviconService` tests): slug derivation is correct for
-docker.io / lscr.io / ghcr.io / a private registry; a 404 yields `null`; a hit
-yields a data-URI; the result is cached (a second call doesn't touch the network).
-
-### Phase V7.8.1 — Custom icon storage + upload (backend)
-
-**Complexity:** Medium
-**Value:** Auto-resolution can't cover every image; a one-click upload lets the
-user pin the right logo for anything the slug map misses.
-
-**Scope:**
-
-- A new `ContainerIconEntity : AuditableEntity` mirroring the `WebResource` logo
-  fields: `UserId`, `DockerConnectionId`, `ContainerName`, `IconSource`
-  (`Auto` / `Custom`), `LogoBase64`, `CustomLogoPath`, with a unique index on
-  `(UserId, DockerConnectionId, ContainerName)`. EF migration in
-  `Stashboard.Migrations`. The `(connection, name)` key is stable even though
-  containers themselves are ephemeral.
-- Endpoints on `DockerInstancesController`, a copy of
-  `WebResourcesController.UploadLogo`:
-  - `POST /api/docker/connections/{connectionId}/containers/{name}/icon` —
-    `IFormFile` → base64 + a file under `/uploads/container-icons/`,
-    `IconSource = Custom`, upserts the row.
-  - `DELETE …/icon` — reverts to `Auto` (removes the base64 + file, reusing the
-    `DeleteCustomLogoFileIfExists` guard).
-- **List integration** (`GET containers`): build an `iconByContainer` dictionary
-  the same way `watchByContainer` is built, then set a final `IconDataUri` per
-  card — custom → official (resolver) → `null`. The resolver is only called when
-  there's no custom image; the cache keeps that cheap.
-- Add one field `string? IconDataUri` to the `DockerContainerCard` contract (and
-  the frontend type).
-
-**Out of scope:** per-user shared icon library; bulk import.
-
-**Tests:** controller tests (which bypass routing): upload writes the row +
-base64; a repeat upload updates in place; DELETE reverts to `Auto`; the list
-returns the custom image when present, else the official one, else `null`; file
-mime/size validation matches the service-logo path.
-
-### Phase V7.8.2 — Card icon slot + management UI (frontend)
-
-**Complexity:** Low–Medium
-**Value:** The visible payoff — the avatar on the card, plus a clean place to
-set/clear a custom one without cluttering the card itself.
-
-**Scope:**
-
-- `EntityCard.tsx` gains an optional `icon?: ReactNode` prop, rendered before
-  `cc-name` in `cc-head`. Optional ⇒ **nothing changes for the LXC card**, and it
-  leaves the door open to reuse icons on Proxmox guests later.
-- A new `ContainerIcon` atom — a rounded ~32px avatar reusing the
-  `service-card-logo` visual (background-image, `object-contain`), falling back to
-  a `Box` glyph + initials when `iconDataUri` is `null`.
-- `ContainerCard.tsx` passes
-  `icon={<ContainerIcon dataUri={card.iconDataUri} name={card.name} />}`.
-- A new `cc-card-icon` class in `docker-instances.css`; the card head stays
-  **flex-wrap / label-collapse friendly** on small screens (phone-tested).
-- Custom-icon management lives in `ContainerModal` (overview tab): a preview +
-  `<input type="file" accept="image/*">` (reusing the `ServiceModal` `onLogoFile`
-  handler) + a **Reset to auto** button (DELETE), with react-query mutations that
-  invalidate the container list.
-
-**Out of scope:** drag-and-drop upload; cropping.
-
-**Tests:** vitest — the card renders a custom data-URI, an official one, and the
-placeholder when `null`; the upload/reset mutations hit the right endpoints and
-the list refreshes; `vite build` is clean.
-
-### Possible follow-ups (not in scope for 7.8.0)
-
-- Reuse the resolver to give a **service its container's icon** on the dashboard /
-  `ServiceModal` when it has no favicon.
-- Reuse the shared `EntityCard` icon slot for **Proxmox LXC** cards (fits the
-  Proxmox↔Docker parity track).
-- A **"refresh icons"** action that drops the negative cache and re-resolves.
-- A **type-aware placeholder** (db / proxy) instead of the generic box when the
-  slug doesn't match.
-
-### V7.8 effort estimate (rough)
-
-| Phase | Effort |
-|---|---|
-| V7.8.0 — Official icon resolver (backend) | 0.5 day |
-| V7.8.1 — Custom icon storage + upload (backend) | 1 day |
-| V7.8.2 — Card icon slot + management UI (frontend) | 1 day |
-| Tests + doc-sync + version bump | 0.5 day |
-| **Total** | **~3 days** |
-
-> **Scope note.** Beyond the original ask (official icons + custom upload), the
-> follow-ups above are deliberately deferred — 7.8.0 ships the Docker-card icon
-> end to end and reuses the `EntityCard` slot so the rest is incremental.
+**Deferred (not in 7.8.0):** a configurable / self-hosted icon base URL; per-arch
+icon variants; reusing the resolver to give a **service** its container's icon on
+the dashboard; a "refresh icons" action that drops the negative cache; a
+type-aware placeholder (db / proxy).
 
 ---
 
@@ -754,4 +666,381 @@ row; a Proxmox rejection surfaces as a 502 with the host's message.
 container from a `vzdump` archive — to a new vmid or (with an explicit
 double-confirm) over an existing stopped one — entirely from the Stashboard UI,
 the result appears after the auto-scan, and the action is audited.
+
+---
+
+## V9 — Core dashboard & monitoring depth
+
+> The V5–V8 line drove Stashboard deep into infrastructure management (Docker
+> manager + Compose editor + Proxmox provisioning). V9 turns back to the product's
+> original promise — *"one place for every service"* — and closes the gaps that
+> separate Stashboard from a real monitoring + dashboard tool: notification
+> breadth, uptime history, a public status page, and the login-security surface
+> (2FA / API tokens) appropriate for a product that stores credentials and can
+> open a shell on the host. These phases are independent of each other and can ship
+> in any order; the suggested order front-loads the highest user-visible value.
+
+---
+
+### Phase V9.0 — Notification channels beyond email/Telegram
+
+**Complexity:** Medium
+**Value:** Today every notification (service offline, Docker update available,
+Proxmox updates pending, node alert) goes out over exactly two channels — email
+and Telegram. The most common request from the self-hosted audience is the rest:
+Discord, ntfy, Gotify, Slack, and generic webhooks. Rather than hand-roll each
+provider, integrate **Apprise** (one HTTP POST → 90+ services), which covers all
+of them at once and keeps Stashboard out of the per-provider-API treadmill.
+
+**Scope:**
+
+- A new **Apprise** channel sitting alongside the existing email + Telegram
+  channels in the notification services (`ServiceStatusNotificationService`,
+  `DockerUpdateNotificationService`, `ProxmoxUpdateNotificationService`,
+  `ProxmoxNodeAlertNotificationService`), reusing the established
+  **per-channel toggle + per-channel throttle key** pattern (stamped only after a
+  successful send, so a transient failure retries on the next tick and one flaky
+  channel never drops another).
+- **App-wide Apprise config** on the **Notifications** settings page, mirroring the
+  editable-SMTP model: an Apprise base URL (self-hosted Apprise API or the
+  stateless `/notify` endpoint) plus one or more **Apprise URLs**
+  (`discord://`, `ntfy://`, `gotify://`, `slack://`, …) stored DB-backed, the
+  secret parts encrypted at rest and never returned (presence flags only).
+  Changes apply without a restart.
+- **Per-target opt-in** consistent with the existing toggles: a master
+  "Apprise notifications" switch on the user/settings level, and the per-watch /
+  per-service / per-host toggles gain an Apprise toggle surfaced disabled until the
+  app-wide config exists (same UX as the Telegram toggle today).
+- **Test button** on the Notifications page that fires a sample notification
+  through the configured Apprise targets and reports per-target success/failure.
+- **Backup/restore:** the Apprise config + per-target toggles are added to
+  `BackupService` export/import and its round-trip test in the same change
+  (Definition-of-Done §10.3).
+
+**Out of scope:** a built-in Apprise runtime (users point at their own Apprise
+instance or the public stateless endpoint); per-notification routing rules
+(e.g. "criticals to Discord, info to ntfy") — V9.0 fans every notification out to
+all configured channels, same as email+Telegram do today.
+
+**Tests:** the Apprise sender posts the expected payload to the configured URL;
+a per-channel throttle key is stamped only after a successful send and suppresses
+a duplicate within the same digest/state; a transient send failure leaves the key
+unstamped so the next tick retries; the channel is independent (an Apprise outage
+doesn't drop email/Telegram and vice-versa); secrets are encrypted at rest and the
+API returns presence flags only; the backup round-trip preserves config + toggles.
+
+**Acceptance bar:** with an Apprise URL configured, a service going Down, a Docker
+update appearing, and a Proxmox node alert each deliver to the configured
+Discord/ntfy/Gotify target exactly once per state change, with no regression to the
+existing email/Telegram delivery.
+
+---
+
+### Phase V9.1 — Uptime history & analytics
+
+**Complexity:** Medium
+**Value:** The health-check loop records only the *current* status per URL
+(`currentStatus`, `lastCheckedUtc`, `lastResponseTimeMs`, `lastError`). There is no
+retained time-series, so the product can't answer "what's my uptime this week?" or
+"when did this flap?" — the questions monitoring is for. This phase adds a bounded
+history so the Healthcheck tab becomes a real monitor and unblocks the public
+status page (V9.2).
+
+**Scope:**
+
+- A new append-only `HealthCheckEventEntity` (per URL: timestamp, status,
+  response-time-ms, error) written by the existing `ServiceHealthChecker` on every
+  scan **only when the status changes or on a sampled cadence** (avoid one row per
+  60 s per URL forever) — store transitions plus periodic response-time samples.
+- **Bounded retention** via a background prune (configurable window, default e.g.
+  90 days), matching the project's "never let a table grow unbounded" stance.
+- **Derived metrics** on the Healthcheck tab: **uptime % over 24 h / 7 d / 30 d**,
+  a **response-time sparkline** (reuse the hand-rolled inline-SVG approach from the
+  V3.4 stats panel — no chart library), and an **incident log** (Down → Up spans
+  with duration).
+- New owner-scoped read endpoint(s) under the service surface for the history +
+  rolled-up metrics; paginated, newest-first.
+- **Backup/restore:** uptime *history* is runtime-derived telemetry and is **not**
+  exported (consistent with the existing "runtime status is re-derived, not
+  exported" rule); the retention setting is part of the health-check settings that
+  already round-trip. Documented in the change.
+
+**Out of scope:** SLA reports / exports (CSV/PDF); alerting *thresholds* on uptime
+% (offline alerting already lives in the V5.6 failure-threshold logic); long-term
+downsampling/rollup tables — a single bounded window is enough for V9.1.
+
+**Tests:** an event row is written on a status transition and not on an unchanged
+sampled tick beyond the configured cadence; uptime % is computed correctly across a
+known up/down sequence including the open (still-down) span; the incident log pairs
+Down→Up correctly and reports duration; retention prune deletes only rows older than
+the window; the metrics endpoint is owner-scoped (404 for a foreign service).
+
+**Acceptance bar:** opening a service's Healthcheck tab shows its 24 h / 7 d / 30 d
+uptime, a response-time sparkline, and a list of past incidents with durations, all
+derived from retained events that prune at the configured window.
+
+---
+
+### Phase V9.2 — Public status page
+
+**Complexity:** Medium
+**Value:** A shareable, read-only status page is the headline feature of the
+monitoring tools Stashboard's audience already knows (Uptime Kuma). It turns
+Stashboard from a private admin view into something a homelabber can hand to family
+or teammates — "is the service up?" without an account. Builds directly on the
+V9.1 history.
+
+**Scope:**
+
+- A user creates one or more **status pages**, each a named selection of their own
+  services (`StatusPageEntity` + a join to the chosen `WebResource`s), with a
+  title, optional description, and a public **slug**.
+- A **public, unauthenticated** read endpoint (`GET /api/status/{slug}`) and a
+  matching public SPA route that renders each selected service's current status and
+  its V9.1 uptime % + recent-history bar — **owner data only ever exposed through an
+  explicitly published page**, never the raw service list. The endpoint returns only
+  display fields (name, custom display label, status, uptime %, history sparkline) —
+  **never** URLs, credentials, notes, categories, tags, Docker/Proxmox internals.
+- **Publish toggle** per page (off by default; an unpublished page 404s publicly),
+  and an optional per-service "show on status page" display name so the public view
+  doesn't leak internal naming.
+- **Rate-limited + cacheable** public endpoint (reuse the existing rate-limiting
+  middleware) so a shared page can't be used to hammer the instance.
+- Management UI: a **Status pages** section (new settings sub-page) to create /
+  edit / publish / delete pages and copy the public link.
+- **Backup/restore:** status pages + their service selections + publish state are
+  added to `BackupService` export/import and its round-trip test in the same change
+  (§10.3).
+
+**Out of scope:** custom domains / white-labelling; subscriber email/RSS digests on
+the public page; incident write-ups / scheduled-maintenance banners authored by the
+owner (a possible later phase) — V9.2 renders live status + history only.
+
+**Tests:** the public endpoint returns only published pages and only the
+whitelisted display fields (a test asserts URLs/credentials/notes never appear in
+the payload); an unpublished or unknown slug returns 404; the page renders only the
+selected services for that owner; the public endpoint requires no auth but is
+rate-limited; the backup round-trip preserves pages + selections + publish state.
+
+**Acceptance bar:** a user can select a subset of their services, publish a status
+page at a public slug, and an anonymous visitor sees those services' live status and
+uptime history — with zero access to any field not explicitly meant for the public
+view, and no way to enumerate unpublished pages.
+
+---
+
+### Phase V9.3 — Two-factor authentication (TOTP)
+
+**Complexity:** Medium
+**Value:** Stashboard stores credentials (AES-256-GCM at rest), can open an
+**SSH shell on the Docker host** (V5.3) and **exec into containers** (V5.7), and can
+recreate/destroy containers and LXCs. That is the highest-risk profile in the
+product, yet login is a single password. TOTP closes the most conspicuous gap in
+the account-security surface and layers cleanly onto the existing `SecurityStamp`
+session model.
+
+**Scope:**
+
+- **Enroll / disable TOTP** from the Account page: server generates a secret,
+  renders a QR (otpauth URI) + manual key, and verifies a first code before enabling
+  (`TwoFactorSecret` stored encrypted at rest, presence flag only on the wire).
+- **Login flow** gains a second step: when TOTP is enabled, `POST /api/auth/login`
+  returns a short-lived **2FA-pending** challenge instead of tokens, and a new
+  `POST /api/auth/login/2fa` exchanges a valid code for the normal
+  `AuthResponse` (access + refresh). Wrong codes are rate-limited and the existing
+  account-lockout path applies.
+- **Recovery codes:** a one-time-displayed set of single-use backup codes
+  (hashed at rest), each consumable once in place of a TOTP code; regenerable from
+  the Account page.
+- **Disabling 2FA** (and consuming/regenerating recovery codes) is a
+  security-sensitive mutation → **rotates the SecurityStamp** and invalidates all
+  sessions, consistent with the existing password/email-change behaviour.
+- **Backup/restore:** the 2FA enabled-flag + encrypted secret + recovery codes are
+  added to `BackupService` export/import and the round-trip test (§10.3), so a
+  restored account keeps its 2FA.
+
+**Out of scope:** WebAuthn / passkeys / hardware keys (a heavier, separate phase);
+SMS or email OTP; enforcing 2FA org-wide (no role/admin system exists — each
+account governs its own).
+
+**Tests:** enrollment requires a valid first code before enabling; a TOTP-enabled
+login returns a pending challenge and no tokens; a correct code completes login and
+issues tokens; a wrong code is rejected and rate-limited; a recovery code works
+exactly once and then fails; disabling 2FA rotates the SecurityStamp and kills
+existing sessions; the TOTP secret is encrypted at rest and never returned; the
+backup round-trip preserves 2FA state.
+
+**Acceptance bar:** a user can enroll an authenticator app, is required to enter a
+TOTP (or recovery) code on every subsequent login, can recover with a backup code if
+they lose the app, and disabling 2FA signs out all sessions — with the secret never
+leaving the server in plaintext.
+
+---
+
+### Phase V9.4 — API tokens (personal access tokens)
+
+**Complexity:** Medium
+**Value:** Every API call today is authenticated with a short-lived JWT obtained
+through the interactive login/refresh flow — there is no way to script against
+Stashboard or wire it into external automation/monitoring without storing a password
+and replaying the login. Long-lived, scoped, revocable **personal access tokens**
+fill that gap and are the standard self-hosted expectation.
+
+**Scope:**
+
+- **Create / list / revoke** tokens from the Account page: each token has a name, an
+  optional expiry, and a **scope** (at minimum read-only vs. full; finer scopes —
+  e.g. services-only — optional). The secret is shown **once** on creation and stored
+  **hashed** at rest (`PersonalAccessTokenEntity`: name, hash, scope, expiry,
+  `lastUsedUtc`, created/revoked timestamps).
+- **Authentication:** the API accepts a PAT (e.g. `Authorization: Bearer
+  sb_pat_…`, distinguished from a JWT by prefix) on the same endpoints, resolving to
+  the owning user and enforcing the token's scope. A read-only token is rejected on
+  mutating endpoints with 403.
+- **Revocation is immediate** (a revoked or expired token fails the next request);
+  `lastUsedUtc` is stamped for auditability. Tokens are **independent of the
+  SecurityStamp** so rotating sessions (password change, logout-all) does not have to
+  kill automation — but disabling/deleting the account removes them.
+- **Excluded from high-risk surfaces by construction:** PATs do **not** grant the
+  host-terminal / container-exec WebSocket (those keep their single-use ticket flow
+  and interactive-session gating); a PAT is for the REST data surface only.
+- **Backup/restore:** tokens are **not** exported (they're bearer secrets; export
+  would either leak them or be useless) — documented explicitly in the change, the
+  same way other non-exported runtime/secret material is.
+
+**Out of scope:** OAuth client-credentials / third-party app authorization;
+per-endpoint ACLs beyond the coarse scopes; token usage analytics beyond
+`lastUsedUtc`.
+
+**Tests:** a created token authenticates subsequent requests as its owner; a
+read-only token is accepted on GETs and 403'd on mutations; an expired or revoked
+token is rejected immediately; `lastUsedUtc` is stamped on use; a PAT is refused on
+the host-shell/exec ticket endpoints; the secret is stored hashed and shown only
+once; account deletion removes the user's tokens.
+
+**Acceptance bar:** a user can mint a scoped, optionally-expiring token, use it to
+drive the REST API from a script, see when it was last used, and revoke it with
+immediate effect — without it ever granting host-shell/exec access.
+
+---
+
+### Phase V9.5 — OIDC / SSO login (optional)
+
+**Complexity:** Medium–High
+**Value:** Authentik / Authelia / Keycloak are increasingly the front door of a
+homelab, and users running one want Stashboard behind it rather than maintaining a
+separate password. This is the heaviest account-surface phase and is explicitly
+**optional / lower-priority** than V9.3–V9.4 — sequence it last in the security
+group.
+
+**Scope:**
+
+- **OIDC Authorization Code + PKCE** login against a configurable provider
+  (issuer / client id / client secret / scopes), config stored DB-backed and
+  editable in the UI like SMTP (secret encrypted at rest), surfaced to the frontend
+  via the existing `GET /api/features` so the login page can show a
+  "Sign in with …" button only when configured.
+- **Account linking:** an OIDC identity maps to a Stashboard user by verified email;
+  first OIDC login can **provision** a new account (behind a "allow OIDC
+  registration" toggle) or require a pre-existing one. A linked account can still use
+  its password unless the owner disables local login.
+- **Coexists with local auth + 2FA:** OIDC is additive; local login (and V9.3 TOTP)
+  keep working when OIDC is off or for non-OIDC accounts. The resulting session is the
+  same `AuthResponse` (access + refresh) the rest of the app already uses, so nothing
+  downstream changes.
+- **Backup/restore:** OIDC provider config (secret encrypted) and the per-user link
+  flag are added to `BackupService` export/import and the round-trip test (§10.3).
+
+**Out of scope:** SAML; SCIM user provisioning/de-provisioning; group/role mapping
+(no role system exists); enforcing OIDC-only org-wide.
+
+**Tests:** the auth-code+PKCE exchange issues a normal `AuthResponse`; an OIDC
+identity links to an existing user by verified email; provisioning is gated by the
+registration toggle; local login + 2FA still work with OIDC enabled; the client
+secret is encrypted at rest and never returned; the feature flag reflects config
+presence; the backup round-trip preserves provider config + link flags.
+
+**Acceptance bar:** with an OIDC provider configured, a user can sign in through it
+and land in a normal authenticated session, optionally have an account provisioned on
+first login, and local password + 2FA login continue to work unchanged.
+
+---
+
+### Phase V9.6 — PWA, web push & card ordering
+
+**Complexity:** Medium
+**Value:** The dashboard is already responsive and phone-tested, but it isn't an
+*installable* app and notifications never reach the device that's actually in the
+user's hand. Making Stashboard an installable PWA with web-push turns it into a
+daily home-screen surface, and manual card ordering lets users lay the dashboard out
+the way they think about their services rather than alphabetically.
+
+**Scope:**
+
+- **PWA**: web app manifest + service worker (installable, app-icon, standalone
+  display, offline shell for the login/dashboard chrome). No offline data sync —
+  the shell loads, data fetches when online.
+- **Web push** as another V9.0-style notification channel: the browser subscribes
+  (VAPID keys auto-generated + persisted like the existing encryption/JWT secrets),
+  subscriptions stored per user/device, and the same status/update/alert
+  notifications can fan out to push. Reuses the per-channel toggle + throttle model.
+- **Manual card ordering**: a per-user explicit sort mode (`Custom`) added to the
+  existing `sortMode` preference, with drag-and-drop on the dashboard persisting an
+  order index per service. Coexists with the current name/status/last-checked sorts
+  and the category grouping.
+- **Backup/restore:** push subscriptions are
+  device-bound bearer material and are **not** exported (documented); the custom
+  **order** is a user preference and is added to the settings round-trip (§10.3).
+
+**Out of scope:** native app-store apps; offline data caching / write queue;
+reordering within Docker/Proxmox pages (dashboard services only).
+
+**Tests:** the manifest + service worker register and the app reports installable in
+a headless check; a push subscription is stored and a notification delivers to it,
+honouring the per-channel toggle/throttle; an unsubscribed/expired endpoint is pruned
+on send failure; custom order persists per user and survives reload; VAPID keys are
+auto-generated once and reused on restart; the settings backup round-trip preserves
+custom order.
+
+**Acceptance bar:** a user can install Stashboard to their home screen, receive a
+push when a service goes Down, and drag their service cards into a custom order that
+persists across devices.
+
+---
+
+### Phase V9.7 — Command palette & global search
+
+**Complexity:** Low–Medium
+**Value:** The product now spans many pages and entity types (services, Docker
+containers across hosts, Compose projects, Proxmox LXCs/VMs, settings sub-pages). A
+`Ctrl/⌘-K` command palette that searches across all of them and jumps straight to the
+right modal/page is a large navigation-speed win at the scale the UI has reached, and
+is purely additive.
+
+**Scope:**
+
+- A global **command palette** (front-end, opened with `Ctrl/⌘-K` and a header
+  button) that fuzzy-searches across the user's **services, Docker containers,
+  Compose projects, and Proxmox guests**, plus a fixed list of **navigation
+  actions** (go to Settings sub-pages, Audit, Notifications, etc.).
+- Results deep-link to the existing modals/routes (reuse the deep-link support the
+  dashboard already has for service modals; extend the same pattern to the Docker
+  container modal and Proxmox guest modal).
+- **Backed by existing list endpoints** where possible (services, instances,
+  guests are already fetched/cached client-side) so V9.7 needs **no new backend
+  surface** in the common case; add a lightweight combined search endpoint only if
+  client-side filtering proves insufficient at scale.
+
+**Out of scope:** server-side full-text search infrastructure; searching inside logs
+/ audit history; command *actions* that mutate (start/stop a container from the
+palette) — V9.7 is navigation/search only, mutations stay on their guarded surfaces.
+
+**Tests:** the palette opens on the shortcut; a query matches services / containers /
+guests / nav actions and ranks sensibly; selecting a result navigates to the correct
+modal/route with the right entity in focus; results are owner-scoped (a query never
+surfaces another user's entities).
+
+**Acceptance bar:** pressing `Ctrl/⌘-K` anywhere opens a search box that finds any of
+the user's services, containers, Compose projects, or Proxmox guests (and the main
+navigation targets) and jumps straight to it.
 

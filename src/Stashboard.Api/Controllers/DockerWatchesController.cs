@@ -424,11 +424,7 @@ public class DockerWatchesController(
         // before the first log line arrives (idle containers).
         await Response.Body.FlushAsync(cancellationToken);
 
-        var jsonOptions = new System.Text.Json.JsonSerializerOptions
-        {
-            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
-            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
-        };
+        var jsonOptions = Stashboard.Api.Serialization.StreamingJson.Options;
 
         DockerLogStreamResult streamResult;
         try
@@ -525,10 +521,7 @@ public class DockerWatchesController(
 
         await Response.Body.FlushAsync(cancellationToken);
 
-        var jsonOptions = new System.Text.Json.JsonSerializerOptions
-        {
-            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
-        };
+        var jsonOptions = Stashboard.Api.Serialization.StreamingJson.Options;
 
         DockerStatsStreamResult streamResult;
         try

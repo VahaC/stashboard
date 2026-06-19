@@ -390,6 +390,10 @@ public class ProxmoxUpdateBackgroundServiceTests : IAsyncLifetime
         services.AddSingleton(_checkerMock.Object);
         services.AddSingleton(_emailMock.Object);
         services.AddSingleton(_telegramMock.Object);
+        // V7.8 — the scan service backfills guest OsType via the API client; these
+        // tests don't exercise icons, so a bare mock (config reads return null,
+        // swallowed best-effort) keeps the existing scan assertions intact.
+        services.AddSingleton(new Mock<IProxmoxApiClient>().Object);
 
         var encryption = new Mock<IEncryptionService>();
         encryption.Setup(e => e.Encrypt(It.IsAny<string>())).Returns<string>(v => $"enc:{v}");

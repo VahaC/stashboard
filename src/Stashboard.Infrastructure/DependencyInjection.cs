@@ -58,6 +58,15 @@ public static class DependencyInjection
             c.DefaultRequestHeaders.UserAgent.ParseAdd("Stashboard/1.0 (+registry-probe)");
         });
 
+        // V7.8.0 — official container icon CDN client (homarr-labs dashboard-icons
+        // on jsDelivr). Best-effort avatar lookup, so a short timeout keeps a slow
+        // CDN from stalling a card refresh.
+        services.AddHttpClient(ContainerIconResolver.HttpClientName, c =>
+        {
+            c.Timeout = TimeSpan.FromSeconds(5);
+            c.DefaultRequestHeaders.UserAgent.ParseAdd("Stashboard/1.0 (+container-icon)");
+        });
+
         // V2.3 — GitHub Releases API client. Used inline by DockerUpdateChecker
         // to enrich a GHCR "Update available" result with the upstream
         // changelog. GitHub requires a User-Agent on every request.
@@ -94,6 +103,9 @@ public static class DependencyInjection
         });
 
         services.AddSingleton<IFaviconService, FaviconService>();
+        // V7.8.0 — resolves a container's official icon from the dashboard-icons
+        // CDN, slug derived via IImageReferenceParser. Stateless, 24h cache.
+        services.AddSingleton<IContainerIconResolver, ContainerIconResolver>();
         services.AddSingleton<IServiceHealthChecker, ServiceHealthChecker>();
         services.AddSingleton<IImageReferenceParser, ImageReferenceParser>();
         services.AddSingleton<IRegistryClient, OciRegistryClient>();

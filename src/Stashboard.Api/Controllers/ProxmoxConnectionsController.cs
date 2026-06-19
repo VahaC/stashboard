@@ -37,6 +37,7 @@ public class ProxmoxConnectionsController(
     IProxmoxCreateSettingsService createSettings,
     IProxmoxNodeAlertService alertService,
     IDockerWebhookTokenGenerator webhookTokenGenerator,
+    IContainerIconResolver iconResolver,
     ILogger<ProxmoxConnectionsController> logger) : ControllerBase
 {
     private Guid UserId => User.GetUserId();
@@ -197,6 +198,98 @@ public class ProxmoxConnectionsController(
         await db.SaveChangesAsync(cancellationToken);   // no-op SQL when nothing actually changed
 
         return Ok(mapper.ToResponse(connection, await LoadGuestsAsync(id, cancellationToken)));
+    }
+
+    // ── V7.8 — guest card icons ──────────────────────────────────────────────
+
+    /// <summary>
+    /// V7.8 — resolved card avatars for every guest on the host, as a
+    /// <c>vmId → data:URI</c> map. Per guest: the user's custom upload wins,
+    /// else the official OS icon derived from the guest's <c>ostype</c>, else the
+    /// entry is omitted (the card shows a placeholder). Kept off the connection
+    /// response so the shared mapper stays sync + icon-free; the page overlays
+    /// this map onto its cards.
+    /// </summary>
+    [HttpGet("{id:guid}/guest-icons")]
+    public async Task<ActionResult<Dictionary<string, string>>> GuestIcons(
+        Guid id, CancellationToken cancellationToken)
+    {
+        var connection = await LoadOwnedAsync(id, tracking: false, cancellationToken);
+        if (connection is null) return NotFound();
+
+        var userId = UserId;
+        var custom = await db.ProxmoxGuestIcons.AsNoTracking()
+            .Where(i => i.UserId == userId && i.ProxmoxConnectionId == id
+                && i.IconSource == ContainerIconSource.Custom && i.LogoBase64 != null)
+            .ToDictionaryAsync(i => i.VmId, i => i.LogoBase64!, cancellationToken);
+
+        var guests = await db.ProxmoxGuests.AsNoTracking()
+            .Where(g => g.ProxmoxConnectionId == id && g.GuestType != ProxmoxGuestType.Node)
+            .Select(g => new { g.VmId, g.OsType })
+            .ToListAsync(cancellationToken);
+
+        var result = new Dictionary<string, string>();
+        foreach (var guest in guests)
+        {
+            string? dataUri = custom.GetValueOrDefault(guest.VmId)
+                ?? await iconResolver.ResolveIconForOsAsync(guest.OsType, cancellationToken);
+            if (dataUri is not null)
+                result[guest.VmId.ToString()] = dataUri;
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// V7.8 — set a custom icon for a guest. The image arrives as a base64 data URI
+    /// in a JSON body (no <c>multipart/form-data</c> / <c>IFormFile</c>) and is
+    /// stored straight on the override row; no file is written to disk. Upserts the
+    /// row to <see cref="ContainerIconSource.Custom"/>.
+    /// </summary>
+    [HttpPost("{id:guid}/guests/{vmId:int}/icon")]
+    public async Task<ActionResult<object>> UploadGuestIcon(
+        Guid id, int vmId, [FromBody] ContainerIconUploadRequest request, CancellationToken cancellationToken)
+    {
+        var connection = await LoadOwnedAsync(id, tracking: false, cancellationToken);
+        if (connection is null) return NotFound();
+        if (!ImageDataUri.TryValidate(request?.DataUri, out var error))
+            return BadRequest(new { error });
+
+        var icon = await LoadGuestIconAsync(id, vmId, cancellationToken);
+        if (icon is null)
+        {
+            icon = new ProxmoxGuestIconEntity { UserId = UserId, ProxmoxConnectionId = id, VmId = vmId };
+            db.ProxmoxGuestIcons.Add(icon);
+        }
+
+        icon.IconSource = ContainerIconSource.Custom;
+        icon.LogoBase64 = request!.DataUri;
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(new { stored = true });
+    }
+
+    /// <summary>V7.8 — reset a guest's icon back to Auto: drops the override row so
+    /// the OS icon / placeholder takes over again.</summary>
+    [HttpDelete("{id:guid}/guests/{vmId:int}/icon")]
+    public async Task<IActionResult> ResetGuestIcon(Guid id, int vmId, CancellationToken cancellationToken)
+    {
+        var connection = await LoadOwnedAsync(id, tracking: false, cancellationToken);
+        if (connection is null) return NotFound();
+
+        var icon = await LoadGuestIconAsync(id, vmId, cancellationToken);
+        if (icon is not null)
+        {
+            db.ProxmoxGuestIcons.Remove(icon);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        return NoContent();
+    }
+
+    private Task<ProxmoxGuestIconEntity?> LoadGuestIconAsync(Guid connectionId, int vmId, CancellationToken cancellationToken)
+    {
+        var userId = UserId;
+        return db.ProxmoxGuestIcons.FirstOrDefaultAsync(
+            i => i.UserId == userId && i.ProxmoxConnectionId == connectionId && i.VmId == vmId, cancellationToken);
     }
 
     /// <summary>

@@ -5,6 +5,7 @@ using Stashboard.Api.Mapping;
 using Stashboard.Api.Notifications;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
+using Stashboard.Core.Enums;
 
 namespace Stashboard.Api.Services.Proxmox;
 
@@ -32,6 +33,7 @@ public sealed class ProxmoxScanService(
     IProxmoxConnectionMapper mapper,
     IProxmoxUpdateNotificationService notifier,
     IUserService userService,
+    IProxmoxApiClient apiClient,
     ILogger<ProxmoxScanService> logger) : IProxmoxScanService
 {
     public async Task CheckConnectionAsync(ProxmoxConnectionEntity connection, CancellationToken cancellationToken = default)
@@ -86,6 +88,7 @@ public sealed class ProxmoxScanService(
         }
 
         var currentGuests = await UpsertGuestsAsync(connection, result, cancellationToken);
+        await BackfillOsTypesAsync(mapper.BuildProfile(connection), currentGuests, cancellationToken);
 
         var user = await userService.FindByIdAsync(connection.UserId, cancellationToken);
         if (user is not null)
@@ -141,5 +144,36 @@ public sealed class ProxmoxScanService(
             db.ProxmoxGuests.Remove(stale);
 
         return current;
+    }
+
+    /// <summary>
+    /// V7.8 — fills in <see cref="ProxmoxGuestEntity.OsType"/> for LXC / VM rows
+    /// that don't have it yet (it's read from the guest config, not the cheap list
+    /// call). <c>ostype</c> is immutable in practice, so this runs once per guest
+    /// lifetime; every later scan finds it set and does no extra work. Best-effort:
+    /// a failed config read leaves <c>OsType</c> null and the card falls back to a
+    /// placeholder. The node row never has an OS type.
+    /// </summary>
+    private async Task BackfillOsTypesAsync(
+        ProxmoxConnectionProfile profile, List<ProxmoxGuestEntity> guests, CancellationToken cancellationToken)
+    {
+        foreach (var guest in guests)
+        {
+            if (!string.IsNullOrEmpty(guest.OsType)) continue;
+            if (guest.GuestType is not (ProxmoxGuestType.Lxc or ProxmoxGuestType.Qemu)) continue;
+
+            try
+            {
+                var detail = guest.GuestType == ProxmoxGuestType.Lxc
+                    ? await apiClient.GetLxcDetailAsync(profile, guest.VmId, cancellationToken)
+                    : await apiClient.GetQemuDetailAsync(profile, guest.VmId, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(detail?.OsType))
+                    guest.OsType = detail.OsType;
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Could not read ostype for Proxmox guest {VmId}", guest.VmId);
+            }
+        }
     }
 }

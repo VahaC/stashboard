@@ -194,7 +194,11 @@ public sealed record DockerContainerCard(
     /// <summary>The user's <c>WebResource.Id</c> tracking this container, if
     /// a watch exists. Paired with <see cref="WatchId"/> so the link can route
     /// to <c>/?service={id}&amp;watch={watchId}</c>.</summary>
-    Guid? WebResourceId);
+    Guid? WebResourceId,
+    /// <summary>V7.8 — the resolved card avatar as a data URI: the user's custom
+    /// upload when present, otherwise the official dashboard-icons logo derived
+    /// from the image, otherwise <c>null</c> (the UI falls back to a placeholder).</summary>
+    string? IconDataUri = null);
 
 public sealed record DockerContainerPortMapping(
     int PrivatePort,
@@ -208,6 +212,64 @@ public sealed record DockerContainerPortMapping(
 /// </summary>
 public sealed record DockerContainerActionResponse(
     DockerUpdateAttemptResponse Attempt);
+
+/// <summary>
+/// V7.8 — custom card-icon upload. The image travels as a base64 data URI in a
+/// JSON body (the browser reads the file with <c>FileReader.readAsDataURL</c>),
+/// deliberately avoiding <c>multipart/form-data</c> / <c>IFormFile</c>. Shared by
+/// the Docker container-icon and Proxmox guest-icon endpoints.
+/// </summary>
+public sealed record ContainerIconUploadRequest(string DataUri);
+
+/// <summary>V7.8 — validation for an uploaded image data URI
+/// (<c>data:image/&lt;type&gt;;base64,&lt;data&gt;</c>), capped at 2&#160;MB decoded.</summary>
+public static class ImageDataUri
+{
+    private const int MaxBytes = 2 * 1024 * 1024;
+    private const string Marker = ";base64,";
+
+    public static bool TryValidate(string? dataUri, out string? error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(dataUri)
+            || !dataUri.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+        {
+            error = "Not an image.";
+            return false;
+        }
+
+        var markerIndex = dataUri.IndexOf(Marker, StringComparison.OrdinalIgnoreCase);
+        if (markerIndex < 0)
+        {
+            error = "Not a base64 data URI.";
+            return false;
+        }
+
+        var payload = dataUri[(markerIndex + Marker.Length)..];
+        byte[] bytes;
+        try
+        {
+            bytes = Convert.FromBase64String(payload);
+        }
+        catch (FormatException)
+        {
+            error = "Invalid base64 image data.";
+            return false;
+        }
+
+        if (bytes.Length == 0)
+        {
+            error = "Empty image.";
+            return false;
+        }
+        if (bytes.Length > MaxBytes)
+        {
+            error = "Image is too large (max 2 MB).";
+            return false;
+        }
+        return true;
+    }
+}
 
 // ── V5.4 — Compose project bulk update ─────────────────────────────────────
 

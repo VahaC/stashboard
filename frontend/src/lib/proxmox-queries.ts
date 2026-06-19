@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type Query } from '@tanstack/react-query'
 import { api } from './api'
+import { readFileAsDataUrl } from './utils'
 import type {
   ProxmoxConnection,
   ProxmoxConnectionPingRequest,
@@ -98,6 +99,45 @@ export const proxmoxQk = {
   // V6.8.1 — node alerting.
   nodeAlertSettings: (id: string) => ['proxmox', 'connections', id, 'node', 'alerts', 'settings'] as const,
   nodeAlerts: (id: string) => ['proxmox', 'connections', id, 'node', 'alerts'] as const,
+  // V7.8 — per-guest card icons (vmId → data URI).
+  guestIcons: (id: string) => ['proxmox', 'connections', id, 'guest-icons'] as const,
+}
+
+// ── V7.8 — guest card icons ──────────────────────────────────────────────────
+
+/** V7.8 — the resolved card avatars for a host's guests as a `vmId → data:URI`
+ *  map (custom upload → official OS icon → omitted). Polls on the same cadence as
+ *  the connection list so a freshly-scanned OS type / new upload appears. */
+export const useProxmoxGuestIcons = (connectionId: string) =>
+  useQuery({
+    queryKey: proxmoxQk.guestIcons(connectionId),
+    queryFn: async (): Promise<Record<string, string>> =>
+      (await api.get<Record<string, string>>(`/api/proxmox/connections/${connectionId}/guest-icons`)).data,
+    staleTime: 30_000,
+  })
+
+/** V7.8 — set a custom icon for a guest; refreshes the icon map. The image is
+ *  sent as a base64 data URI in a JSON body (not multipart). */
+export const useUploadGuestIcon = (connectionId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ vmId, file }: { vmId: number; file: File }) => {
+      const dataUri = await readFileAsDataUrl(file)
+      await api.post(`/api/proxmox/connections/${connectionId}/guests/${vmId}/icon`, { dataUri })
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: proxmoxQk.guestIcons(connectionId) }),
+  })
+}
+
+/** V7.8 — reset a guest's icon back to Auto (OS / placeholder). */
+export const useResetGuestIcon = (connectionId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vmId: number) => {
+      await api.delete(`/api/proxmox/connections/${connectionId}/guests/${vmId}/icon`)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: proxmoxQk.guestIcons(connectionId) }),
+  })
 }
 
 /** V6.8 — the node's health snapshot. Polled so the card + Overview track the

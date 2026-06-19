@@ -121,6 +121,25 @@ public class BackupServiceTests
                     Name = "jellyfin", MonitoringEnabled = true, IsRunning = true,
                 });
 
+                // V7.8 — a custom container-icon upload (must round-trip)…
+                ctx.ContainerIcons.Add(new ContainerIconEntity
+                {
+                    UserId = alice.Id, DockerConnectionId = connection.Id, ContainerName = "sonarr",
+                    IconSource = ContainerIconSource.Custom, LogoBase64 = "data:image/webp;base64,CUSTOMCT==",
+                });
+                // …and an Auto row, which must NOT be exported (it re-resolves live).
+                ctx.ContainerIcons.Add(new ContainerIconEntity
+                {
+                    UserId = alice.Id, DockerConnectionId = connection.Id, ContainerName = "radarr",
+                    IconSource = ContainerIconSource.Auto,
+                });
+                // V7.8 — a custom guest-icon upload (must round-trip).
+                ctx.ProxmoxGuestIcons.Add(new ProxmoxGuestIconEntity
+                {
+                    UserId = alice.Id, ProxmoxConnectionId = pve.Id, VmId = 101,
+                    IconSource = ContainerIconSource.Custom, LogoBase64 = "data:image/webp;base64,CUSTOMVM==",
+                });
+
                 await ctx.SaveChangesAsync();
                 userA = alice.Id;
 
@@ -201,6 +220,20 @@ public class BackupServiceTests
                 Assert.Equal(ProxmoxGuestType.Lxc, guest.GuestType);
                 Assert.Equal("vaultwarden", guest.Name);
                 Assert.False(guest.MonitoringEnabled);
+
+                // V7.8 — only the custom icons round-trip (the Auto row is dropped),
+                // re-attached to the new connection / guest by name / vmid.
+                var ctIcon = await ctx.ContainerIcons.AsNoTracking().SingleAsync(i => i.UserId == userB);
+                Assert.Equal(conn.Id, ctIcon.DockerConnectionId);
+                Assert.Equal("sonarr", ctIcon.ContainerName);
+                Assert.Equal(ContainerIconSource.Custom, ctIcon.IconSource);
+                Assert.Equal("data:image/webp;base64,CUSTOMCT==", ctIcon.LogoBase64);
+
+                var gIcon = await ctx.ProxmoxGuestIcons.AsNoTracking().SingleAsync(i => i.UserId == userB);
+                Assert.Equal(pve.Id, gIcon.ProxmoxConnectionId);
+                Assert.Equal(101, gIcon.VmId);
+                Assert.Equal(ContainerIconSource.Custom, gIcon.IconSource);
+                Assert.Equal("data:image/webp;base64,CUSTOMVM==", gIcon.LogoBase64);
             }
         }
         finally

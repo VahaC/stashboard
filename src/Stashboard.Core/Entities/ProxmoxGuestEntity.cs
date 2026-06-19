@@ -88,6 +88,15 @@ public class ProxmoxGuestEntity : BaseEntity
     [MaxLength(500)]
     public string? Tags { get; set; }
 
+    /// <summary>V7.8 — the guest's OS type from its config (<c>ostype</c>): for an
+    /// LXC the distro (<c>debian</c>, <c>ubuntu</c>, <c>alpine</c>, …); for a VM the
+    /// generic family (<c>l26</c>, <c>win10</c>, …). Drives the auto card icon.
+    /// Lazily filled in by the scan the first time it's seen (it's immutable in
+    /// practice), best-effort — stays <c>null</c> if the config read fails. Never
+    /// set for the node row.</summary>
+    [MaxLength(64)]
+    public string? OsType { get; set; }
+
     public DateTime? LastCheckedUtc { get; set; }
 
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;

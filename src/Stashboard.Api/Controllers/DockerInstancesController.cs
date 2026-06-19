@@ -42,6 +42,7 @@ public class DockerInstancesController(
     IDockerProjectUpdater projectUpdater,
     IDockerUpdateChecker updateChecker,
     IDockerPruneRunner pruneRunner,
+    IContainerIconResolver iconResolver,
     IOptions<StashboardOptions> options) : ControllerBase
 {
     private Guid UserId => User.GetUserId();
@@ -82,33 +83,49 @@ public class DockerInstancesController(
         var liveContainerNames = new HashSet<string>(
             details.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
 
-        var cards = details
-            .Select(c =>
-            {
-                watchByContainer.TryGetValue(c.Name, out var watchLink);
-                return new DockerContainerCard(
-                    Id: c.Id,
-                    Name: c.Name,
-                    Image: c.Image,
-                    ImageId: c.ImageId,
-                    State: c.State,
-                    Status: c.Status,
-                    CreatedUtc: c.CreatedUtc,
-                    Ports: c.Ports
-                        .Select(p => new DockerContainerPortMapping(p.PrivatePort, p.PublicPort, p.Type, p.Ip))
-                        .OrderBy(p => p.PrivatePort)
-                        .ToList(),
-                    ComposeProject: c.ComposeProject,
-                    ComposeService: c.ComposeService,
-                    WatchId: watchLink?.Id,
-                    WebResourceId: watchLink?.WebResourceId);
-            })
-            .ToList();
+        // V7.8 — custom icon overrides for this user + connection, keyed by name.
+        var userId = UserId;
+        var customIcons = await db.ContainerIcons.AsNoTracking()
+            .Where(i => i.UserId == userId
+                && i.DockerConnectionId == connectionId
+                && i.IconSource == ContainerIconSource.Custom
+                && i.LogoBase64 != null)
+            .Select(i => new { i.ContainerName, i.LogoBase64 })
+            .ToListAsync(cancellationToken);
+        var iconByContainer = customIcons
+            .GroupBy(i => i.ContainerName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().LogoBase64!, StringComparer.OrdinalIgnoreCase);
+
+        var cards = new List<DockerContainerCard>(details.Count);
+        foreach (var c in details)
+        {
+            watchByContainer.TryGetValue(c.Name, out var watchLink);
+            var iconDataUri = await ResolveCardIconAsync(c.Name, c.Image, watchLink?.ImageReference, iconByContainer, cancellationToken);
+            cards.Add(new DockerContainerCard(
+                Id: c.Id,
+                Name: c.Name,
+                Image: c.Image,
+                ImageId: c.ImageId,
+                State: c.State,
+                Status: c.Status,
+                CreatedUtc: c.CreatedUtc,
+                Ports: c.Ports
+                    .Select(p => new DockerContainerPortMapping(p.PrivatePort, p.PublicPort, p.Type, p.Ip))
+                    .OrderBy(p => p.PrivatePort)
+                    .ToList(),
+                ComposeProject: c.ComposeProject,
+                ComposeService: c.ComposeService,
+                WatchId: watchLink?.Id,
+                WebResourceId: watchLink?.WebResourceId,
+                IconDataUri: iconDataUri));
+        }
 
         // Tracked containers whose name no longer appears on the Docker host
         // surface as ghost cards so the user can see them and clean up.
         foreach (var orphan in watches.Where(w => !liveContainerNames.Contains(w.ContainerName)))
         {
+            var iconDataUri = await ResolveCardIconAsync(
+                orphan.ContainerName, orphan.ImageReference, orphan.ImageReference, iconByContainer, cancellationToken);
             cards.Add(new DockerContainerCard(
                 Id: string.Empty,
                 Name: orphan.ContainerName,
@@ -121,7 +138,8 @@ public class DockerInstancesController(
                 ComposeProject: null,
                 ComposeService: null,
                 WatchId: orphan.Id,
-                WebResourceId: orphan.WebResourceId));
+                WebResourceId: orphan.WebResourceId,
+                IconDataUri: iconDataUri));
         }
 
         return Ok(cards);
@@ -190,6 +208,101 @@ public class DockerInstancesController(
 
         return await ExecuteActionAsync(connectionId, containerName, DockerContainerActionType.Remove,
             (transport, ct) => hostClient.RemoveContainerAsync(transport, containerName, force, ct),
+            cancellationToken);
+    }
+
+    // ── V7.8 — custom container icon ─────────────────────────────────────────
+
+    /// <summary>
+    /// V7.8 — set a custom icon for a container, addressed by connection +
+    /// container name. The image arrives as a base64 data URI in a JSON body (no
+    /// <c>multipart/form-data</c> / <c>IFormFile</c>) and is stored straight on the
+    /// <see cref="ContainerIconEntity"/> row — the card renders from it; no file is
+    /// written to disk. Upserts the row to <see cref="ContainerIconSource.Custom"/>,
+    /// replacing any previous icon in place.
+    /// </summary>
+    [HttpPost("containers/{containerName}/icon")]
+    public async Task<ActionResult<object>> UploadIcon(
+        Guid connectionId, string containerName,
+        [FromBody] ContainerIconUploadRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(containerName))
+            return BadRequest(new { error = "Container name is required." });
+        var connection = await LoadOwnedConnectionAsync(connectionId, cancellationToken);
+        if (connection is null) return NotFound();
+        if (!ImageDataUri.TryValidate(request?.DataUri, out var error))
+            return BadRequest(new { error });
+
+        var icon = await LoadIconAsync(connectionId, containerName, cancellationToken);
+        if (icon is null)
+        {
+            icon = new ContainerIconEntity
+            {
+                UserId = UserId,
+                DockerConnectionId = connectionId,
+                ContainerName = containerName,
+            };
+            db.ContainerIcons.Add(icon);
+        }
+
+        icon.IconSource = ContainerIconSource.Custom;
+        icon.LogoBase64 = request!.DataUri;
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(new { stored = true });
+    }
+
+    /// <summary>
+    /// V7.8 — reset a container's icon back to Auto: drops the override row so the
+    /// official resolver takes over again. Idempotent — a container with no
+    /// override returns 204.
+    /// </summary>
+    [HttpDelete("containers/{containerName}/icon")]
+    public async Task<IActionResult> ResetIcon(
+        Guid connectionId, string containerName, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(containerName))
+            return BadRequest(new { error = "Container name is required." });
+        var connection = await LoadOwnedConnectionAsync(connectionId, cancellationToken);
+        if (connection is null) return NotFound();
+
+        var icon = await LoadIconAsync(connectionId, containerName, cancellationToken);
+        if (icon is not null)
+        {
+            db.ContainerIcons.Remove(icon);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        return NoContent();
+    }
+
+    /// <summary>
+    /// V7.8 — resolution chain for a card avatar: the user's custom upload wins;
+    /// otherwise the official dashboard-icons logo derived from the image
+    /// (preferring a tracked watch's stable reference when the live image is a
+    /// dangling <c>sha256:</c> digest); otherwise <c>null</c>. The resolver is
+    /// only consulted when there's no custom image, and its 24h cache keeps the
+    /// per-card lookup cheap on the 10 s list refresh.
+    /// </summary>
+    private async Task<string?> ResolveCardIconAsync(
+        string containerName, string image, string? watchImageReference,
+        IReadOnlyDictionary<string, string> customByContainer, CancellationToken cancellationToken)
+    {
+        if (customByContainer.TryGetValue(containerName, out var custom))
+            return custom;
+
+        var imageForIcon = image.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrEmpty(watchImageReference)
+            ? watchImageReference
+            : image;
+        if (string.IsNullOrWhiteSpace(imageForIcon)) return null;
+        return await iconResolver.ResolveIconForImageAsync(imageForIcon, cancellationToken);
+    }
+
+    private Task<ContainerIconEntity?> LoadIconAsync(
+        Guid connectionId, string containerName, CancellationToken cancellationToken)
+    {
+        var userId = UserId;
+        return db.ContainerIcons.FirstOrDefaultAsync(
+            i => i.UserId == userId && i.DockerConnectionId == connectionId && i.ContainerName == containerName,
             cancellationToken);
     }
 
@@ -622,11 +735,7 @@ public class DockerInstancesController(
         Response.Headers["X-Accel-Buffering"] = "no";
         await Response.Body.FlushAsync(cancellationToken);
 
-        var jsonOptions = new System.Text.Json.JsonSerializerOptions
-        {
-            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
-            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
-        };
+        var jsonOptions = Stashboard.Api.Serialization.StreamingJson.Options;
 
         DockerLogStreamResult streamResult;
         try
@@ -686,10 +795,7 @@ public class DockerInstancesController(
         Response.Headers["X-Accel-Buffering"] = "no";
         await Response.Body.FlushAsync(cancellationToken);
 
-        var jsonOptions = new System.Text.Json.JsonSerializerOptions
-        {
-            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
-        };
+        var jsonOptions = Stashboard.Api.Serialization.StreamingJson.Options;
 
         DockerStatsStreamResult streamResult;
         try

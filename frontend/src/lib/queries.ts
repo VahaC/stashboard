@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 import { accountApi } from './account-api'
+import { readFileAsDataUrl } from './utils'
 import type {
   Category,
   ComposeAllocation,
@@ -1031,5 +1032,32 @@ export const useDockerContainerAction = (connectionId: string) => {
       // attempt itself isn't surfaced on the page yet.
       void qc.invalidateQueries({ queryKey: qk.dockerInstanceContainers(connectionId) })
     },
+  })
+}
+
+/** V7.8 — set a custom icon for a container; invalidates the card list so the new
+ *  avatar shows up. The image is sent as a base64 data URI in a JSON body (not
+ *  multipart) — read in the browser via FileReader. */
+export const useUploadContainerIcon = (connectionId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ containerName, file }: { containerName: string; file: File }) => {
+      const dataUri = await readFileAsDataUrl(file)
+      const url = `/api/docker/connections/${connectionId}/instance/containers/${encodeURIComponent(containerName)}/icon`
+      await api.post(url, { dataUri })
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.dockerInstanceContainers(connectionId) }),
+  })
+}
+
+/** V7.8 — reset a container's icon back to Auto (official / placeholder). */
+export const useResetContainerIcon = (connectionId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (containerName: string) => {
+      const url = `/api/docker/connections/${connectionId}/instance/containers/${encodeURIComponent(containerName)}/icon`
+      await api.delete(url)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.dockerInstanceContainers(connectionId) }),
   })
 }

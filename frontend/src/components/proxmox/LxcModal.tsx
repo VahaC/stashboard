@@ -36,20 +36,24 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { ContainerStateBadge } from '@/components/docker/atoms/ContainerStateBadge'
+import { ContainerIcon } from '@/components/docker/atoms/ContainerIcon'
 import { StatTile } from '@/components/shared/StatTile'
 import {
   fetchProxmoxLxcStatus,
   useCheckProxmoxLxc,
   useDestroyProxmoxLxc,
   useProxmoxLxcAction,
+  useProxmoxGuestIcons,
   useProxmoxLxcConfig,
   useProxmoxLxcRrd,
   useProxmoxLxcTasks,
   useProxmoxTaskLog,
   useProxmoxUpdateCommand,
+  useResetGuestIcon,
   useSetProxmoxLxcMonitoring,
   useSnoozeProxmoxLxc,
   useUpdateProxmoxLxcConfig,
+  useUploadGuestIcon,
   type ProxmoxGuestKind,
   type ProxmoxRrdTimeframe,
 } from '@/lib/proxmox-queries'
@@ -249,8 +253,71 @@ function OverviewTab({ guest, connection, isVm, onClose }: { guest: ProxmoxGuest
           </div>
         </section>
       )}
-      
+
+      <section className="container-modal-section">
+        <h3 className="container-modal-section-title">Icon</h3>
+        <GuestIconSection connectionId={connection.id} vmId={guest.vmId} name={guest.name} />
+      </section>
+
       <LifecycleSection guest={guest} connection={connection} isVm={isVm} onClose={onClose} />
+    </div>
+  )
+}
+
+// ── Icon management (Overview tab) ───────────────────────────────────────────
+
+/**
+ * V7.8 — set or clear a guest's custom card icon. Mirrors the Docker
+ * container-icon section: a preview of the current avatar (custom upload →
+ * official OS icon → placeholder), an upload button, and a Reset-to-auto button.
+ * Both mutations invalidate the icon map so the card updates immediately.
+ */
+function GuestIconSection({ connectionId, vmId, name }: { connectionId: string; vmId: number; name: string }) {
+  const icons = useProxmoxGuestIcons(connectionId)
+  const upload = useUploadGuestIcon(connectionId)
+  const reset = useResetGuestIcon(connectionId)
+  const [error, setError] = useState<string | null>(null)
+  const busy = upload.isPending || reset.isPending
+  const current = icons.data?.[String(vmId)] ?? null
+
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setError(null)
+    try {
+      await upload.mutateAsync({ vmId, file })
+    } catch (err) {
+      setError(getApiErrorMessage(err) ?? 'Upload failed')
+    }
+  }
+
+  const onReset = async () => {
+    setError(null)
+    try {
+      await reset.mutateAsync(vmId)
+    } catch (err) {
+      setError(getApiErrorMessage(err) ?? 'Reset failed')
+    }
+  }
+
+  return (
+    <div className="container-modal-icon-row">
+      <ContainerIcon dataUri={current} name={name} />
+      <div className="container-modal-actions">
+        <label className="service-modal-upload">
+          Upload
+          <input type="file" accept="image/*" className="sr-only" disabled={busy} onChange={onFile} />
+        </label>
+        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onReset}>
+          Reset to auto
+        </Button>
+      </div>
+      {error && (
+        <p className="docker-instances-card-action-error">
+          <AlertCircle className="h-3.5 w-3.5 inline" /> {error}
+        </p>
+      )}
     </div>
   )
 }

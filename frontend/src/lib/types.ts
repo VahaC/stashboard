@@ -708,6 +708,9 @@ export interface DockerContainerCard {
   watchId: string | null
   /** The user's WebResource the watch belongs to, if one exists. */
   webResourceId: string | null
+  /** V7.8 — resolved card avatar (custom upload → official dashboard-icon →
+   *  null). Null falls back to the placeholder treatment. */
+  iconDataUri: string | null
 }
 
 export interface StashboardFeatures {

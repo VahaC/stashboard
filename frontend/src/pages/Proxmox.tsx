@@ -37,6 +37,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { EntityCard } from '@/components/shared/EntityCard'
+import { ContainerIcon } from '@/components/docker/atoms/ContainerIcon'
 import { FloatingMenu } from '@/components/shared/FloatingMenu'
 import { StateBadge } from '@/components/shared/StateBadge'
 import { ProxmoxConnectionModal } from '@/components/ProxmoxConnectionModal'
@@ -49,6 +50,7 @@ import { ProxmoxBulkUpdateDialog } from '@/components/proxmox/ProxmoxBulkUpdateD
 import { useFeatures } from '@/lib/queries'
 import {
   useProxmoxConnections,
+  useProxmoxGuestIcons,
   useDeleteProxmoxConnection,
   useCheckProxmoxNow,
   useProxmoxLxcAction,
@@ -125,8 +127,10 @@ const formatUptime = (seconds: number | null) => {
  *  real errors (pct exec failed, not Debian) so the card stays calm. */
 const isSshGap = (error: string | null) => !!error && error.startsWith('SSH is not configured')
 
-function GuestCard({ guest, onOpen, onAction, busy = false }: {
+function GuestCard({ guest, iconDataUri = null, onOpen, onAction, busy = false }: {
   guest: ProxmoxGuest
+  /** V7.8 — resolved card avatar (custom upload → official OS icon → null). */
+  iconDataUri?: string | null
   onOpen?: (tab?: LxcModalTab) => void
   onAction?: (action: ProxmoxLxcAction) => void
   busy?: boolean
@@ -185,6 +189,7 @@ function GuestCard({ guest, onOpen, onAction, busy = false }: {
       state={guest.isRunning ? 'running' : 'stopped'}
       dimmed={muted}
       name={<span title={guest.name}>{guest.name}</span>}
+      icon={<ContainerIcon dataUri={iconDataUri} name={guest.name} />}
       updateBadge={monitoringOff
         ? <span className="docker-section-badge cc-update-badge" data-status="Disabled" title="Update monitoring is off for this container">Disabled</span>
         : snoozeActive
@@ -514,6 +519,8 @@ function ConnectionBlock({
   // run through the page's search / state / monitoring / type filters.
   const lxcGuests = connection.guests.filter((g) => !isNode(g.guestType))
   const filteredLxc = lxcGuests.filter((g) => guestMatchesFilters(g, filters))
+  // V7.8 — resolved card avatars (custom upload → official OS icon) keyed by vmId.
+  const guestIcons = useProxmoxGuestIcons(connection.id)
 
   // V6.10 — open the LXC modal when the page resolves a `?…&vmid=` deep link
   // to one of this connection's guests.
@@ -641,6 +648,7 @@ function ConnectionBlock({
                     <GuestCard
                       key={`${g.guestType}-${g.vmId}`}
                       guest={g}
+                      iconDataUri={guestIcons.data?.[String(g.vmId)] ?? null}
                       onOpen={(tab) => setOpen({ guest: g, tab: tab ?? 'overview' })}
                       onAction={(action) => act.mutate({ vmId: g.vmId, action })}
                       busy={act.isPending && act.variables?.vmId === g.vmId}
@@ -655,7 +663,10 @@ function ConnectionBlock({
 
       {open && (
         <LxcModal
-          guest={open.guest}
+          // Re-derive the guest from the live connection data each render so
+          // optimistic mutations (monitoring toggle, snooze) reflect in the open
+          // modal immediately — `open.guest` is only the snapshot at open time.
+          guest={connection.guests.find((g) => g.vmId === open.guest.vmId) ?? open.guest}
           connection={connection}
           initialTab={open.tab}
           onClose={() => setOpen(null)}

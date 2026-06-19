@@ -395,10 +395,21 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--gap);
-  align-items: flex-start;
+  /* Equal-height groups per row, so cards in side-by-side (e.g. single-
+     container) groups line up to the same height. */
+  align-items: stretch;
   margin-top: 14px;
 }
 .cgroup { box-sizing: border-box; }
+/* A collapsed group is just its header — keep it at its natural height instead
+   of stretching it up to a tall expanded neighbour. */
+.cgroup:not(.open) { align-self: flex-start; }
+/* An open group fills the row height and passes it down through the body + grid
+   so each card stretches and its action row bottom-aligns, regardless of how
+   many meta lines (image / status / ports) the card has. */
+.cgroup.open { display: flex; flex-direction: column; }
+.cgroup.open .cgroup-body { flex: 1; display: flex; flex-direction: column; }
+.cgroup.open .cgroup-grid { flex: 1; grid-auto-rows: 1fr; }
 .cgroup-head {
   display: flex;
   align-items: center;
@@ -508,6 +519,9 @@
   flex: initial;
   max-width: none;
   width: auto;
+  /* Fill the stretched grid cell so every card in a row is the same height and
+     the action row bottom-aligns (the body's flex:1 absorbs the difference). */
+  height: 100%;
   display: flex;
   flex-direction: column;
   gap: var(--card-gap);
@@ -1091,6 +1105,58 @@
   flex-shrink: 0;
 }
 
+/* V7.8 — leading avatar column: the icon sits to the LEFT of the whole stacked
+   body (name + image + meta + ports), which fills the remaining width. */
+.cc-lead {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.cc-lead-icon {
+  flex-shrink: 0;
+}
+
+.cc-lead-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.cc-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  overflow: hidden;
+  user-select: none;
+}
+
+.cc-card-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.cc-card-icon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .docker-section-badge {
   display: inline-flex;
   align-items: center;
@@ -1313,6 +1379,15 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.25rem;
+}
+
+/* V7.8 — custom-icon management row in the overview tab: preview avatar +
+   upload / reset actions, wrapping on narrow widths. */
+.container-modal-icon-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 /* V6.5 — editable Config tab: a compact responsive grid of labelled inputs. */

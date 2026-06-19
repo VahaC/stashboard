@@ -40,6 +40,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
     private readonly Mock<IProxmoxCreateSettingsService> _createSettingsMock = new();
     private readonly Mock<Stashboard.Api.Services.Proxmox.IProxmoxNodeAlertService> _alertServiceMock = new();
     private readonly Mock<IDockerWebhookTokenGenerator> _webhookTokenGeneratorMock = new();
+    private readonly Mock<IContainerIconResolver> _iconResolverMock = new();
     private Guid _userId;
     private Guid _otherUserId;
 
@@ -56,6 +57,10 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         // valid, well-formed value (the unique index + receiver expect that shape).
         _webhookTokenGeneratorMock.Setup(g => g.Generate())
             .Returns(new string('a', 64));
+        // Default: no official OS icon resolves; icon tests override per-osType.
+        _iconResolverMock
+            .Setup(r => r.ResolveIconForOsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
     }
 
     public async Task InitializeAsync()
@@ -1407,6 +1412,92 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
+    // ── V7.8 — guest card icons ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task GuestIcons_ReturnsCustomThenOfficial_SkipsUnresolvableAndNode()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        await SeedGuestAsync(conn.Id, vmId: 0, pendingUpdates: null, monitoringEnabled: true, guestType: ProxmoxGuestType.Node);
+        await SeedGuestAsync(conn.Id, vmId: 101, pendingUpdates: null, monitoringEnabled: true, osType: "debian");
+        await SeedGuestAsync(conn.Id, vmId: 102, pendingUpdates: null, monitoringEnabled: true, osType: "alpine");
+        await SeedGuestAsync(conn.Id, vmId: 103, pendingUpdates: null, monitoringEnabled: true, osType: null);
+
+        // 101 has a custom upload (wins over the OS icon); 102 resolves an OS icon.
+        _db.ProxmoxGuestIcons.Add(new ProxmoxGuestIconEntity
+        {
+            Id = Guid.NewGuid(),
+            UserId = _userId,
+            ProxmoxConnectionId = conn.Id,
+            VmId = 101,
+            IconSource = ContainerIconSource.Custom,
+            LogoBase64 = "data:image/png;base64,CUSTOM",
+            CustomLogoPath = "/uploads/container-icons/x.png",
+            CreatedUtc = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        _iconResolverMock.Setup(r => r.ResolveIconForOsAsync("alpine", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("data:image/webp;base64,ALPINE");
+
+        var ctrl = BuildController();
+        var result = await ctrl.GuestIcons(conn.Id, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var map = Assert.IsType<Dictionary<string, string>>(ok.Value);
+        Assert.Equal("data:image/png;base64,CUSTOM", map["101"]);
+        Assert.Equal("data:image/webp;base64,ALPINE", map["102"]);
+        Assert.False(map.ContainsKey("103")); // no custom, no OS icon → omitted
+        Assert.False(map.ContainsKey("0"));    // node row never carries an icon
+        // The custom guest never hits the resolver.
+        _iconResolverMock.Verify(r => r.ResolveIconForOsAsync("debian", It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GuestIcons_Returns404_WhenConnectionForeign()
+    {
+        var conn = await SeedConnectionAsync(_otherUserId);
+        var ctrl = BuildController();
+        var result = await ctrl.GuestIcons(conn.Id, CancellationToken.None);
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task UploadGuestIcon_WritesCustomRow_AndResetRemovesIt()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var ctrl = BuildController();
+
+        var upload = await ctrl.UploadGuestIcon(conn.Id, 101, PngRequest(), CancellationToken.None);
+        Assert.IsType<OkObjectResult>(upload.Result);
+
+        var row = await _db.ProxmoxGuestIcons.AsNoTracking()
+            .SingleAsync(i => i.ProxmoxConnectionId == conn.Id && i.VmId == 101);
+        Assert.Equal(ContainerIconSource.Custom, row.IconSource);
+        Assert.StartsWith("data:image/png;base64,", row.LogoBase64);
+
+        var reset = await ctrl.ResetGuestIcon(conn.Id, 101, CancellationToken.None);
+        Assert.IsType<NoContentResult>(reset);
+        Assert.Equal(0, await _db.ProxmoxGuestIcons.CountAsync());
+    }
+
+    [Fact]
+    public async Task UploadGuestIcon_RejectsNonImage_AndForeignConnection()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var ctrl = BuildController();
+        var bad = await ctrl.UploadGuestIcon(conn.Id, 101,
+            new ContainerIconUploadRequest("data:application/pdf;base64,JVBERi0="), CancellationToken.None);
+        Assert.IsType<BadRequestObjectResult>(bad.Result);
+
+        var foreign = await SeedConnectionAsync(_otherUserId);
+        var ctrl2 = BuildController();
+        var nf = await ctrl2.UploadGuestIcon(foreign.Id, 101, PngRequest(), CancellationToken.None);
+        Assert.IsType<NotFoundResult>(nf.Result);
+        Assert.Equal(0, await _db.ProxmoxGuestIcons.CountAsync());
+    }
+
     private ProxmoxConnectionsController BuildController(Guid? userId = null)
     {
         var controller = new ProxmoxConnectionsController(
@@ -1422,6 +1513,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
             _createSettingsMock.Object,
             _alertServiceMock.Object,
             _webhookTokenGeneratorMock.Object,
+            _iconResolverMock.Object,
             NullLogger<ProxmoxConnectionsController>.Instance);
 
         var identity = new ClaimsIdentity(
@@ -1483,7 +1575,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
     private async Task SeedGuestAsync(
         Guid connectionId, int vmId, int? pendingUpdates, bool monitoringEnabled,
         DateTime? snoozedUntil = null, ProxmoxGuestType guestType = ProxmoxGuestType.Lxc,
-        bool isRunning = true)
+        bool isRunning = true, string? osType = null)
     {
         _db.ProxmoxGuests.Add(new ProxmoxGuestEntity
         {
@@ -1496,11 +1588,15 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
             PendingUpdates = pendingUpdates,
             MonitoringEnabled = monitoringEnabled,
             MonitoringSnoozedUntil = snoozedUntil,
+            OsType = osType,
             UpdatedUtc = DateTime.UtcNow,
         });
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
     }
+
+    private static ContainerIconUploadRequest PngRequest(string content = "fake-image") =>
+        new($"data:image/png;base64,{Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(content))}");
 
     private async Task EnsureSchemaAsync()
     {
@@ -1524,6 +1620,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         await _db.ProxmoxMonitoringAudits.ExecuteDeleteAsync();
         await _db.ProxmoxDestroyAudits.ExecuteDeleteAsync();
         await _db.ProxmoxCreateAudits.ExecuteDeleteAsync();
+        await _db.ProxmoxGuestIcons.ExecuteDeleteAsync();
         await _db.ProxmoxGuests.ExecuteDeleteAsync();
         await _db.ProxmoxConnections.ExecuteDeleteAsync();
         await _db.Users.ExecuteDeleteAsync();

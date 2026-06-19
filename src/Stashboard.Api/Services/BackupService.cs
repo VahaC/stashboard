@@ -75,6 +75,22 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             .GroupBy(g => g.ProxmoxConnectionId)
             .ToDictionary(grp => grp.Key, grp => grp.ToList());
 
+        // V7.8 — custom card-icon uploads (base64). Only Custom rows carry content;
+        // Auto rows are re-resolved live on the target, so they're not exported.
+        // Nested under their connection so import re-attaches by name / vmid.
+        var containerIcons = await db.ContainerIcons.AsNoTracking()
+            .Where(i => i.UserId == userId && i.IconSource == ContainerIconSource.Custom && i.LogoBase64 != null)
+            .ToListAsync(cancellationToken);
+        var containerIconsByConnection = containerIcons
+            .GroupBy(i => i.DockerConnectionId)
+            .ToDictionary(grp => grp.Key, grp => grp.ToList());
+        var guestIcons = await db.ProxmoxGuestIcons.AsNoTracking()
+            .Where(i => i.UserId == userId && i.IconSource == ContainerIconSource.Custom && i.LogoBase64 != null)
+            .ToListAsync(cancellationToken);
+        var guestIconsByConnection = guestIcons
+            .GroupBy(i => i.ProxmoxConnectionId)
+            .ToDictionary(grp => grp.Key, grp => grp.ToList());
+
         var dto = new BackupDto(
             ExportedUtc: DateTime.UtcNow,
             User: user is null ? null : new UserSettingsDto(
@@ -88,7 +104,9 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 c.SshHost, c.SshPort, c.SshUsername,
                 Dec(c.SshPrivateKeyEncrypted), Dec(c.SshPrivateKeyPassphraseEncrypted), c.SshRemoteSocketPath,
                 c.ComposePathHostPrefix, c.ComposePathContainerPrefix,
-                c.AllowImagePrune, c.PruneUnusedImages)).ToList(),
+                c.AllowImagePrune, c.PruneUnusedImages,
+                (containerIconsByConnection.TryGetValue(c.Id, out var ci) ? ci : [])
+                    .Select(i => new ContainerIconDto(i.ContainerName, i.LogoBase64!)).ToList())).ToList(),
             Services: services.Select(s => new ServiceDto(
                 s.Id, s.Name, s.MainUrl, s.MainUrlHealthCheckEnabled, s.AdditionalUrl, s.AdditionalUrlHealthCheckEnabled,
                 s.OfflineNotificationsEnabled, s.HealthCheckUrl, s.HealthCheckMethod, s.ExpectedStatusRange,
@@ -113,7 +131,9 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 (guestsByConnection.TryGetValue(c.Id, out var gs) ? gs : [])
                     .Select(g => new ProxmoxGuestDto(
                         g.VmId, g.GuestType, g.Name, g.MonitoringEnabled, g.MonitoringSnoozedUntil))
-                    .ToList())).ToList());
+                    .ToList(),
+                (guestIconsByConnection.TryGetValue(c.Id, out var gi) ? gi : [])
+                    .Select(i => new GuestIconDto(i.VmId, i.LogoBase64!)).ToList())).ToList());
 
         return JsonSerializer.SerializeToUtf8Bytes(dto, JsonOpts);
     }
@@ -199,6 +219,24 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 idMap[dc.Id] = fresh.Id;
             }
             else { idMap[dc.Id] = existing.Id; }
+
+            // V7.8 — custom container-icon uploads for this connection. Additive:
+            // only seed rows that don't already exist (keyed by container name).
+            var dockerConnId = idMap[dc.Id];
+            foreach (var icon in dc.ContainerIcons ?? [])
+            {
+                if (await db.ContainerIcons.AnyAsync(x => x.UserId == userId
+                        && x.DockerConnectionId == dockerConnId && x.ContainerName == icon.ContainerName, cancellationToken))
+                    continue;
+                db.ContainerIcons.Add(new ContainerIconEntity
+                {
+                    UserId = userId,
+                    DockerConnectionId = dockerConnId,
+                    ContainerName = icon.ContainerName,
+                    IconSource = ContainerIconSource.Custom,
+                    LogoBase64 = icon.LogoBase64,
+                });
+            }
         }
 
         // ── Proxmox connections (merge by name) ──
@@ -269,6 +307,23 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                     Name = g.Name,
                     MonitoringEnabled = g.MonitoringEnabled,
                     MonitoringSnoozedUntil = g.MonitoringSnoozedUntil,
+                });
+            }
+
+            // V7.8 — custom guest card-icon uploads. Additive: only seed rows that
+            // don't already exist for this host (keyed by VmId).
+            foreach (var icon in pc.GuestIcons ?? [])
+            {
+                if (await db.ProxmoxGuestIcons.AnyAsync(x => x.UserId == userId
+                        && x.ProxmoxConnectionId == connectionId && x.VmId == icon.VmId, cancellationToken))
+                    continue;
+                db.ProxmoxGuestIcons.Add(new ProxmoxGuestIconEntity
+                {
+                    UserId = userId,
+                    ProxmoxConnectionId = connectionId,
+                    VmId = icon.VmId,
+                    IconSource = ContainerIconSource.Custom,
+                    LogoBase64 = icon.LogoBase64,
                 });
             }
         }
@@ -412,7 +467,11 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         string? ComposePathHostPrefix = null,
         string? ComposePathContainerPrefix = null,
         bool AllowImagePrune = true,
-        bool PruneUnusedImages = false);
+        bool PruneUnusedImages = false,
+        List<ContainerIconDto>? ContainerIcons = null);
+
+    private sealed record ContainerIconDto(string ContainerName, string LogoBase64);
+    private sealed record GuestIconDto(int VmId, string LogoBase64);
 
     private sealed record ServiceDto(
         Guid Id, string Name, string MainUrl, bool MainUrlHealthCheckEnabled, string? AdditionalUrl,
@@ -439,7 +498,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         bool AllowConsole, bool AllowUpdates, bool AllowDestroy, bool AllowCreate, bool Enabled,
         int? TelemetryPollSeconds, bool UpdateNotificationsEnabled, bool TelegramNotificationsEnabled,
         CheckScheduleType ScheduleType, int CheckEveryHours, TimeOnly? CheckAtTime, DayOfWeek? CheckOnDayOfWeek,
-        string? WebhookToken, List<ProxmoxGuestDto> Guests);
+        string? WebhookToken, List<ProxmoxGuestDto> Guests, List<GuestIconDto>? GuestIcons = null);
 
     private sealed record ProxmoxGuestDto(
         int VmId, ProxmoxGuestType GuestType, string Name, bool MonitoringEnabled, DateTime? MonitoringSnoozedUntil);

@@ -42,7 +42,11 @@ public class Program
 
         builder.Services.AddControllers()
             .AddJsonOptions(o =>
-                o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
+            {
+                o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+                // Emit all UTC DateTimes with a trailing 'Z' — see UtcDateTimeConverter.
+                o.JsonSerializerOptions.Converters.Add(new Stashboard.Api.Serialization.UtcDateTimeConverter());
+            });
         builder.Services.AddOpenApi();
         builder.Services.AddSwaggerGen();
 

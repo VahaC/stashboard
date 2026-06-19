@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Stashboard.Api.Data;
 
@@ -10,9 +11,11 @@ using Stashboard.Api.Data;
 namespace Stashboard.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260617130544_AddContainerIcons")]
+    partial class AddContainerIcons
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
@@ -1372,10 +1375,6 @@ namespace Stashboard.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("OsType")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
                     b.Property<int?>("PendingUpdates")
                         .HasColumnType("INTEGER");
 
@@ -1401,44 +1400,6 @@ namespace Stashboard.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("ProxmoxGuests");
-                });
-
-            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxGuestIconEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CustomLogoPath")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("IconSource")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("LogoBase64")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("ProxmoxConnectionId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("VmId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProxmoxConnectionId");
-
-                    b.HasIndex("UserId", "ProxmoxConnectionId", "VmId")
-                        .IsUnique();
-
-                    b.ToTable("ProxmoxGuestIcons");
                 });
 
             modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxMonitoringAuditEntity", b =>
@@ -2025,21 +1986,6 @@ namespace Stashboard.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("ProxmoxConnection");
-                });
-
-            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxGuestIconEntity", b =>
-                {
-                    b.HasOne("Stashboard.Core.Entities.ProxmoxConnectionEntity", null)
-                        .WithMany()
-                        .HasForeignKey("ProxmoxConnectionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Stashboard.Api.Data.UserEntity", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxMonitoringAuditEntity", b =>

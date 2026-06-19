@@ -3,6 +3,7 @@ import { Activity, Bell, FileText, Info, MoreHorizontal, Play, RefreshCw, Search
 import { Button } from '@/components/ui/button'
 import type { DockerContainerCard, DockerWatch } from '@/lib/types'
 import { EntityCard } from '@/components/shared/EntityCard'
+import { ContainerIcon } from './atoms/ContainerIcon'
 import { FloatingMenu } from '@/components/shared/FloatingMenu'
 import { UpdateStatusBadge } from './atoms/UpdateStatusBadge'
 import { ContainerLifecycleActions } from './atoms/ContainerLifecycleActions'
@@ -73,6 +74,7 @@ export function ContainerCard({
     <EntityCard
       state={card.state}
       name={card.name}
+      icon={<ContainerIcon dataUri={card.iconDataUri} name={card.name} />}
       headerExtra={variant === 'service-modal' && linkedWatch
         ? <span className="cc-watch-chip">{linkedWatch.label}</span>
         : undefined}

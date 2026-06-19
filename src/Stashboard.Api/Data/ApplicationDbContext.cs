@@ -27,6 +27,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<DockerConnectionEntity> DockerConnections => Set<DockerConnectionEntity>();
     public DbSet<DockerWatchEntity> DockerWatches => Set<DockerWatchEntity>();
     public DbSet<DockerUpdateAttemptEntity> DockerUpdateAttempts => Set<DockerUpdateAttemptEntity>();
+    public DbSet<ContainerIconEntity> ContainerIcons => Set<ContainerIconEntity>();
     public DbSet<ComposeChangeAuditEntity> ComposeChangeAudits => Set<ComposeChangeAuditEntity>();
     public DbSet<HostShellSessionEntity> HostShellSessions => Set<HostShellSessionEntity>();
     public DbSet<DockerExecSessionEntity> DockerExecSessions => Set<DockerExecSessionEntity>();
@@ -34,6 +35,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<DockerPruneRunEntity> DockerPruneRuns => Set<DockerPruneRunEntity>();
     public DbSet<ProxmoxConnectionEntity> ProxmoxConnections => Set<ProxmoxConnectionEntity>();
     public DbSet<ProxmoxGuestEntity> ProxmoxGuests => Set<ProxmoxGuestEntity>();
+    public DbSet<ProxmoxGuestIconEntity> ProxmoxGuestIcons => Set<ProxmoxGuestIconEntity>();
     public DbSet<ProxmoxConsoleSessionEntity> ProxmoxConsoleSessions => Set<ProxmoxConsoleSessionEntity>();
     public DbSet<ProxmoxUpdateSessionEntity> ProxmoxUpdateSessions => Set<ProxmoxUpdateSessionEntity>();
     public DbSet<ProxmoxMonitoringAuditEntity> ProxmoxMonitoringAudits => Set<ProxmoxMonitoringAuditEntity>();
@@ -245,6 +247,26 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        builder.Entity<ContainerIconEntity>(e =>
+        {
+            // V7.8 — one icon override per (user, connection, container). The
+            // container name is the stable key (the container id is ephemeral),
+            // so a recreate keeps the chosen icon. Unique so the controller can
+            // upsert by the triple.
+            e.HasIndex(i => new { i.UserId, i.DockerConnectionId, i.ContainerName }).IsUnique();
+            // Deleting the connection removes its icon overrides — they're
+            // meaningless without the host, mirroring the watch convention.
+            e.HasOne<DockerConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(i => i.DockerConnectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Owner cascade — deleting a user removes their icon overrides.
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(i => i.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         builder.Entity<ComposeChangeAuditEntity>(e =>
         {
             // V7.6 — audit log for Compose save / restore / apply changes. Same
@@ -358,6 +380,22 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.HasOne<UserEntity>()
                 .WithMany()
                 .HasForeignKey(s => s.InitiatedByUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ProxmoxGuestIconEntity>(e =>
+        {
+            // V7.8 — one icon override per (user, connection, vmid). Unique so the
+            // controller can upsert by the triple; mirrors ContainerIconEntity.
+            e.HasIndex(i => new { i.UserId, i.ProxmoxConnectionId, i.VmId }).IsUnique();
+            // Deleting the host removes its icon overrides.
+            e.HasOne<ProxmoxConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(i => i.ProxmoxConnectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(i => i.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

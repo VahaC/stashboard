@@ -6,6 +6,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- Stable id used by `dotnet user-secrets`. Generated once; never reused for another project. -->
     <UserSecretsId>stashboard-api-2c9f1a14-7f3e-4a0b-8d2a-7f1d2c3e4f56</UserSecretsId>
+    <!-- Runtime-written files (the dev SQLite DB + its journal/WAL under Data/, and
+         user uploads under wwwroot/uploads/) live inside the project dir. Exclude
+         only those artifacts (NOT the Data/ source folder) from the project item set
+         so VS's file watcher / Hot Reload doesn't treat a DB write or an upload as a
+         project change and kill (restart) the debugged process. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);Data\*.db;Data\*.db-*;wwwroot\uploads\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,6 +36,20 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Stashboard.Tests" />
+  </ItemGroup>
+
+  <!-- User uploads (service logos + container/guest icons) are written into
+       wwwroot/uploads/ at runtime. The Web SDK auto-includes wwwroot/** as
+       Content, so dotnet watch / Hot Reload would treat a freshly-uploaded file
+       as a project change and restart the app — which detaches the debugger
+       mid-upload. Exclude the runtime uploads dir from both the build content
+       set and the file watcher. Static-file serving is unaffected (it reads the
+       physical folder at runtime, independent of these MSBuild items). -->
+  <ItemGroup>
+    <Content Remove="wwwroot\uploads\**" />
+    <Watch Remove="wwwroot\uploads\**" />
+    <Content Remove="Data\*.db;Data\*.db-*" />
+    <Watch Remove="Data\*.db;Data\*.db-*" />
   </ItemGroup>
 
   <!-- V7.5 — ship the starter-recipe catalogue with the app. The repo-root
