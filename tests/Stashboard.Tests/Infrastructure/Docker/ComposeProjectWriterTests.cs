@@ -16,6 +16,7 @@ public class ComposeProjectWriterTests
         new("vps.example.com", 22, "docker", "PEM", null, "/var/run/docker.sock");
 
     private readonly Mock<IComposeCommandRunner> _runner = new();
+    private readonly Mock<IComposeHistoryStore> _history = new();
 
     private ComposeProjectWriter BuildWriter(
         List<(string Path, string Content)> writes,
@@ -23,7 +24,7 @@ public class ComposeProjectWriterTests
         List<string> deletes,
         bool directoryExists = true)
     {
-        return new ComposeProjectWriter(_runner.Object)
+        return new ComposeProjectWriter(_runner.Object, _history.Object)
         {
             DirectoryExists = _ => directoryExists,
             WriteFileAsync = (path, content, _) => { writes.Add((path, content)); return Task.CompletedTask; },
@@ -120,7 +121,7 @@ public class ComposeProjectWriterTests
 
     private static ComposeProjectWriter BuildSshWriter(
         Func<string, SshCommandOutcome> respond, List<string>? scripts = null) =>
-        new(Mock.Of<IComposeCommandRunner>())
+        new(Mock.Of<IComposeCommandRunner>(), Mock.Of<IComposeHistoryStore>())
         {
             RunSshCommandAsync = (_, script, _) =>
             {
@@ -178,7 +179,7 @@ public class ComposeProjectWriterTests
     [Fact]
     public async Task WriteOverSshAsync_TransportException_ReturnsSshFailedWithoutThrowing()
     {
-        var writer = new ComposeProjectWriter(Mock.Of<IComposeCommandRunner>())
+        var writer = new ComposeProjectWriter(Mock.Of<IComposeCommandRunner>(), Mock.Of<IComposeHistoryStore>())
         {
             RunSshCommandAsync = (_, _, _) => throw new InvalidOperationException("connection refused"),
         };
@@ -199,7 +200,7 @@ public class ComposeProjectWriterTests
         _runner
             .Setup(r => r.ValidateConfigAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ComposeRunResult(ComposeRunnerStatus.Success, 0, "", null));
-        var writer = new ComposeProjectWriter(_runner.Object)
+        var writer = new ComposeProjectWriter(_runner.Object, _history.Object)
         {
             DirectoryExists = _ => dirExists,
             CreateDirectory = p => { created.Add(p); dirExists = true; },
@@ -217,7 +218,7 @@ public class ComposeProjectWriterTests
     [Fact]
     public async Task WriteAsync_CreateDirectoryFails_ReturnsWriteFailed()
     {
-        var writer = new ComposeProjectWriter(_runner.Object)
+        var writer = new ComposeProjectWriter(_runner.Object, _history.Object)
         {
             DirectoryExists = _ => false,
             CreateDirectory = _ => throw new UnauthorizedAccessException("permission denied"),
@@ -251,5 +252,98 @@ public class ComposeProjectWriterTests
         await writer.WriteOverSshAsync(Ssh, "/srv/stack", "docker-compose.yml", "name: x\n");
 
         Assert.DoesNotContain("mkdir -p", Assert.Single(scripts));
+    }
+
+    // ── V7.6 — history snapshot on write ───────────────────────────────────────
+
+    [Fact]
+    public async Task WriteAsync_SnapshotsCurrentFileIntoHistoryBeforeWriting()
+    {
+        _runner
+            .Setup(r => r.ValidateConfigAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComposeRunResult(ComposeRunnerStatus.Success, 0, "", null));
+        var writer = BuildWriter(new(), new(), new());
+
+        var result = await writer.WriteAsync("/compose/media", "docker-compose.yml", "services: {}\n");
+
+        Assert.True(result.IsSuccess);
+        _history.Verify(h => h.SnapshotAsync("/compose/media", "docker-compose.yml", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task WriteOverSshAsync_SnapshotsCurrentFileOverSshBeforeWriting()
+    {
+        var history = new Mock<IComposeHistoryStore>();
+        var writer = new ComposeProjectWriter(Mock.Of<IComposeCommandRunner>(), history.Object)
+        {
+            RunSshCommandAsync = (_, _, _) => Task.FromResult(new SshCommandOutcome(0, "", "")),
+        };
+
+        var result = await writer.WriteOverSshAsync(Ssh, "/srv/stack", "docker-compose.yml", "services: {}\n");
+
+        Assert.True(result.IsSuccess);
+        history.Verify(h => h.SnapshotOverSshAsync(Ssh, "/srv/stack", "docker-compose.yml", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── V7.6 — dry-run validation ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task ValidateAsync_Valid_WritesCandidateValidatesAndDeletes_NeverRenames()
+    {
+        var writes = new List<(string, string)>();
+        var moves = new List<(string, string)>();
+        var deletes = new List<string>();
+        _runner
+            .Setup(r => r.ValidateConfigAsync("/compose/media", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComposeRunResult(ComposeRunnerStatus.Success, 0, "", null));
+        var writer = BuildWriter(writes, moves, deletes);
+
+        var result = await writer.ValidateAsync("/compose/media", "docker-compose.yml", "services: {}\n");
+
+        Assert.True(result.IsSuccess);
+        Assert.EndsWith("docker-compose.yml.next", Assert.Single(writes).Item1);
+        Assert.EndsWith("docker-compose.yml.next", Assert.Single(deletes)); // candidate cleaned up
+        Assert.Empty(moves);                                                // original never touched
+        _history.Verify(h => h.SnapshotAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_Invalid_ReturnsValidationFailedWithStderr()
+    {
+        _runner
+            .Setup(r => r.ValidateConfigAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComposeRunResult(ComposeRunnerStatus.CommandFailed, 1, null, "services.web.ports invalid"));
+        var writer = BuildWriter(new(), new(), new());
+
+        var result = await writer.ValidateAsync("/compose/media", "docker-compose.yml", "bad");
+
+        Assert.Equal(ComposeWriteStatus.ValidationFailed, result.Status);
+        Assert.Contains("invalid", result.Error);
+    }
+
+    [Fact]
+    public async Task ValidateOverSshAsync_Valid_RunsConfigAndDeletesCandidate_NeverRenames()
+    {
+        var scripts = new List<string>();
+        var writer = BuildSshWriter(_ => new SshCommandOutcome(0, "", ""), scripts);
+
+        var result = await writer.ValidateOverSshAsync(Ssh, "/srv/stack", "docker-compose.yml", "services: {}\n");
+
+        Assert.True(result.IsSuccess);
+        var script = Assert.Single(scripts);
+        Assert.Contains("config -q", script);
+        Assert.Contains("rm -f -- 'docker-compose.yml.next'", script);
+        Assert.DoesNotContain("mv -f", script); // dry-run never renames over the original
+    }
+
+    [Fact]
+    public async Task ValidateOverSshAsync_ValidationExit_SurfacesRemoteStderr()
+    {
+        var writer = BuildSshWriter(_ => new SshCommandOutcome(44, "", "bad compose file"));
+
+        var result = await writer.ValidateOverSshAsync(Ssh, "/srv/stack", "docker-compose.yml", "x");
+
+        Assert.Equal(ComposeWriteStatus.ValidationFailed, result.Status);
+        Assert.Contains("bad compose file", result.Error);
     }
 }

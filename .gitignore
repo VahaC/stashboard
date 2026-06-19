@@ -42,6 +42,9 @@ src/Stashboard.Api/wwwroot/assets/
 .env
 *.pfx
 appsettings.Production.json
+# Auto-generated encryption key / JWT secret persisted next to the database.
+.secrets/
+src/Stashboard.Api/Data/.secrets/
 
 ## Test results
 TestResults/

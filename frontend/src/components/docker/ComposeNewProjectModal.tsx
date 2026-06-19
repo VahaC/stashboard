@@ -156,7 +156,7 @@ export function ComposeNewProjectModal({
 
         <div className="container-modal-body" role="tabpanel">
           {tab === 'template' ? (
-            <ComposeTemplateTab connectionId={connectionId} onCreated={onCreated} />
+            <ComposeTemplateTab connectionId={connectionId} onCreated={onCreated} onClose={onClose} />
           ) : (
           <div className="compose-tab">
             <div className="compose-edit-body">
@@ -250,6 +250,9 @@ export function ComposeNewProjectModal({
             )}
 
             <div className="compose-edit-actions">
+              <Button type="button" variant="outline" size="sm" className="mr-auto" onClick={onClose} disabled={busy}>
+                Cancel
+              </Button>
               <Button type="button" size="sm" onClick={() => submit(true)} disabled={!canSave}>
                 {busy ? 'Creating…' : 'Create and run'}
               </Button>

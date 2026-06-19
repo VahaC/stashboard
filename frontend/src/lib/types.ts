@@ -1128,6 +1128,62 @@ export interface ComposeImageTags {
   error: string | null
 }
 
+// ── V7.6 — diff, dry-run, apply, history ──────────────────────────────────
+
+/** Serialised `ComposeDiffLineType` enum. */
+export type ComposeDiffLineType = 'Context' | 'Added' | 'Removed'
+
+/** V7.6 — one line of the pre-save diff. `oldLine` / `newLine` are 1-based line
+ *  numbers in the on-disk / proposed file, or null when absent on that side. */
+export interface ComposeDiffLine {
+  type: ComposeDiffLineType
+  text: string
+  oldLine: number | null
+  newLine: number | null
+}
+
+/** V7.6 — result of the pre-save diff + `docker compose config -q` dry-run
+ *  (nothing is written). `changedServices` is what "Apply now" would recreate
+ *  (new + modified); `removedServices` are dropped from the file. */
+export interface ComposeFileDiff {
+  fileName: string
+  projectPath: string
+  unchanged: boolean
+  diff: ComposeDiffLine[]
+  valid: boolean
+  validationError: string | null
+  cliAvailable: boolean
+  changedServices: string[]
+  removedServices: string[]
+}
+
+/** V7.6 — result of an "Apply now" `docker compose up -d <services>`. */
+export interface ComposeApplyResponse {
+  success: boolean
+  appliedServices: string[]
+  output: string | null
+  error: string | null
+}
+
+/** V7.6 — one kept revision of the project's Compose file. */
+export interface ComposeHistoryEntry {
+  id: string
+  savedUtc: string
+  sizeBytes: number
+}
+
+/** V7.6 — the raw text of one kept revision. */
+export interface ComposeHistoryFile {
+  id: string
+  content: string
+}
+
+/** V7.6 — result of restoring a kept revision. */
+export interface ComposeRestoreResponse {
+  changed: boolean
+  project: ComposeProject
+}
+
 // ── V3.4 — Live container stats ──────────────────────────────────────────
 
 export interface DockerContainerStatsSample {

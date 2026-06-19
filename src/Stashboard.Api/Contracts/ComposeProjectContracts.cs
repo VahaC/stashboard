@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using Stashboard.Core.Abstractions;
+using Stashboard.Core.Enums;
 
 namespace Stashboard.Api.Contracts;
 
@@ -287,6 +289,68 @@ public sealed record ComposeUpResponse(
     bool Success,
     string? Output,
     string? Error);
+
+// ── V7.6 — diff, dry-run, apply, history ─────────────────────────────────────
+
+/// <summary>V7.6 — proposed replacement text for the pre-save diff
+/// (<c>POST …/compose/{project}/file/diff</c>). Same payload shape as the raw
+/// save, but nothing is written — the backend diffs it against the on-disk file
+/// and validates it with <c>docker compose config -q</c>.</summary>
+public sealed record ComposeFileDiffRequest([Required] string Content);
+
+/// <summary>V7.6 — one line of the pre-save diff. <see cref="Type"/> serialises as
+/// <c>"Context"</c> / <c>"Added"</c> / <c>"Removed"</c>.</summary>
+public sealed record ComposeDiffLineDto(ComposeDiffLineType Type, string Text, int? OldLine, int? NewLine);
+
+/// <summary>
+/// V7.6 — result of the pre-save diff + dry-run validation. The UI shows the
+/// <see cref="Diff"/> (unified), the validation verdict
+/// (<see cref="Valid"/> / <see cref="ValidationError"/>), and which services the
+/// change touches so the user can confirm before any write. <see cref="ChangedServices"/>
+/// is the set "Apply now" would recreate (new + modified services); a service
+/// only <em>removed</em> from the file lands in <see cref="RemovedServices"/>
+/// instead (a plain <c>up -d</c> can't stop it).
+/// </summary>
+public sealed record ComposeFileDiffResponse(
+    string FileName,
+    string ProjectPath,
+    bool Unchanged,
+    IReadOnlyList<ComposeDiffLineDto> Diff,
+    bool Valid,
+    string? ValidationError,
+    bool CliAvailable,
+    IReadOnlyList<string> ChangedServices,
+    IReadOnlyList<string> RemovedServices);
+
+/// <summary>V7.6 — "Apply now": recreate the changed services
+/// (<c>POST …/compose/{project}/apply</c>). <see cref="Services"/> empty / null
+/// applies the whole project (<c>up -d</c>); otherwise only those services are
+/// recreated.</summary>
+public sealed record ComposeApplyRequest(IReadOnlyList<string>? Services);
+
+/// <summary>V7.6 — result of an "Apply now" run. <see cref="Output"/> carries the
+/// captured CLI output; <see cref="Error"/> the actionable message on failure.</summary>
+public sealed record ComposeApplyResponse(
+    bool Success,
+    IReadOnlyList<string> AppliedServices,
+    string? Output,
+    string? Error);
+
+/// <summary>V7.6 — one kept revision of the project's Compose file
+/// (<c>GET …/compose/{project}/history</c>), newest first.</summary>
+public sealed record ComposeHistoryEntryResponse(string Id, DateTime SavedUtc, long SizeBytes);
+
+/// <summary>V7.6 — the raw text of one kept revision
+/// (<c>GET …/compose/{project}/history/{id}</c>), for previewing a diff before
+/// restoring it.</summary>
+public sealed record ComposeHistoryFileResponse(string Id, string Content);
+
+/// <summary>V7.6 — result of restoring a kept revision
+/// (<c>POST …/compose/{project}/history/{id}/restore</c>). The revision is
+/// re-validated and written like any other save (snapshotting the current file
+/// first). <see cref="Project"/> is the freshly re-parsed project so the UI
+/// refreshes without a second GET.</summary>
+public sealed record ComposeRestoreResponse(bool Changed, ComposeProjectResponse Project);
 
 // ── V7.3 — top-level resource edit ───────────────────────────────────────────
 

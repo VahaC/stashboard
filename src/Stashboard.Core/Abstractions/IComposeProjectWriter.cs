@@ -70,4 +70,21 @@ public interface IComposeProjectWriter
     Task<ComposeWriteResult> WriteOverSshAsync(
         DockerSshCredentials ssh, string projectPath, string fileName, string content,
         bool createDirectory, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// V7.6 — dry-run: validates <paramref name="content"/> with
+    /// <c>docker compose config -q</c> <em>without</em> ever touching the original
+    /// file (writes a temp <c>.next</c>, validates, deletes it). Powers the
+    /// pre-save diff's "this will validate" check so the user sees the verdict
+    /// before confirming. <see cref="ComposeWriteResult.IsSuccess"/> means the
+    /// proposed file is valid; otherwise <see cref="ComposeWriteResult.Error"/>
+    /// carries the raw stderr / the no-CLI message. Never snapshots history.
+    /// </summary>
+    Task<ComposeWriteResult> ValidateAsync(
+        string projectPath, string fileName, string content, CancellationToken cancellationToken = default);
+
+    /// <summary>V7.6 — SSH variant of <see cref="ValidateAsync"/>.</summary>
+    Task<ComposeWriteResult> ValidateOverSshAsync(
+        DockerSshCredentials ssh, string projectPath, string fileName, string content,
+        CancellationToken cancellationToken = default);
 }

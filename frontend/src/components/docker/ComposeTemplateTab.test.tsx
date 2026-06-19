@@ -47,7 +47,7 @@ beforeEach(() => {
 })
 
 function renderTab() {
-  return render(<ComposeTemplateTab connectionId="c1" onCreated={onCreated} />)
+  return render(<ComposeTemplateTab connectionId="c1" onCreated={onCreated} onClose={() => {}} />)
 }
 
 describe('ComposeTemplateTab', () => {

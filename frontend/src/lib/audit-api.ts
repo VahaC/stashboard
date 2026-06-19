@@ -124,6 +124,20 @@ export interface ProxmoxCreateAudit {
   createdAtUtc: string
 }
 
+export interface ComposeChangeAudit {
+  id: string
+  dockerConnectionId: string | null
+  connectionName: string | null
+  composeProject: string
+  fileName: string | null
+  /** 'Save' | 'Restore' | 'Apply' (serialised enum). */
+  changeType: string
+  changedServices: string[]
+  success: boolean
+  error: string | null
+  changedUtc: string
+}
+
 export interface UpdateAttempt {
   id: string
   status: string
@@ -181,6 +195,9 @@ export const auditApi = {
   },
   async getProxmoxCreateAudits(opts: PageParams = {}): Promise<ProxmoxCreateAudit[]> {
     return (await api.get<ProxmoxCreateAudit[]>('/api/proxmox/create/sessions', { params: params(opts) })).data
+  },
+  async getComposeChanges(opts: PageParams = {}): Promise<ComposeChangeAudit[]> {
+    return (await api.get<ComposeChangeAudit[]>('/api/docker/compose-changes', { params: params(opts) })).data
   },
   async getUpdateAttempts(opts: PageParams = {}): Promise<UpdateAttempt[]> {
     return (await api.get<UpdateAttempt[]>('/api/docker/update-attempts', { params: params(opts) })).data

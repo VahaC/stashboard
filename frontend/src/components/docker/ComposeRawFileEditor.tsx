@@ -1,17 +1,23 @@
 import { useCallback, useRef, useState } from 'react'
 import { AlertCircle, Check, Copy, Download, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useComposeFile, useComposeUp, useSaveComposeFile } from '@/lib/queries'
+import {
+  useApplyComposeServices,
+  useComposeFile,
+  useComposeFileDiff,
+  useSaveComposeFile,
+} from '@/lib/queries'
 import { getApiErrorMessage } from '@/lib/utils'
+import { ComposeDiffDialog } from './ComposeDiffDialog'
 
 /**
  * V7.4 — the "Raw YAML" tab: the project's whole Compose file in a plain text
- * editor. Lets the user hand-write or paste a complete file — including several
- * services at once — when the structured forms don't fit. **Save** validates
- * the text with `docker compose config -q` and renames it over the original
- * atomically (the same writer the field editors use); **Save and run** then
- * brings the project up. Available for existing projects too, not just the
- * create flow.
+ * editor. V7.6 — **Save** no longer writes blindly: it opens a diff + dry-run
+ * confirm dialog (see what changes, see the `docker compose config -q` verdict,
+ * see which services are touched) and only writes on confirm — atomically, the
+ * same writer the field editors use. From the dialog the user can also **Apply**
+ * the change immediately, recreating just the changed services. Available for
+ * existing projects too, not just the create flow.
  */
 
 export interface ComposeRawFileEditorProps {
@@ -19,19 +25,11 @@ export interface ComposeRawFileEditorProps {
   project: string
 }
 
-function parseErrorLines(error: string | null): Set<number> {
-  if (!error) return new Set()
-  const nums = new Set<number>()
-  for (const m of error.matchAll(/\bline (\d+)/g)) {
-    nums.add(parseInt(m[1], 10))
-  }
-  return nums
-}
-
 export function ComposeRawFileEditor({ connectionId, project }: ComposeRawFileEditorProps) {
   const file = useComposeFile(connectionId, project, true)
   const saveFile = useSaveComposeFile(connectionId, project)
-  const up = useComposeUp(connectionId, project)
+  const diff = useComposeFileDiff(connectionId, project)
+  const apply = useApplyComposeServices(connectionId, project)
 
   // `draft` is null until the user types — the textarea then shows the loaded
   // file text (no setState-in-effect needed to seed it).
@@ -39,6 +37,7 @@ export function ComposeRawFileEditor({ connectionId, project }: ComposeRawFileEd
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const lineNumsRef = useRef<HTMLDivElement>(null)
@@ -50,7 +49,7 @@ export function ComposeRawFileEditor({ connectionId, project }: ComposeRawFileEd
   }, [])
 
   const content = draft ?? file.data?.content ?? ''
-  const busy = saveFile.isPending || up.isPending
+  const busy = saveFile.isPending || apply.isPending
   const dirty = file.data != null && draft != null && draft !== file.data.content
 
   const lineCount = Math.max(content.split('\n').length, 1)
@@ -70,7 +69,7 @@ export function ComposeRawFileEditor({ connectionId, project }: ComposeRawFileEd
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault()
-      submit(false)
+      openReview()
     }
   }
 
@@ -102,25 +101,42 @@ export function ComposeRawFileEditor({ connectionId, project }: ComposeRawFileEd
     URL.revokeObjectURL(url)
   }
 
-  const submit = async (run: boolean) => {
+  // V7.6 — open the confirm dialog and compute the diff for `content`.
+  const openReview = () => {
     setError(null)
     setNotice(null)
+    setConfirmOpen(true)
+    diff.mutate(content)
+  }
+
+  // V7.6 — write the file (validated atomically), then optionally recreate the
+  // changed services.
+  const save = async (applyChanged: boolean) => {
     try {
       const result = await saveFile.mutateAsync(content)
-      if (!run) {
+      setDraft(null) // re-sync the editor to the freshly saved file
+      if (!applyChanged) {
+        setConfirmOpen(false)
         flash(result.changed ? 'Saved.' : 'No changes.')
         return
       }
-      const upResult = await up.mutateAsync()
-      if (upResult.success) {
-        flash('Saved and started.')
+      const services = diff.data?.changedServices ?? []
+      const applied = await apply.mutateAsync(services)
+      setConfirmOpen(false)
+      if (applied.success) {
+        flash(services.length > 0 ? `Saved and applied ${services.length} service(s).` : 'Saved and applied.')
         return
       }
-      setError(`Saved, but "docker compose up -d" failed: ${upResult.error ?? 'unknown error'}`)
+      setError(`Saved, but apply failed: ${applied.error ?? 'unknown error'}`)
     } catch (e: unknown) {
+      setConfirmOpen(false)
       setError(getApiErrorMessage(e) ?? 'Failed to save the Compose file')
     }
   }
+
+  const diffData = diff.data ?? null
+  const canSave = diffData != null && diffData.valid && !busy
+  const canApply = canSave && !diffData.unchanged && diffData.changedServices.length > 0
 
   return (
     <div className="compose-tab compose-raw-tab">
@@ -130,15 +146,6 @@ export function ComposeRawFileEditor({ connectionId, project }: ComposeRawFileEd
           {dirty && <span className="compose-raw-dirty" title="Unsaved changes">*</span>}
         </span>
         <div className="compose-raw-head-actions">
-          <Button
-            type="button" variant="ghost" size="sm"
-            onClick={reload}
-            disabled={!file.data || busy || !dirty}
-            title="Discard edits and reload from disk"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            <span className="label-text">Reload</span>
-          </Button>
           <Button
             type="button" variant="outline" size="icon"
             className="compose-raw-icon-btn"
@@ -202,20 +209,55 @@ export function ComposeRawFileEditor({ connectionId, project }: ComposeRawFileEd
 
           <div className="compose-edit-actions">
             {notice && <span className="compose-raw-toast" role="status">{notice}</span>}
-            <Button type="button" size="sm" onClick={() => submit(true)} disabled={busy}>
-              {up.isPending ? 'Starting…' : saveFile.isPending ? 'Saving…' : 'Save and run'}
-            </Button>
             <Button
               type="button" variant="outline" size="sm"
-              onClick={() => submit(false)}
-              disabled={busy}
-              title="Validate and write the file without starting anything"
+              onClick={reload}
+              disabled={!dirty || busy}
+              title="Discard edits and reload the file from disk"
             >
-              Save only
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span className="label-text">Discard</span>
+            </Button>
+            <Button type="button" size="sm" onClick={openReview} disabled={busy}>
+              Review &amp; save…
             </Button>
           </div>
+
+          <ComposeDiffDialog
+            open={confirmOpen}
+            onClose={() => setConfirmOpen(false)}
+            title="Review changes"
+            description={`${file.data.fileName} · ${file.data.projectPath}`}
+            diff={diffData}
+            isLoading={diff.isPending}
+            error={diff.isError ? (getApiErrorMessage(diff.error) ?? 'Failed to compute the diff') : null}
+            actions={
+              <>
+                <Button type="button" variant="outline" size="sm" onClick={() => save(false)} disabled={!canSave}>
+                  {saveFile.isPending && !apply.isPending ? 'Saving…' : 'Save only'}
+                </Button>
+                <Button
+                  type="button" size="sm" onClick={() => save(true)} disabled={!canApply}
+                  title={canApply
+                    ? 'Save, then recreate the changed services'
+                    : 'No changed services to recreate'}
+                >
+                  {apply.isPending ? 'Applying…' : 'Save & apply changed'}
+                </Button>
+              </>
+            }
+          />
         </>
       )}
     </div>
   )
+}
+
+function parseErrorLines(error: string | null): Set<number> {
+  if (!error) return new Set()
+  const nums = new Set<number>()
+  for (const m of error.matchAll(/\bline (\d+)/g)) {
+    nums.add(parseInt(m[1], 10))
+  }
+  return nums
 }

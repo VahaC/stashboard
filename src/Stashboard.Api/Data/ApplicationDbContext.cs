@@ -27,6 +27,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<DockerConnectionEntity> DockerConnections => Set<DockerConnectionEntity>();
     public DbSet<DockerWatchEntity> DockerWatches => Set<DockerWatchEntity>();
     public DbSet<DockerUpdateAttemptEntity> DockerUpdateAttempts => Set<DockerUpdateAttemptEntity>();
+    public DbSet<ComposeChangeAuditEntity> ComposeChangeAudits => Set<ComposeChangeAuditEntity>();
     public DbSet<HostShellSessionEntity> HostShellSessions => Set<HostShellSessionEntity>();
     public DbSet<DockerExecSessionEntity> DockerExecSessions => Set<DockerExecSessionEntity>();
     public DbSet<ImagePruneSettingsEntity> ImagePruneSettings => Set<ImagePruneSettingsEntity>();
@@ -241,6 +242,27 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.HasOne<DockerUpdateAttemptEntity>()
                 .WithMany()
                 .HasForeignKey(a => a.ParentAttemptId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ComposeChangeAuditEntity>(e =>
+        {
+            // V7.6 — audit log for Compose save / restore / apply changes. Same
+            // shape and conventions as the other audit tables: per-user history
+            // (newest first applied at query time) and per-connection history.
+            e.HasIndex(s => new { s.InitiatedByUserId, s.ChangedUtc });
+            e.HasIndex(s => new { s.DockerConnectionId, s.ChangedUtc });
+            // Keep the audit row when the connection is deleted — the connection
+            // name is denormalised onto the row precisely so the history survives.
+            // SetNull mirrors the DockerUpdateAttempt convention.
+            e.HasOne<DockerConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.DockerConnectionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            // Owner cascade — deleting a user removes their change history.
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.InitiatedByUserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

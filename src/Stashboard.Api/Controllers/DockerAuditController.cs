@@ -243,6 +243,33 @@ public class DockerAuditController(ApplicationDbContext db, IDockerWatchMapper w
         return Ok(rows.Select(a => watchMapper.ToResponse(a)).ToList());
     }
 
+    /// <summary>V7.6 — Compose file changes (save / restore / apply) made through
+    /// the diff-and-apply flow. Owner-scoped via the denormalised
+    /// <c>InitiatedByUserId</c>; <c>?connectionId=</c> narrows to a single
+    /// connection.</summary>
+    [HttpGet("compose-changes")]
+    public async Task<ActionResult<IReadOnlyList<ComposeChangeAuditResponse>>> GetComposeChanges(
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = DefaultPageSize,
+        [FromQuery] Guid? connectionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = User.GetUserId();
+        var (s, t) = Page(skip, take);
+
+        var query = db.ComposeChangeAudits.AsNoTracking()
+            .Where(x => x.InitiatedByUserId == userId);
+        if (connectionId is { } cid)
+            query = query.Where(x => x.DockerConnectionId == cid);
+
+        var rows = await query
+            .OrderByDescending(x => x.ChangedUtc)
+            .Skip(s).Take(t)
+            .ToListAsync(cancellationToken);
+
+        return Ok(rows.Select(MapComposeChange).ToList());
+    }
+
     [HttpGet("prune-runs")]
     public async Task<ActionResult<IReadOnlyList<DockerPruneRunResponse>>> GetPruneRuns(
         [FromQuery] int skip = 0,
@@ -384,6 +411,20 @@ public class DockerAuditController(ApplicationDbContext db, IDockerWatchMapper w
         x.Success,
         x.Error,
         x.CreatedAtUtc);
+
+    private static ComposeChangeAuditResponse MapComposeChange(ComposeChangeAuditEntity x) => new(
+        x.Id,
+        x.DockerConnectionId,
+        x.ConnectionName,
+        x.ComposeProject,
+        x.FileName,
+        x.ChangeType,
+        string.IsNullOrEmpty(x.ChangedServices)
+            ? []
+            : x.ChangedServices.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+        x.Success,
+        x.Error,
+        x.ChangedUtc);
 
     private static DockerPruneRunResponse MapPruneRun(DockerPruneRunEntity run) => new(
         run.Id,

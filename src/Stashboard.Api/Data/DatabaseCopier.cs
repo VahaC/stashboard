@@ -40,6 +40,7 @@ public static class DatabaseCopier
             await CopyAsync(source.WebResourceTags, target, cancellationToken),
             await CopyAsync(source.DockerWatches, target, cancellationToken),
             await CopyAsync(source.DockerUpdateAttempts, target, cancellationToken),
+            await CopyAsync(source.ComposeChangeAudits, target, cancellationToken),
             await CopyAsync(source.RefreshTokens, target, cancellationToken),
         };
 

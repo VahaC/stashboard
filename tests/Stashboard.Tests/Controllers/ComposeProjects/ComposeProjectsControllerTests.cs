@@ -36,6 +36,7 @@ public class ComposeProjectsControllerTests : IAsyncLifetime
     private readonly Mock<IEncryptionService> _encryptionMock = new();
     private readonly Mock<IComposeProjectReader> _readerMock = new();
     private readonly Mock<IComposeProjectWriter> _writerMock = new();
+    private readonly Mock<IComposeHistoryStore> _historyMock = new();
     private readonly Mock<IComposeCommandRunner> _composeRunnerMock = new();
     private readonly Mock<IDockerHostClient> _hostClientMock = new();
     private readonly Mock<IRegistryClient> _registryMock = new();
@@ -599,6 +600,187 @@ public class ComposeProjectsControllerTests : IAsyncLifetime
         Assert.Contains("did not find expected key", unprocessable.Value!.ToString());
     }
 
+    // ── V7.6 — diff / dry-run / apply / history ──────────────────────────────
+
+    [Fact]
+    public async Task DiffFile_ReturnsDiffValidationAndChangedServices()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        SetupContainers(Container("web", project: "media", workingDir: "/opt/stacks/media"));
+        SetupRead("/opt/stacks/media", "docker-compose.yml", EditableYaml);
+        _writerMock
+            .Setup(w => w.ValidateAsync("/opt/stacks/media", "docker-compose.yml", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ComposeWriteResult.Ok);
+
+        var newContent = EditableYaml.Replace("nginx:1.27", "nginx:1.28");
+        var ctrl = BuildController();
+        var result = await ctrl.DiffFile(conn.Id, "media", new ComposeFileDiffRequest(newContent), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var body = Assert.IsType<ComposeFileDiffResponse>(ok.Value);
+        Assert.True(body.Valid);
+        Assert.True(body.CliAvailable);
+        Assert.False(body.Unchanged);
+        Assert.Equal(new[] { "web" }, body.ChangedServices);   // only web's image moved
+        Assert.Empty(body.RemovedServices);
+        Assert.Contains(body.Diff, l => l.Type == ComposeDiffLineType.Added && l.Text.Contains("nginx:1.28"));
+        Assert.Contains(body.Diff, l => l.Type == ComposeDiffLineType.Removed && l.Text.Contains("nginx:1.27"));
+    }
+
+    [Fact]
+    public async Task DiffFile_InvalidProposedContent_ReportsValidationError()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        SetupContainers(Container("web", project: "media", workingDir: "/opt/stacks/media"));
+        SetupRead("/opt/stacks/media", "docker-compose.yml", EditableYaml);
+        _writerMock
+            .Setup(w => w.ValidateAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComposeWriteResult(ComposeWriteStatus.ValidationFailed, "yaml: line 3: bad indent"));
+
+        var ctrl = BuildController();
+        var result = await ctrl.DiffFile(conn.Id, "media", new ComposeFileDiffRequest("services:\n  bad: ["), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var body = Assert.IsType<ComposeFileDiffResponse>(ok.Value);
+        Assert.False(body.Valid);
+        Assert.Contains("bad indent", body.ValidationError);
+    }
+
+    [Fact]
+    public async Task SaveFile_ChangedContent_WritesComposeChangeAuditRow()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        SetupContainers(Container("web", project: "media", workingDir: "/opt/stacks/media"));
+        SetupRead("/opt/stacks/media", "docker-compose.yml", EditableYaml);
+        _writerMock
+            .Setup(w => w.WriteAsync("/opt/stacks/media", "docker-compose.yml", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ComposeWriteResult.Ok);
+
+        var ctrl = BuildController();
+        var newContent = EditableYaml.Replace("nginx:1.27", "nginx:1.28");
+        await ctrl.SaveFile(conn.Id, "media", new ComposeFileSaveRequest(newContent), CancellationToken.None);
+
+        var row = await _dbContext.ComposeChangeAudits.AsNoTracking().SingleAsync(a => a.DockerConnectionId == conn.Id);
+        Assert.Equal(ComposeChangeType.Save, row.ChangeType);
+        Assert.Equal("media", row.ComposeProject);
+        Assert.Equal("web", row.ChangedServices);
+        Assert.True(row.Success);
+        Assert.Equal(_userId, row.InitiatedByUserId);
+    }
+
+    [Fact]
+    public async Task ApplyProject_RecreatesServices_AndWritesApplyAudit()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        SetupContainers(Container("web", project: "media", workingDir: "/opt/stacks/media"));
+        _composeRunnerMock
+            .Setup(r => r.UpProjectAsync(
+                It.Is<ComposeUpRequest>(req => req.ProjectPath == "/opt/stacks/media" && req.Services != null && req.Services.Contains("web")),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComposeRunResult(ComposeRunnerStatus.Success, 0, "recreated", null));
+
+        var ctrl = BuildController();
+        var result = await ctrl.ApplyProject(conn.Id, "media", new ComposeApplyRequest(new[] { "web" }), CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var body = Assert.IsType<ComposeApplyResponse>(ok.Value);
+        Assert.True(body.Success);
+        Assert.Equal(new[] { "web" }, body.AppliedServices);
+
+        var row = await _dbContext.ComposeChangeAudits.AsNoTracking().SingleAsync(a => a.DockerConnectionId == conn.Id);
+        Assert.Equal(ComposeChangeType.Apply, row.ChangeType);
+        Assert.Equal("web", row.ChangedServices);
+        Assert.True(row.Success);
+    }
+
+    [Fact]
+    public async Task ApplyProject_Failure_Returns502_AndAuditsFailure()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        SetupContainers(Container("web", project: "media", workingDir: "/opt/stacks/media"));
+        _composeRunnerMock
+            .Setup(r => r.UpProjectAsync(It.IsAny<ComposeUpRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComposeRunResult(ComposeRunnerStatus.CommandFailed, 1, "", "port is already allocated"));
+
+        var ctrl = BuildController();
+        var result = await ctrl.ApplyProject(conn.Id, "media", new ComposeApplyRequest(new[] { "web" }), CancellationToken.None);
+
+        var status = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(502, status.StatusCode);
+        Assert.Contains("already allocated", Assert.IsType<ComposeApplyResponse>(status.Value).Error);
+
+        var row = await _dbContext.ComposeChangeAudits.AsNoTracking().SingleAsync(a => a.DockerConnectionId == conn.Id);
+        Assert.Equal(ComposeChangeType.Apply, row.ChangeType);
+        Assert.False(row.Success);
+    }
+
+    [Fact]
+    public async Task GetHistory_ReturnsKeptRevisions()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        SetupContainers(Container("web", project: "media", workingDir: "/opt/stacks/media"));
+        SetupRead("/opt/stacks/media", "docker-compose.yml", EditableYaml);
+        _historyMock
+            .Setup(h => h.ListAsync("/opt/stacks/media", "docker-compose.yml", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ComposeHistoryListResult.Ok(new[]
+            {
+                new ComposeHistoryEntry("20260102T120000000__docker-compose.yml", DateTime.UtcNow, 256),
+                new ComposeHistoryEntry("20260101T120000000__docker-compose.yml", DateTime.UtcNow.AddDays(-1), 128),
+            }));
+
+        var ctrl = BuildController();
+        var result = await ctrl.GetHistory(conn.Id, "media", CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var body = Assert.IsAssignableFrom<IReadOnlyList<ComposeHistoryEntryResponse>>(ok.Value);
+        Assert.Equal(2, body.Count);
+        Assert.Equal("20260102T120000000__docker-compose.yml", body[0].Id);
+        Assert.Equal(256, body[0].SizeBytes);
+    }
+
+    [Fact]
+    public async Task RestoreHistory_WritesRevisionAndAuditsRestore()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        SetupContainers(Container("web", project: "media", workingDir: "/opt/stacks/media"));
+        SetupRead("/opt/stacks/media", "docker-compose.yml", EditableYaml);
+        var revision = EditableYaml.Replace("nginx:1.27", "nginx:1.20");
+        _historyMock
+            .Setup(h => h.ReadAsync("/opt/stacks/media", "rev1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComposeHistoryReadResult(ComposeHistoryStatus.Ok, revision, null));
+        _writerMock
+            .Setup(w => w.WriteAsync("/opt/stacks/media", "docker-compose.yml", revision, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ComposeWriteResult.Ok);
+
+        var ctrl = BuildController();
+        var result = await ctrl.RestoreHistory(conn.Id, "media", "rev1", CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var body = Assert.IsType<ComposeRestoreResponse>(ok.Value);
+        Assert.True(body.Changed);
+        Assert.Equal("nginx:1.20", body.Project.Services.Single(s => s.Name == "web").Image);
+
+        var row = await _dbContext.ComposeChangeAudits.AsNoTracking().SingleAsync(a => a.DockerConnectionId == conn.Id);
+        Assert.Equal(ComposeChangeType.Restore, row.ChangeType);
+        Assert.Equal("web", row.ChangedServices);
+    }
+
+    [Fact]
+    public async Task RestoreHistory_MissingRevision_Returns404()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        SetupContainers(Container("web", project: "media", workingDir: "/opt/stacks/media"));
+        SetupRead("/opt/stacks/media", "docker-compose.yml", EditableYaml);
+        _historyMock
+            .Setup(h => h.ReadAsync("/opt/stacks/media", "gone", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ComposeHistoryReadResult(ComposeHistoryStatus.NotFound, null, "not found"));
+
+        var ctrl = BuildController();
+        var result = await ctrl.RestoreHistory(conn.Id, "media", "gone", CancellationToken.None);
+
+        Assert.IsType<NotFoundObjectResult>(result.Result);
+    }
+
     // ── V7.4 — bring the project up (POST /compose/{project}/up) ─────────────
 
     [Fact]
@@ -1039,6 +1221,7 @@ public class ComposeProjectsControllerTests : IAsyncLifetime
             parser,
             new ComposeFileEditor(parser),
             _writerMock.Object,
+            _historyMock.Object,
             _composeRunnerMock.Object,
             new ImageReferenceParser(),
             _registryMock.Object,

@@ -127,7 +127,7 @@ public sealed class ComposeCommandRunner(ILogger<ComposeCommandRunner> logger) :
         ComposeUpRequest request, CancellationToken cancellationToken = default)
     {
         if (request.Ssh is not null)
-            return await UpOverSshAsync(request.Ssh, request.ProjectPath, cancellationToken);
+            return await UpOverSshAsync(request.Ssh, request.ProjectPath, request.Services, cancellationToken);
 
         var invocation = await ResolveInvocationAsync(cancellationToken);
         if (invocation is null)
@@ -139,9 +139,13 @@ public sealed class ComposeCommandRunner(ILogger<ComposeCommandRunner> logger) :
                 $"Compose project directory '{request.ProjectPath}' was not found inside the container.");
 
         // No pull: `up -d` creates/starts the freshly-added service (pulling its
-        // image if absent) and leaves unchanged siblings running.
+        // image if absent) and leaves unchanged siblings running. V7.6 — an
+        // explicit service list (the "Apply now" changed-services set) narrows
+        // the recreate to just those containers.
+        var upArgs = new List<string> { "up", "-d" };
+        if (request.Services is { Count: > 0 }) upArgs.AddRange(request.Services);
         var up = await RunComposeAsync(invocation, request.ProjectPath,
-            new[] { "up", "-d" }, cancellationToken);
+            upArgs.ToArray(), cancellationToken);
         if (!up.Started)
             return new ComposeRunResult(ComposeRunnerStatus.CliNotAvailable, null, up.Stdout, up.Stderr);
         if (up.ExitCode != 0)
@@ -152,15 +156,21 @@ public sealed class ComposeCommandRunner(ILogger<ComposeCommandRunner> logger) :
     }
 
     private async Task<ComposeRunResult> UpOverSshAsync(
-        DockerSshCredentials ssh, string projectPath, CancellationToken cancellationToken)
+        DockerSshCredentials ssh, string projectPath, IReadOnlyList<string>? services,
+        CancellationToken cancellationToken)
     {
         var dir = SshCommandExecutor.QuoteForShell(projectPath);
+        // V7.6 — append the changed-services set (each shell-quoted) so the remote
+        // `up -d` recreates only those containers.
+        var serviceArgs = services is { Count: > 0 }
+            ? " " + string.Join(' ', services.Select(SshCommandExecutor.QuoteForShell))
+            : "";
         var script =
             $"cd {dir} 2>/dev/null || exit {SshExitDirectoryNotFound}; " +
             "if docker compose version >/dev/null 2>&1; then DC='docker compose'; " +
             "elif command -v docker-compose >/dev/null 2>&1; then DC='docker-compose'; " +
             $"else exit {SshExitCliNotAvailable}; fi; " +
-            "$DC up -d";
+            $"$DC up -d{serviceArgs}";
 
         SshCommandOutcome outcome;
         try

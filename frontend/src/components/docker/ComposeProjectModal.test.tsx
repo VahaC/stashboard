@@ -20,6 +20,11 @@ vi.mock('@/lib/queries', () => ({
   useComposeUp: vi.fn(),
   useComposeFile: vi.fn(),
   useSaveComposeFile: vi.fn(),
+  useComposeFileDiff: vi.fn(),
+  useApplyComposeServices: vi.fn(),
+  useComposeHistory: vi.fn(),
+  useRestoreComposeHistory: vi.fn(),
+  fetchComposeHistoryFile: vi.fn(),
 }))
 
 import {
@@ -37,6 +42,8 @@ import {
   useEditComposeResource,
   useEditComposeService,
   useSaveComposeFile,
+  useComposeFileDiff,
+  useApplyComposeServices,
 } from '@/lib/queries'
 import { ComposeProjectModal } from './ComposeProjectModal'
 
@@ -55,6 +62,8 @@ const mockCreate = useCreateComposeService as unknown as any
 const mockUp = useComposeUp as unknown as any
 const mockFile = useComposeFile as unknown as any
 const mockSaveFile = useSaveComposeFile as unknown as any
+const mockDiff = useComposeFileDiff as unknown as any
+const mockApply = useApplyComposeServices as unknown as any
 
 const SERVICE: ComposeService = {
   name: 'web',
@@ -121,6 +130,16 @@ beforeEach(() => {
   mockUp.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ success: true, output: 'ok', error: null }), isPending: false })
   mockFile.mockReturnValue({ data: { fileName: 'docker-compose.yml', projectPath: '/opt/stacks/homelab', content: 'services:\n  web:\n    image: nginx:1.27\n' }, isLoading: false, error: null })
   mockSaveFile.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ changed: true }), isPending: false })
+  mockDiff.mockReturnValue({
+    mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null,
+    data: {
+      fileName: 'docker-compose.yml', projectPath: '/opt/stacks/homelab', unchanged: false,
+      diff: [{ type: 'Added', text: '    image: nginx:1.28', oldLine: null, newLine: 3 }],
+      valid: true, validationError: null, cliAvailable: true,
+      changedServices: ['web'], removedServices: [],
+    },
+  })
+  mockApply.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ success: true, appliedServices: ['web'], output: 'ok', error: null }), isPending: false })
 })
 
 // ── Header strip + tabs ────────────────────────────────────────────────────
@@ -256,10 +275,11 @@ describe('ComposeProjectModal — editing', () => {
 // ── V7.4 — Add service + Raw YAML tabs ───────────────────────────────────────
 
 describe('ComposeProjectModal — V7.4 create + raw tabs', () => {
-  it('renders the Add service and Raw YAML tabs', () => {
+  it('renders the Add service, Raw YAML and History tabs', () => {
     renderModal()
     expect(screen.getByRole('tab', { name: /Add service/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Raw YAML/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /History/ })).toBeInTheDocument()
   })
 
   it('hides the Add service tab in read-only mode but keeps Raw YAML', () => {
@@ -306,7 +326,7 @@ describe('ComposeProjectModal — V7.4 create + raw tabs', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/already exists/i)
   })
 
-  it('shows the raw file text and saves edited content', async () => {
+  it('shows the raw file text and saves edited content through the diff confirm dialog', async () => {
     const save = vi.fn().mockResolvedValue({ changed: true })
     mockSaveFile.mockReturnValue({ mutateAsync: save, isPending: false })
     renderModal()
@@ -316,8 +336,30 @@ describe('ComposeProjectModal — V7.4 create + raw tabs', () => {
     expect(textarea).toHaveValue('services:\n  web:\n    image: nginx:1.27\n')
 
     fireEvent.change(textarea, { target: { value: 'services:\n  web:\n    image: nginx:1.28\n' } })
+    // V7.6 — "Review & save…" opens the diff/dry-run confirm dialog first.
+    fireEvent.click(screen.getByRole('button', { name: /review & save/i }))
+    // The dialog shows the validation verdict + the changed-service chip.
+    expect(screen.getByText(/Validates with/i)).toBeInTheDocument()
+    // Confirming "Save only" writes the file.
     fireEvent.click(screen.getByRole('button', { name: /save only/i }))
     await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
     expect(save.mock.calls[0][0]).toContain('nginx:1.28')
+  })
+
+  it('saves and applies the changed services from the diff dialog', async () => {
+    const save = vi.fn().mockResolvedValue({ changed: true })
+    const apply = vi.fn().mockResolvedValue({ success: true, appliedServices: ['web'], output: 'ok', error: null })
+    mockSaveFile.mockReturnValue({ mutateAsync: save, isPending: false })
+    mockApply.mockReturnValue({ mutateAsync: apply, isPending: false })
+    renderModal()
+
+    fireEvent.click(screen.getByRole('tab', { name: /Raw YAML/ }))
+    fireEvent.change(screen.getByLabelText('Raw Compose file'), { target: { value: 'services:\n  web:\n    image: nginx:1.28\n' } })
+    fireEvent.click(screen.getByRole('button', { name: /review & save/i }))
+    fireEvent.click(screen.getByRole('button', { name: /save & apply changed/i }))
+
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1))
+    expect(apply.mock.calls[0][0]).toEqual(['web']) // only the changed service is recreated
   })
 })

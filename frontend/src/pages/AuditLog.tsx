@@ -9,6 +9,7 @@ import {
   formatBytes,
   formatDuration,
   formatTimestamp,
+  type ComposeChangeAudit,
   type ConsoleSession,
   type ExecSession,
   type HostShellSession,
@@ -29,7 +30,7 @@ import '@/styles/audit.css'
  * already have a read path elsewhere and are folded in here for convenience.
  */
 
-type TabKey = 'host' | 'exec' | 'console' | 'pmupdates' | 'pmmonitoring' | 'pmcreate' | 'pmdestroy' | 'updates' | 'prune'
+type TabKey = 'host' | 'exec' | 'console' | 'pmupdates' | 'pmmonitoring' | 'pmcreate' | 'pmdestroy' | 'compose' | 'updates' | 'prune'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'host', label: 'Host terminal' },
@@ -39,9 +40,16 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'pmmonitoring', label: 'LXC monitoring' },
   { key: 'pmcreate', label: 'LXC create' },
   { key: 'pmdestroy', label: 'LXC destroy' },
+  { key: 'compose', label: 'Compose changes' },
   { key: 'updates', label: 'Update attempts' },
   { key: 'prune', label: 'Image prune' },
 ]
+
+const COMPOSE_CHANGE_LABELS: Record<string, string> = {
+  Save: 'Save',
+  Restore: 'Restore',
+  Apply: 'Apply',
+}
 
 const MONITORING_CHANGE_LABELS: Record<string, string> = {
   Enabled: 'Enabled',
@@ -348,6 +356,42 @@ function ProxmoxCreateTable({ connectionId }: { connectionId: string | null }) {
   )
 }
 
+function ComposeChangesTable({ connectionId }: { connectionId: string | null }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['audit', 'compose', connectionId ?? 'all'],
+    queryFn: () => auditApi.getComposeChanges({ connectionId }),
+  })
+  if (isLoading) return <StateMessage>Loading…</StateMessage>
+  if (isError) return <StateMessage>Failed to load Compose changes.</StateMessage>
+  if (!data || data.length === 0) return <StateMessage>No Compose changes recorded yet.</StateMessage>
+  return (
+    <div className="audit-table-wrap">
+      <table className="audit-table">
+        <thead>
+          <tr>
+            <th>Connection</th><th>Project / file</th><th>Change</th><th>Services</th><th>Result</th><th>When</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((r: ComposeChangeAudit) => (
+            <tr key={r.id}>
+              <td>{r.connectionName ?? '(deleted)'}</td>
+              <td>
+                {r.composeProject}
+                <div className="audit-sub">{r.fileName ?? ''}</div>
+              </td>
+              <td>{COMPOSE_CHANGE_LABELS[r.changeType] ?? r.changeType}</td>
+              <td>{r.changedServices.length > 0 ? <code>{r.changedServices.join(', ')}</code> : '—'}</td>
+              <td>{r.success ? 'OK' : 'Failed'}<ErrorLine error={r.error} /></td>
+              <td>{formatTimestamp(r.changedUtc)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function UpdatesTable({ connectionId }: { connectionId: string | null }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['audit', 'updates', connectionId ?? 'all'],
@@ -477,6 +521,7 @@ export function AuditLog() {
             {activeTab === 'pmmonitoring' && <ProxmoxMonitoringTable connectionId={connectionId} />}
             {activeTab === 'pmcreate' && <ProxmoxCreateTable connectionId={connectionId} />}
             {activeTab === 'pmdestroy' && <ProxmoxDestroyTable connectionId={connectionId} />}
+            {activeTab === 'compose' && <ComposeChangesTable connectionId={connectionId} />}
             {activeTab === 'updates' && <UpdatesTable connectionId={connectionId} />}
             {activeTab === 'prune' && <PruneTable connectionId={connectionId} />}
           </div>

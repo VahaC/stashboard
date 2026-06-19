@@ -354,6 +354,26 @@ public class ComposeCommandRunnerTests
     }
 
     [Fact]
+    public async Task UpProject_Local_WithServices_AppendsThemToUp()
+    {
+        var calls = new List<ProcessRunSpec>();
+        var runner = NewRunner();
+        runner.DirectoryExists = _ => true;
+        runner.RunProcessAsync = (spec, _) =>
+        {
+            calls.Add(spec);
+            return Task.FromResult(new ProcessRunOutcome(true, 0, "", ""));
+        };
+
+        var result = await runner.UpProjectAsync(
+            new ComposeUpRequest(ProjectPath, Ssh: null, Services: new[] { "web", "db" }));
+
+        Assert.Equal(ComposeRunnerStatus.Success, result.Status);
+        // calls[0] = version probe, [1] = up with the changed services appended.
+        Assert.Equal(new[] { "compose", "up", "-d", "web", "db" }, calls[1].Arguments);
+    }
+
+    [Fact]
     public async Task UpProject_Local_NonZeroExit_SurfacesStderr()
     {
         var runner = NewRunner();

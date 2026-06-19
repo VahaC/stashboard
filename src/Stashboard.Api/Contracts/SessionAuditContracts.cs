@@ -125,6 +125,24 @@ public sealed record ProxmoxCreateAuditResponse(
     DateTime CreatedAtUtc);
 
 /// <summary>
+/// V7.6 — wire form of a single <see cref="Stashboard.Core.Entities.ComposeChangeAuditEntity"/>
+/// row for the Audit page's <em>Compose changes</em> tab. Records one Compose
+/// save / restore / apply: who, when, which project + file, which services were
+/// touched, and (for apply) whether it succeeded.
+/// </summary>
+public sealed record ComposeChangeAuditResponse(
+    Guid Id,
+    Guid? DockerConnectionId,
+    string? ConnectionName,
+    string ComposeProject,
+    string? FileName,
+    ComposeChangeType ChangeType,
+    IReadOnlyList<string> ChangedServices,
+    bool Success,
+    string? Error,
+    DateTime ChangedUtc);
+
+/// <summary>
 /// V6.6 — wire form of a single <see cref="Stashboard.Core.Entities.ProxmoxConsoleSessionEntity"/>
 /// row for the Audit page's <em>LXC console</em> tab.
 /// </summary>

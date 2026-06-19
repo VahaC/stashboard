@@ -29,9 +29,11 @@ const PROJECT_NAME = /^[a-z0-9][a-z0-9_-]*$/
 export interface ComposeTemplateTabProps {
   connectionId: string
   onCreated: (projectName: string, started: boolean) => void
+  /** V7.6 — closes the parent New-project modal (bottom Cancel). */
+  onClose: () => void
 }
 
-export function ComposeTemplateTab({ connectionId, onCreated }: ComposeTemplateTabProps) {
+export function ComposeTemplateTab({ connectionId, onCreated, onClose }: ComposeTemplateTabProps) {
   const { data: templates, isLoading, isError } = useServiceTemplates(true)
   const [selected, setSelected] = useState<ServiceTemplate | null>(null)
 
@@ -53,6 +55,7 @@ export function ComposeTemplateTab({ connectionId, onCreated }: ComposeTemplateT
         template={selected}
         onBack={() => setSelected(null)}
         onCreated={onCreated}
+        onClose={onClose}
       />
     )
   }
@@ -151,12 +154,13 @@ function TemplateLogo({ template }: { template: ServiceTemplate }) {
 // ── selected-template config panel ──────────────────────────────────────────
 
 function ComposeTemplateConfig({
-  connectionId, template, onBack, onCreated,
+  connectionId, template, onBack, onCreated, onClose,
 }: {
   connectionId: string
   template: ServiceTemplate
   onBack: () => void
   onCreated: (projectName: string, started: boolean) => void
+  onClose: () => void
 }) {
   const create = useCreateComposeProject(connectionId)
 
@@ -333,6 +337,9 @@ function ComposeTemplateConfig({
         {error && <pre className="compose-edit-error" role="alert">{error}</pre>}
 
         <div className="compose-edit-actions">
+          <Button type="button" variant="outline" size="sm" className="mr-auto" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
           <Button type="button" size="sm" onClick={() => submit(true)} disabled={!canSave}>
             {busy ? 'Creating…' : 'Create and run'}
           </Button>

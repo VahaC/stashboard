@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
-import { AlertCircle, FileCode, FileText, Layers, Lock, Plus } from 'lucide-react'
+import { AlertCircle, FileCode, FileText, History, Layers, Lock, Plus } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,7 @@ import type {
 } from '@/lib/types'
 import { getApiErrorMessage } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { ComposeHistoryTab } from './ComposeHistoryTab'
 import { ComposeRawFileEditor } from './ComposeRawFileEditor'
 import { ComposeServiceCreateForm } from './ComposeServiceCreateForm'
 import { ComposeSharedResourcesTab } from './ComposeResourcesPanel'
@@ -34,6 +35,7 @@ type ActivePanel =
   | { type: 'cross' }
   | { type: 'add' }
   | { type: 'raw' }
+  | { type: 'history' }
 
 /**
  * V7.1.1 — the Compose viewer/editor, reworked from the standalone
@@ -194,6 +196,19 @@ export function ComposeProjectModal({ connectionId, project, onClose }: ComposeP
                 <FileText className="h-3.5 w-3.5" />
                 Raw YAML
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={resolved.type === 'history'}
+                className={cn(
+                  'container-modal-tab compose-history-tab-btn',
+                  resolved.type === 'history' && 'container-modal-tab-active',
+                )}
+                onClick={() => setActive({ type: 'history' })}
+              >
+                <History className="h-3.5 w-3.5" />
+                History
+              </button>
             </nav>
 
             <div className="container-modal-body" role="tabpanel">
@@ -214,6 +229,8 @@ export function ComposeProjectModal({ connectionId, project, onClose }: ComposeP
                 />
               ) : resolved.type === 'raw' ? (
                 <ComposeRawFileEditor connectionId={connectionId} project={project} />
+              ) : resolved.type === 'history' ? (
+                <ComposeHistoryTab connectionId={connectionId} project={project} />
               ) : activeService ? (
                 <ComposeServiceTab
                   key={activeService.name}

@@ -25,8 +25,8 @@
 
 ## V7 — Visual Compose editor (Docker)
 
-> The visual Compose editor track for the Docker page. V7.0–V7.5 have
-> shipped; V7.6+ below are forward-looking.
+> The visual Compose editor track for the Docker page. V7.0–V7.6 have
+> shipped; V7.7+ below are forward-looking.
 
 ---
 
@@ -416,30 +416,39 @@ again?" friction.
 
 ---
 
-### Phase V7.6 — Diff, dry-run, apply
+### ✅ Phase V7.6 — Diff, dry-run, apply (image 7.6.0)
 
 **Complexity:** Medium
 **Value:** "Save" on YAML is scary if you can't see what changes. A
 pre-save diff + `docker compose config` validation, with an explicit
-**Apply now** button to drive the V5.2 compose-aware recreate, makes the
-editor safe to use on production projects. This is the single phase that
+**Apply** button to drive the compose-aware recreate, makes the editor
+safe to use on production projects. This is the single phase that
 separates a toy editor from one a homelabber will trust on their
 always-on host.
 
-**Proposed approach:**
+**Shipped:**
 
-- **Save** → backend computes a textual diff between the on-disk file
-  and the proposed file, runs `docker compose -f … config -q` for
-  validation, and returns both to the UI.
-- UI shows a side-by-side diff; the user confirms before any write.
-- On confirm: write file atomically (V7.1 path), then offer **Apply
-  now** which fires V5.2's compose-aware recreate for **only the
-  changed services** (compute the set by diffing service keys + their
-  serialised YAML).
-- Previous file revisions are kept in `<project>/.stashboard/history/`
-  (last N, default 20) with a **Restore** button. Pairs with V4's
-  SQLite to also store a metadata-only audit row per change
-  (who / when / which services touched).
+- **Review & save…** on the Raw-YAML tab posts the proposed text to a
+  diff endpoint that returns a **unified line diff** vs. the on-disk
+  file, a **dry-run** `docker compose config -q` verdict (a throwaway
+  `.next` candidate is validated then deleted — the original is never
+  touched), and the **changed-services** set (computed by diffing the
+  parsed per-service model; services only removed from the file are
+  reported separately). The confirm dialog (a unified diff, not
+  side-by-side — better in the modal and on phones) shows all three.
+- On confirm: write atomically (V7.1 path) via **Save only**, or
+  **Save & apply changed** which then runs `docker compose up -d
+  <changed services>` (LocalSocket CLI or over SSH) so only the
+  recreated containers are touched.
+- Every save snapshots the previous file into
+  `<project>/.stashboard/history/<stamp>__<file>` (last **20**, oldest
+  pruned, duplicate-of-newest skipped; best-effort so it never blocks a
+  save). A **History** tab lists revisions with **Restore**, which
+  previews the same diff and re-validates + writes the revision back
+  (snapshotting the current file first, so a restore is undoable). Each
+  save / restore / apply also writes a metadata-only **ComposeChangeAudit**
+  row (who / when / project + file / which services / outcome), surfaced
+  read-only on the Audit page's **Compose changes** tab.
 
 ---
 

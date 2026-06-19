@@ -308,4 +308,42 @@ public class DockerAuditControllerTests : IDisposable
 
         Assert.Empty(rows); // a connection the caller doesn't own yields nothing
     }
+
+    // ── compose changes (V7.6) ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ComposeChanges_OwnerScoped_NewestFirst_AndSplitsServices()
+    {
+        var me = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        SeedUsers(me, other);
+
+        _db.ComposeChangeAudits.AddRange(
+            new ComposeChangeAuditEntity
+            {
+                Id = Guid.NewGuid(), InitiatedByUserId = me, ComposeProject = "media", FileName = "docker-compose.yml",
+                ChangeType = ComposeChangeType.Save, ChangedServices = "web,db", Success = true,
+                ChangedUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            },
+            new ComposeChangeAuditEntity
+            {
+                Id = Guid.NewGuid(), InitiatedByUserId = me, ComposeProject = "media", FileName = "docker-compose.yml",
+                ChangeType = ComposeChangeType.Apply, ChangedServices = "web", Success = false, Error = "port clash",
+                ChangedUtc = new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc),
+            },
+            new ComposeChangeAuditEntity
+            {
+                Id = Guid.NewGuid(), InitiatedByUserId = other, ComposeProject = "foreign",
+                ChangeType = ComposeChangeType.Save, Success = true, ChangedUtc = DateTime.UtcNow,
+            });
+        await _db.SaveChangesAsync();
+
+        var rows = Body(await NewController(me).GetComposeChanges());
+
+        Assert.Equal(2, rows.Count); // foreign excluded
+        Assert.Equal(ComposeChangeType.Apply, rows[0].ChangeType); // 2026-02 newest first
+        Assert.False(rows[0].Success);
+        Assert.Equal(new[] { "web" }, rows[0].ChangedServices);
+        Assert.Equal(new[] { "web", "db" }, rows[1].ChangedServices);
+    }
 }

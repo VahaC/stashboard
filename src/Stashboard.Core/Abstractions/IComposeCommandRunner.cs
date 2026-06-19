@@ -54,7 +54,13 @@ public sealed record ComposeProjectRecreateRequest(string ProjectPath);
 /// when it is <c>null</c> the local <c>docker compose</c> CLI inside the
 /// Stashboard container is used (LocalSocket connections).
 /// </summary>
-public sealed record ComposeUpRequest(string ProjectPath, DockerSshCredentials? Ssh);
+/// <remarks>V7.6 — <see cref="Services"/> narrows the run to a subset of the
+/// project's services (<c>up -d &lt;svc…&gt;</c>): the "Apply now" button after a
+/// save passes only the services whose definition changed, so Compose recreates
+/// just those containers and leaves the rest untouched. <c>null</c> / empty means
+/// the whole project (the V7.4 "Save and run" behaviour).</remarks>
+public sealed record ComposeUpRequest(
+    string ProjectPath, DockerSshCredentials? Ssh, IReadOnlyList<string>? Services = null);
 
 /// <summary>
 /// V5.2 — result of a <see cref="IComposeCommandRunner.RecreateServiceAsync"/>

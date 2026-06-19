@@ -4,8 +4,12 @@ import { accountApi } from './account-api'
 import type {
   Category,
   ComposeAllocation,
+  ComposeApplyResponse,
   ComposeFile,
+  ComposeFileDiff,
   ComposeFileSaveResponse,
+  ComposeHistoryEntry,
+  ComposeHistoryFile,
   ComposeImageTags,
   ComposeHostNetwork,
   ComposeProject,
@@ -14,6 +18,7 @@ import type {
   ComposeResourceEditRequest,
   ComposeResourceEditResponse,
   ComposeResourceKind,
+  ComposeRestoreResponse,
   ComposeServiceCreateRequest,
   ComposeServiceEditRequest,
   ComposeServiceEditResponse,
@@ -90,6 +95,9 @@ export const qk = {
   /** V7.4 — the project's raw Compose file text for the "Raw YAML" tab. */
   composeFile: (connectionId: string, project: string) =>
     ['docker', 'connections', connectionId, 'compose-file', project] as const,
+  /** V7.6 — kept revisions of the project's Compose file (History tab). */
+  composeHistory: (connectionId: string, project: string) =>
+    ['docker', 'connections', connectionId, 'compose-history', project] as const,
   features: ['features'] as const,
   telegramSettings: ['account', 'telegram'] as const,
 }
@@ -347,6 +355,69 @@ export const useComposeUp = (connectionId: string, project: string) => {
         `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/up`)).data,
     onSuccess: (result) => {
       if (result.success) qc.invalidateQueries({ queryKey: qk.dockerInstanceContainers(connectionId) })
+    },
+  })
+}
+
+/** V7.6 — pre-save diff + `docker compose config -q` dry-run for the proposed
+ *  text. Nothing is written; the result drives the confirm dialog. Also used to
+ *  preview a history revision against the current file (pass the revision text). */
+export const useComposeFileDiff = (connectionId: string, project: string) =>
+  useMutation({
+    mutationFn: async (content: string): Promise<ComposeFileDiff> =>
+      (await api.post<ComposeFileDiff>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/file/diff`,
+        { content })).data,
+  })
+
+/** V7.6 — "Apply now": recreate the changed services (empty = whole project) so
+ *  a just-saved change takes effect. Invalidates the container list on success
+ *  so the recreated containers' live state badges refresh. */
+export const useApplyComposeServices = (connectionId: string, project: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (services: string[]): Promise<ComposeApplyResponse> =>
+      (await api.post<ComposeApplyResponse>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/apply`,
+        { services })).data,
+    onSuccess: (result) => {
+      if (result.success) qc.invalidateQueries({ queryKey: qk.dockerInstanceContainers(connectionId) })
+    },
+  })
+}
+
+/** V7.6 — kept revisions of the project's Compose file (History tab), newest
+ *  first. Fetched lazily (enabled) when the tab is opened. */
+export const useComposeHistory = (connectionId: string, project: string, enabled: boolean) =>
+  useQuery({
+    queryKey: qk.composeHistory(connectionId, project),
+    enabled,
+    retry: false,
+    queryFn: async (): Promise<ComposeHistoryEntry[]> =>
+      (await api.get<ComposeHistoryEntry[]>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/history`)).data,
+  })
+
+/** V7.6 — fetches the raw text of one kept revision (for the restore-preview
+ *  diff). A bare function, not a hook, since it's pulled on demand per row. */
+export const fetchComposeHistoryFile = async (
+  connectionId: string, project: string, id: string,
+): Promise<ComposeHistoryFile> =>
+  (await api.get<ComposeHistoryFile>(
+    `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/history/${encodeURIComponent(id)}`)).data
+
+/** V7.6 — restores a kept revision (re-validated + written like any save). On
+ *  success the parsed project + raw file + history caches refresh. */
+export const useRestoreComposeHistory = (connectionId: string, project: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string): Promise<ComposeRestoreResponse> =>
+      (await api.post<ComposeRestoreResponse>(
+        `/api/docker/connections/${connectionId}/compose/${encodeURIComponent(project)}/history/${encodeURIComponent(id)}/restore`)).data,
+    onSuccess: (response) => {
+      qc.setQueryData<ComposeProject>(qk.composeProject(connectionId, project), response.project)
+      qc.invalidateQueries({ queryKey: qk.composeFile(connectionId, project) })
+      qc.invalidateQueries({ queryKey: qk.composeHistory(connectionId, project) })
     },
   })
 }

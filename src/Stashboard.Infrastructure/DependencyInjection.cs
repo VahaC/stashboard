@@ -129,6 +129,10 @@ public static class DependencyInjection
         // V7.1 — surgical Compose editor: splices the raw YAML text at the
         // edited keys only, so the rest of the file round-trips byte-for-byte.
         services.AddSingleton<IComposeFileEditor, ComposeFileEditor>();
+        // V7.6 — keeps the last N revisions of each Compose file under
+        // <project>/.stashboard/history/ for the Restore button. The writer
+        // snapshots through it on every save (best-effort). Stateless.
+        services.AddSingleton<IComposeHistoryStore, ComposeHistoryStore>();
         // V7.1 — atomic, validated save (.next + `compose config -q` + rename)
         // for both transports. Stateless.
         services.AddSingleton<IComposeProjectWriter, ComposeProjectWriter>();

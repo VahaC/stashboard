@@ -33,6 +33,7 @@ public class ComposeProjectsController(
     IComposeFileParser parser,
     IComposeFileEditor editor,
     IComposeProjectWriter writer,
+    IComposeHistoryStore historyStore,
     IComposeCommandRunner composeCommandRunner,
     IImageReferenceParser imageReferenceParser,
     IRegistryClient registryClient,
@@ -247,9 +248,215 @@ public class ComposeProjectsController(
         {
             var failure = await WriteComposeFileAsync(connection, located.Path!, fileName, newContent, cancellationToken);
             if (failure is not null) return failure;
+
+            // V7.6 — metadata-only audit row for the save (the file content itself
+            // is kept in the on-disk history the writer just snapshotted).
+            await WriteChangeAuditAsync(connection, project, fileName, ComposeChangeType.Save,
+                ComputeChangedServices(read.Result.Content!, newContent).Changed, true, null, cancellationToken);
         }
 
         return Ok(new ComposeFileSaveResponse(changed));
+    }
+
+    /// <summary>
+    /// V7.6 — pre-save diff + dry-run: returns a line diff between the on-disk
+    /// file and the proposed text, the <c>docker compose config -q</c> verdict
+    /// (without ever touching the original), and which services the change
+    /// touches — so the user can review before confirming a write. Nothing is
+    /// written. 400 for TcpTls; 404 when the project / file is gone.
+    /// </summary>
+    [HttpPost("{project}/file/diff")]
+    public async Task<ActionResult<ComposeFileDiffResponse>> DiffFile(
+        Guid connectionId, string project,
+        [FromBody] ComposeFileDiffRequest request, CancellationToken cancellationToken)
+    {
+        var connection = await LoadOwnedConnectionAsync(connectionId, cancellationToken);
+        if (connection is null) return NotFound();
+
+        var located = await LocateProjectAsync(connection, project, cancellationToken);
+        if (located.Failure is not null) return located.Failure;
+
+        var read = await ReadProjectFileAsync(connection, located.Path!, cancellationToken);
+        if (read.Failure is not null) return read.Failure;
+        var fileName = read.Result!.FileName!;
+        var oldContent = read.Result.Content!;
+        var newContent = request.Content ?? "";
+
+        var diff = ComposeTextDiff.Compute(oldContent, newContent)
+            .Select(l => new ComposeDiffLineDto(l.Type, l.Text, l.OldLine, l.NewLine))
+            .ToList();
+
+        var validation = await ValidateComposeFileAsync(connection, located.Path!, fileName, newContent, cancellationToken);
+        var cliAvailable = validation.Status != ComposeWriteStatus.CliNotAvailable;
+
+        var (changed, removed) = ComputeChangedServices(oldContent, newContent);
+
+        return Ok(new ComposeFileDiffResponse(
+            FileName: fileName,
+            ProjectPath: located.Path!,
+            Unchanged: !ComposeTextDiff.HasChanges(oldContent, newContent),
+            Diff: diff,
+            Valid: validation.IsSuccess,
+            ValidationError: validation.IsSuccess ? null : validation.Error,
+            CliAvailable: cliAvailable,
+            ChangedServices: changed,
+            RemovedServices: removed));
+    }
+
+    /// <summary>
+    /// V7.6 — "Apply now": recreate the changed services so the just-saved file
+    /// takes effect on the running containers. Runs <c>docker compose up -d
+    /// &lt;services…&gt;</c> (no <c>pull</c> — this applies a config change, not an
+    /// image update) against only the changed set, leaving the rest untouched. An
+    /// empty service list applies the whole project. LocalSocket via the
+    /// in-container CLI, Ssh on the remote host. 400 for TcpTls; 502 when the run
+    /// fails. Always writes an audit row.
+    /// </summary>
+    [HttpPost("{project}/apply")]
+    public async Task<ActionResult<ComposeApplyResponse>> ApplyProject(
+        Guid connectionId, string project,
+        [FromBody] ComposeApplyRequest request, CancellationToken cancellationToken)
+    {
+        var connection = await LoadOwnedConnectionAsync(connectionId, cancellationToken);
+        if (connection is null) return NotFound();
+
+        var located = await LocateProjectAsync(connection, project, cancellationToken);
+        if (located.Failure is not null) return located.Failure;
+
+        DockerSshCredentials? ssh = null;
+        if (connection.HostType == DockerHostType.Ssh)
+        {
+            ssh = mapper.BuildTransport(connection).Ssh;
+            if (ssh is null)
+                return BadRequest(new { error = "SSH credentials are not fully configured for this connection." });
+        }
+
+        var services = (request.Services ?? [])
+            .Select(s => s?.Trim() ?? "")
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        ComposeRunResult run;
+        try
+        {
+            run = await composeCommandRunner.UpProjectAsync(
+                new ComposeUpRequest(located.Path!, ssh, services.Count > 0 ? services : null), cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            await WriteChangeAuditAsync(connection, project, null,
+                ComposeChangeType.Apply, services, false, ex.Message, cancellationToken);
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new ComposeApplyResponse(false, services, null, $"docker compose up failed: {ex.Message}"));
+        }
+
+        await WriteChangeAuditAsync(connection, project, null, ComposeChangeType.Apply,
+            services, run.IsSuccess, run.IsSuccess ? null : run.Error, cancellationToken);
+
+        if (run.IsSuccess)
+            return Ok(new ComposeApplyResponse(true, services, run.Output, null));
+
+        return StatusCode(StatusCodes.Status502BadGateway,
+            new ComposeApplyResponse(false, services, run.Output, run.Error));
+    }
+
+    /// <summary>V7.6 — lists the kept revisions of the project's Compose file
+    /// (<c>&lt;project&gt;/.stashboard/history/</c>), newest first, for the History
+    /// tab's Restore list. 400 for TcpTls; 502 on SSH failure.</summary>
+    [HttpGet("{project}/history")]
+    public async Task<ActionResult<IReadOnlyList<ComposeHistoryEntryResponse>>> GetHistory(
+        Guid connectionId, string project, CancellationToken cancellationToken)
+    {
+        var connection = await LoadOwnedConnectionAsync(connectionId, cancellationToken);
+        if (connection is null) return NotFound();
+
+        var located = await LocateProjectAsync(connection, project, cancellationToken);
+        if (located.Failure is not null) return located.Failure;
+
+        var read = await ReadProjectFileAsync(connection, located.Path!, cancellationToken);
+        if (read.Failure is not null) return read.Failure;
+        var fileName = read.Result!.FileName!;
+
+        var list = connection.HostType == DockerHostType.Ssh
+            ? await historyStore.ListOverSshAsync(mapper.BuildTransport(connection).Ssh!, located.Path!, fileName, cancellationToken)
+            : await historyStore.ListAsync(located.Path!, fileName, cancellationToken);
+
+        if (list.Status == ComposeHistoryStatus.SshFailed)
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = list.Error });
+
+        return Ok(list.Entries.Select(e => new ComposeHistoryEntryResponse(e.Id, e.SavedUtc, e.SizeBytes)).ToList());
+    }
+
+    /// <summary>V7.6 — the raw text of one kept revision, for diffing a revision
+    /// against the current file before restoring it.</summary>
+    [HttpGet("{project}/history/{id}")]
+    public async Task<ActionResult<ComposeHistoryFileResponse>> GetHistoryFile(
+        Guid connectionId, string project, string id, CancellationToken cancellationToken)
+    {
+        var connection = await LoadOwnedConnectionAsync(connectionId, cancellationToken);
+        if (connection is null) return NotFound();
+
+        var located = await LocateProjectAsync(connection, project, cancellationToken);
+        if (located.Failure is not null) return located.Failure;
+
+        var revision = connection.HostType == DockerHostType.Ssh
+            ? await historyStore.ReadOverSshAsync(mapper.BuildTransport(connection).Ssh!, located.Path!, id, cancellationToken)
+            : await historyStore.ReadAsync(located.Path!, id, cancellationToken);
+
+        return revision.Status switch
+        {
+            ComposeHistoryStatus.Ok => Ok(new ComposeHistoryFileResponse(id, revision.Content!)),
+            ComposeHistoryStatus.SshFailed => StatusCode(StatusCodes.Status502BadGateway, new { error = revision.Error }),
+            _ => NotFound(new { error = revision.Error }),
+        };
+    }
+
+    /// <summary>
+    /// V7.6 — restores a kept revision: reads it back, re-validates it and writes
+    /// it over the current file (snapshotting the current file into history first,
+    /// so the restore is itself undoable). 404 when the revision is gone; 422 when
+    /// the revision no longer validates. Writes an audit row.
+    /// </summary>
+    [HttpPost("{project}/history/{id}/restore")]
+    public async Task<ActionResult<ComposeRestoreResponse>> RestoreHistory(
+        Guid connectionId, string project, string id, CancellationToken cancellationToken)
+    {
+        var connection = await LoadOwnedConnectionAsync(connectionId, cancellationToken);
+        if (connection is null) return NotFound();
+
+        var located = await LocateProjectAsync(connection, project, cancellationToken);
+        if (located.Failure is not null) return located.Failure;
+
+        var read = await ReadProjectFileAsync(connection, located.Path!, cancellationToken);
+        if (read.Failure is not null) return read.Failure;
+        var fileName = read.Result!.FileName!;
+        var currentContent = read.Result.Content!;
+
+        var revision = connection.HostType == DockerHostType.Ssh
+            ? await historyStore.ReadOverSshAsync(mapper.BuildTransport(connection).Ssh!, located.Path!, id, cancellationToken)
+            : await historyStore.ReadAsync(located.Path!, id, cancellationToken);
+        if (revision.Status == ComposeHistoryStatus.SshFailed)
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = revision.Error });
+        if (revision.Status != ComposeHistoryStatus.Ok)
+            return NotFound(new { error = revision.Error });
+
+        var restoredContent = revision.Content!;
+        var changed = !string.Equals(currentContent, restoredContent, StringComparison.Ordinal);
+        if (changed)
+        {
+            var failure = await WriteComposeFileAsync(connection, located.Path!, fileName, restoredContent, cancellationToken);
+            if (failure is not null) return failure;
+
+            await WriteChangeAuditAsync(connection, project, fileName, ComposeChangeType.Restore,
+                ComputeChangedServices(currentContent, restoredContent).Changed, true, null, cancellationToken);
+        }
+
+        var reparsed = parser.Parse(restoredContent);
+        if (reparsed.Project is null)
+            return UnprocessableEntity(new { error = reparsed.Error });
+
+        return Ok(new ComposeRestoreResponse(changed, BuildProjectResponse(reparsed.Project, fileName, located.Path!)));
     }
 
     /// <summary>
@@ -415,6 +622,91 @@ public class ComposeProjectsController(
             : await writer.WriteAsync(path, fileName, content, cancellationToken);
 
         return MapWriteFailure(write);
+    }
+
+    /// <summary>V7.6 — runs the dry-run validation in whichever transport the
+    /// connection uses (writes a temp candidate, validates, deletes — the original
+    /// is never touched).</summary>
+    private async Task<ComposeWriteResult> ValidateComposeFileAsync(
+        DockerConnectionEntity connection, string path, string fileName, string content,
+        CancellationToken cancellationToken) =>
+        connection.HostType == DockerHostType.Ssh
+            ? await writer.ValidateOverSshAsync(
+                mapper.BuildTransport(connection).Ssh!, path, fileName, content, cancellationToken)
+            : await writer.ValidateAsync(path, fileName, content, cancellationToken);
+
+    /// <summary>
+    /// V7.6 — which services the change touches, comparing the normalised parsed
+    /// model of each side. <c>Changed</c> is the set "Apply now" recreates (new +
+    /// modified services, present in the proposed file); <c>Removed</c> is the
+    /// services dropped from the file (a plain <c>up -d</c> can't stop those). When
+    /// either side fails to parse the sets come back empty — the diff + validation
+    /// already carry the actionable detail.
+    /// </summary>
+    private (IReadOnlyList<string> Changed, IReadOnlyList<string> Removed) ComputeChangedServices(
+        string oldContent, string newContent)
+    {
+        var oldParsed = parser.Parse(oldContent).Project;
+        var newParsed = parser.Parse(newContent).Project;
+        if (oldParsed is null || newParsed is null)
+            return ([], []);
+
+        var oldByName = oldParsed.Services.ToDictionary(s => s.Name, ServiceFingerprint, StringComparer.Ordinal);
+        var newByName = newParsed.Services.ToDictionary(s => s.Name, ServiceFingerprint, StringComparer.Ordinal);
+
+        var changed = newByName
+            .Where(kv => !oldByName.TryGetValue(kv.Key, out var fp) || !string.Equals(fp, kv.Value, StringComparison.Ordinal))
+            .Select(kv => kv.Key)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
+        var removed = oldByName.Keys
+            .Where(n => !newByName.ContainsKey(n))
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
+        return (changed, removed);
+    }
+
+    /// <summary>A deterministic flattening of a service's normalised fields, so two
+    /// services compare equal iff their effective definition is the same (records
+    /// alone won't deep-compare the list members).</summary>
+    private static string ServiceFingerprint(ComposeServiceModel s)
+    {
+        static string List(IEnumerable<string> xs) => string.Join("", xs);
+        static string Env(IEnumerable<ComposeEnvVar> xs) => string.Join("", xs.Select(e => $"{e.Name}={e.Value}"));
+        var r = s.Resources;
+        return string.Join("", new[]
+        {
+            s.Image, s.ContainerName, s.Restart, s.Command, s.Entrypoint, s.User, s.WorkingDir,
+            List(s.Ports), List(s.Volumes), Env(s.Environment), List(s.EnvFiles),
+            List(s.DependsOn), List(s.Networks), Env(s.Labels),
+            r.Convention, r.CpuLimit, r.CpuReservation, r.MemLimit, r.MemReservation, r.PidsLimit,
+            r.CpuShares?.ToString(), r.OomKillDisable?.ToString(), r.OomScoreAdj?.ToString(), r.ShmSize,
+            string.Join("", r.Ulimits.Select(u => $"{u.Name}:{u.Soft}:{u.Hard}")),
+        }.Select(v => v ?? ""));
+    }
+
+    /// <summary>V7.6 — persists one metadata-only Compose-change audit row. The
+    /// connection name is denormalised so the row survives a connection
+    /// rename/delete.</summary>
+    private async Task WriteChangeAuditAsync(
+        DockerConnectionEntity connection, string project, string? fileName,
+        ComposeChangeType changeType, IReadOnlyList<string> changedServices,
+        bool success, string? error, CancellationToken cancellationToken)
+    {
+        db.ComposeChangeAudits.Add(new ComposeChangeAuditEntity
+        {
+            DockerConnectionId = connection.Id,
+            ConnectionName = connection.Name,
+            ComposeProject = project,
+            FileName = fileName,
+            ChangeType = changeType,
+            ChangedServices = changedServices.Count > 0 ? string.Join(",", changedServices) : null,
+            Success = success,
+            Error = error,
+            InitiatedByUserId = UserId,
+            ChangedUtc = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>V7.4/V7.4.1 — maps a failed write onto the HTTP status the editor
