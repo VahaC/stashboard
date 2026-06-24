@@ -42,16 +42,16 @@ export function LxcConsolePanel({
   if (!allowConsoleGlobal) {
     return (
       <DisabledState
-        title="The LXC console is disabled on this server"
-        hint="An operator must enable it at Settings → LXC console. It's off by default because the console runs arbitrary commands inside the guest."
+        title="The guest console is disabled on this server"
+        hint="An operator must enable it at Settings → Guest console. It's off by default because the console runs arbitrary commands inside the guest."
       />
     )
   }
   if (!allowConsole) {
     return (
       <DisabledState
-        title="The LXC console is not enabled for this host"
-        hint="Turn on 'Allow LXC console' in this Proxmox host's settings (Edit host) to open a shell inside its containers."
+        title="The console is not enabled for this host"
+        hint="Turn on 'Allow guest console' in this Proxmox host's settings (Edit host) to open a shell inside its containers."
       />
     )
   }
@@ -84,7 +84,7 @@ export function NodeConsolePanel({
     return (
       <DisabledState
         title="The Proxmox console is disabled on this server"
-        hint="An operator must enable it at Settings → LXC console. It's off by default because the console runs arbitrary commands on the host."
+        hint="An operator must enable it at Settings → Guest console. It's off by default because the console runs arbitrary commands on the host."
       />
     )
   }
@@ -92,7 +92,7 @@ export function NodeConsolePanel({
     return (
       <DisabledState
         title="The console is not enabled for this host"
-        hint="Turn on 'Allow LXC console' in this Proxmox host's settings (Edit host) to open a shell on the node."
+        hint="Turn on 'Allow guest console' in this Proxmox host's settings (Edit host) to open a shell on the node."
       />
     )
   }
@@ -113,7 +113,7 @@ export function NodeConsolePanel({
   )
 }
 
-function SessionHistoryLink({ connectionId }: { connectionId: string }) {
+export function SessionHistoryLink({ connectionId }: { connectionId: string }) {
   return (
     <p className="mt-2 text-xs">
       <Link
@@ -126,7 +126,7 @@ function SessionHistoryLink({ connectionId }: { connectionId: string }) {
   )
 }
 
-function DisabledState({ title, hint }: { title: string; hint: string }) {
+export function DisabledState({ title, hint }: { title: string; hint: string }) {
   return (
     <div className="host-terminal-disabled">
       <TerminalSquare className="h-6 w-6 host-terminal-disabled-icon" />

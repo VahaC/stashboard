@@ -114,6 +114,7 @@ import { Label } from '@/components/ui/label'
 import { useFeatures, useServices } from '@/lib/queries'
 import { Link } from 'react-router-dom'
 import { LxcConsolePanel } from '@/components/proxmox/LxcConsolePanel'
+import { VmConsolePanel } from '@/components/proxmox/VmConsolePanel'
 import { LxcDestroyDialog } from '@/components/proxmox/LxcDestroyDialog'
 import { LxcCloneModal } from '@/components/proxmox/LxcCloneModal'
 import { SnapshotConfirmDialog } from '@/components/proxmox/SnapshotConfirmDialog'
@@ -176,9 +177,10 @@ export function LxcModal({ guest, connection, initialTab = 'overview', onClose }
     () => TABS.filter((t) => {
       // The clone/snapshot tabs (LXC + VM) are gated on the feature being enabled.
       if (t.id === 'snapshots' || t.id === 'audit') return canClone
-      // VM tabs: the read-only ones that generalise to a QEMU guest (the SSH/apt/pct
-      // tabs — Watch, Logs, Console — stay LXC-only).
-      if (isVm) return t.id === 'overview' || t.id === 'config' || t.id === 'tasks' || t.id === 'stats'
+      // VM tabs: the read-only ones that generalise to a QEMU guest, plus Console
+      // (V8.6 — a VM renders its built-in VNC screen). The SSH/apt/pct tabs — Watch,
+      // Logs — stay LXC-only.
+      if (isVm) return t.id === 'overview' || t.id === 'config' || t.id === 'tasks' || t.id === 'stats' || t.id === 'console'
       return true
     }),
     [isVm, canClone],
@@ -251,7 +253,7 @@ export function LxcModal({ guest, connection, initialTab = 'overview', onClose }
           )}
           {seenConsole && (
             <div hidden={tab !== 'console'}>
-              <ConsoleTab guest={guest} connection={connection} active={tab === 'console'} />
+              <ConsoleTab guest={guest} connection={connection} isVm={isVm} active={tab === 'console'} />
             </div>
           )}
         </div>
@@ -810,10 +812,24 @@ function ApplyCommandPanel({ connectionId, vmId }: { connectionId: string; vmId:
 }
 
 // ── Console tab (V6.6 — browser SSH shell into the LXC, the LXC analogue of
-//    the Docker container Exec tab) ─────────────────────────────────────────
+//    the Docker container Exec tab; V8.6 — a VM instead renders its built-in VNC
+//    screen with noVNC, since a VM has no `pct exec`) ─────────────────────────
 
-function ConsoleTab({ guest, connection, active }: { guest: ProxmoxGuest; connection: ProxmoxConnection; active: boolean }) {
+function ConsoleTab({ guest, connection, isVm, active }: { guest: ProxmoxGuest; connection: ProxmoxConnection; isVm: boolean; active: boolean }) {
   const features = useFeatures()
+  const allowConsoleGlobal = features.data?.allowProxmoxConsole ?? false
+  if (isVm) {
+    return (
+      <VmConsolePanel
+        connectionId={connection.id}
+        vmId={guest.vmId}
+        isRunning={guest.isRunning}
+        allowConsole={connection.allowConsole}
+        allowConsoleGlobal={allowConsoleGlobal}
+        active={active}
+      />
+    )
+  }
   const sshConfigured = !!(connection.hasSshPrivateKey && connection.sshHost && connection.sshUsername)
   return (
     <LxcConsolePanel
@@ -822,7 +838,7 @@ function ConsoleTab({ guest, connection, active }: { guest: ProxmoxGuest; connec
       isRunning={guest.isRunning}
       sshConfigured={sshConfigured}
       allowConsole={connection.allowConsole}
-      allowConsoleGlobal={features.data?.allowProxmoxConsole ?? false}
+      allowConsoleGlobal={allowConsoleGlobal}
       active={active}
     />
   )

@@ -54,14 +54,14 @@ beforeEach(() => {
 /**
  * V6.14 — a QEMU VM reuses the LXC modal shell but exposes only the tabs that
  * generalise to a VM (Overview · Config · Tasks · Stats), with a read-only
- * Config tab and a "VM <vmid>" subtitle. The SSH/apt/pct-backed tabs (Watch,
- * Logs, Console) are LXC-only.
+ * Config tab and a "VM <vmid>" subtitle. V8.6 adds Console (the VM's built-in VNC
+ * screen). The SSH/apt/pct-backed tabs (Watch, Logs) stay LXC-only.
  */
 describe('LxcModal — QEMU VM variant (V6.14)', () => {
-  it('shows only the VM-applicable tabs (no Watch / Logs / Console)', () => {
+  it('shows the VM-applicable tabs incl. Console, but no Watch / Logs', () => {
     renderModal()
     const tabs = screen.getAllByRole('tab').map((t) => t.textContent?.trim())
-    expect(tabs).toEqual(['Overview', 'Config', 'Tasks', 'Stats'])
+    expect(tabs).toEqual(['Overview', 'Config', 'Tasks', 'Stats', 'Console'])
   })
 
   it('renders the VM subtitle and "Virtual machine" overview heading', () => {

@@ -211,6 +211,12 @@ public class Program
         builder.Services.AddSingleton<IProxmoxConsoleTicketService, ProxmoxConsoleTicketService>();
         builder.Services.AddSingleton<IProxmoxConsoleSessionRegistry, ProxmoxConsoleSessionRegistry>();
         builder.Services.AddScoped<IProxmoxConsoleSettingsService, ProxmoxConsoleSettingsService>();
+        // V8.6 — browser VM console: the VM analogue of the LXC console. A VM has no
+        // `pct exec`, so the transport is Proxmox's built-in VNC (IProxmoxVncRelay,
+        // registered in Infrastructure) bridged to a noVNC canvas. Reuses the LXC
+        // console's session registry, settings switch and audit table; only the
+        // single-use ticket store is VM-specific (it binds the minted VNC session).
+        builder.Services.AddSingleton<IProxmoxVncTicketService, ProxmoxVncTicketService>();
         builder.Services.AddHostedService<HealthCheckBackgroundService>();
         builder.Services.AddHostedService<DockerUpdateBackgroundService>();
         builder.Services.AddHostedService<DockerImagePruneBackgroundService>();

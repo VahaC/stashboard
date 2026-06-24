@@ -7,7 +7,6 @@ using Stashboard.Api.Auth;
 using Stashboard.Api.Contracts;
 using Stashboard.Api.Data;
 using Stashboard.Api.Mapping;
-using Stashboard.Api.Services.HostShell;
 using Stashboard.Api.Services.ProxmoxConsole;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
@@ -17,63 +16,80 @@ using Stashboard.Core.Options;
 namespace Stashboard.Api.Controllers;
 
 /// <summary>
-/// V6.6 — the browser Proxmox LXC console: an interactive shell <em>inside</em>
-/// an LXC, reached by SSHing to the Proxmox host and running
-/// <c>pct exec &lt;vmid&gt; -- &lt;shell&gt;</c>. Path:
-/// <c>/api/proxmox/connections/{connectionId}/lxc/{vmId}/console</c>.
+/// V8.6 — the browser Proxmox <strong>VM</strong> console: the VM analogue of the
+/// V6.6 LXC console. A VM has no <c>pct exec</c> and no guaranteed SSH /
+/// guest-agent, so the SSH-PTY transport can't be reused; instead this opens
+/// Proxmox's built-in VNC — the same screen the Proxmox web UI opens — and relays
+/// the raw RFB stream to a noVNC canvas in the browser. Path:
+/// <c>/api/proxmox/connections/{connectionId}/qemu/{vmId}/console</c>.
 /// </summary>
 /// <remarks>
-/// This is a blend of the two shipped shell phases: it reuses the V5.3 SSH PTY
-/// transport (<see cref="IHostShellConnector"/>) like the host terminal — the
-/// console needs SSH credentials on the Proxmox host — and the V5.7 per-session
-/// command + two-way gate like container exec. It is gated three ways, all
-/// required: the global <c>Stashboard:AllowProxmoxConsole</c> switch (DB-backed,
-/// managed at Settings → LXC console), the per-host <c>AllowConsole</c> opt-in,
-/// and ownership of a Proxmox host with SSH configured.
-///
-/// Reuses the V5.3 transport verbatim: a browser <c>WebSocket</c> can't send the
-/// JWT header, so the authenticated <c>POST ticket</c> mints a single-use,
-/// short-lived ticket (binding the chosen LXC + command) and the <c>GET ws</c>
-/// upgrade authenticates with that ticket alone
-/// (<see cref="AllowAnonymousAttribute"/>). The byte pump
-/// (<see cref="HostShellSession"/>) and WebSocket adapter
-/// (<see cref="WebSocketShellClientTransport"/>) are shared with the host
-/// terminal and container exec.
+/// Reuses the V6.6 scaffold verbatim — the same DB-backed global switch
+/// (<see cref="IProxmoxConsoleSettingsService"/>, Settings → LXC console), the same
+/// per-host <c>AllowConsole</c> opt-in, the same concurrency registry
+/// (<see cref="IProxmoxConsoleSessionRegistry"/>, shared with the LXC console), the
+/// same single-use ticket / WS-upgrade dance, and the same audit table
+/// (<see cref="ProxmoxConsoleSessionEntity"/>, already guest-kind-agnostic). Only
+/// the transport changes: a <see cref="IProxmoxVncRelay"/> (vncproxy → vncwebsocket)
+/// instead of an SSH PTY, and the byte pump (<see cref="ProxmoxVncSession"/>)
+/// forwards RFB bytes verbatim. The SSH-configured gate is <em>dropped</em> for a VM
+/// (VNC uses the API token, not SSH); the API token never reaches the browser.
 /// </remarks>
 [ApiController]
 [Authorize]
-[Route("api/proxmox/connections/{connectionId:guid}/lxc/{vmId:int}/console")]
-public class ProxmoxConsoleController(
+[Route("api/proxmox/connections/{connectionId:guid}/qemu/{vmId:int}/console")]
+public class ProxmoxVncConsoleController(
     ApplicationDbContext db,
     IProxmoxConnectionMapper connectionMapper,
-    IProxmoxConsoleTicketService ticketService,
+    IProxmoxVncTicketService ticketService,
     IProxmoxConsoleSessionRegistry sessionRegistry,
-    IHostShellConnector connector,
+    IProxmoxVncRelay relay,
     IProxmoxConsoleSettingsService consoleSettings,
     IServiceScopeFactory scopeFactory,
     IHostApplicationLifetime appLifetime,
     IOptions<ProxmoxConsoleOptions> consoleOptions,
-    ILogger<ProxmoxConsoleController> logger) : ControllerBase
+    ILogger<ProxmoxVncConsoleController> logger) : ControllerBase
 {
     [HttpPost("ticket")]
-    public async Task<ActionResult<ProxmoxConsoleTicketResponse>> CreateTicket(
+    public async Task<ActionResult<ProxmoxVncConsoleTicketResponse>> CreateTicket(
         Guid connectionId,
         int vmId,
-        [FromBody] ProxmoxConsoleTicketRequest? request,
         CancellationToken cancellationToken)
     {
         var userId = User.GetUserId();
         var connection = await LoadOwnedConnectionAsync(connectionId, userId, cancellationToken);
         var globalEnabled = await consoleSettings.IsEnabledAsync(cancellationToken);
+        // Gate before any host call — a blocked request never touches Proxmox.
         var gate = CheckEligibility(connection, globalEnabled);
         if (gate is not null) return gate;
 
-        var command = ParseCommand(request?.Command);
-        var ticket = ticketService.Issue(userId, connectionId, vmId, command);
-        var response = new ProxmoxConsoleTicketResponse(
+        var profile = connectionMapper.BuildProfile(connection!);
+
+        // Mint the one-time VNC session now so the RFB password is ready for the
+        // browser's noVNC the moment the socket opens. A host that refuses (stopped
+        // VM, token without VM.Console, console-less VM) surfaces as a clean message.
+        ProxmoxVncProxyTicket vncProxy;
+        try
+        {
+            vncProxy = await relay.OpenVncProxyAsync(profile, vmId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "VM console vncproxy failed for host {ConnectionId}, VM {VmId}.", connectionId, vmId);
+            return StatusCode(StatusCodes.Status409Conflict, new
+            {
+                error = "The VNC console is unavailable on this host. The VM must be running and have a "
+                    + "VGA console, and the API token needs the VM.Console privilege.",
+            });
+        }
+
+        var ticket = ticketService.Issue(userId, connectionId, vmId, vncProxy);
+        var response = new ProxmoxVncConsoleTicketResponse(
             Ticket: ticket,
+            Password: vncProxy.Ticket,
             ExpiresInSeconds: Math.Max(1, consoleOptions.Value.TicketTtlSeconds),
-            WebSocketPath: $"/api/proxmox/connections/{connectionId}/lxc/{vmId}/console/ws");
+            WebSocketPath: $"/api/proxmox/connections/{connectionId}/qemu/{vmId}/console/ws");
         return Ok(response);
     }
 
@@ -83,8 +99,6 @@ public class ProxmoxConsoleController(
         Guid connectionId,
         int vmId,
         [FromQuery] string? ticket,
-        [FromQuery] uint cols = 80,
-        [FromQuery] uint rows = 24,
         CancellationToken cancellationToken = default)
     {
         if (!HttpContext.WebSockets.IsWebSocketRequest)
@@ -93,7 +107,7 @@ public class ProxmoxConsoleController(
         // 1) Authenticate via the single-use ticket (no JWT header on a WS).
         var redeemed = ticketService.Redeem(ticket ?? string.Empty);
         if (redeemed is null || redeemed.ConnectionId != connectionId || redeemed.VmId != vmId)
-            return Unauthorized(new { error = "Invalid or expired LXC-console ticket." });
+            return Unauthorized(new { error = "Invalid or expired VM-console ticket." });
 
         var userId = redeemed.UserId;
 
@@ -103,14 +117,12 @@ public class ProxmoxConsoleController(
         var globalEnabled = await consoleSettings.IsEnabledAsync(cancellationToken);
         if (CheckEligibility(connection, globalEnabled) is not null || connection is null)
             return StatusCode(StatusCodes.Status403Forbidden,
-                new { error = "The LXC console is not available for this host." });
+                new { error = "The VM console is not available for this host." });
 
-        var ssh = connectionMapper.BuildProfile(connection).Ssh;
-        if (ssh is null)
-            return StatusCode(StatusCodes.Status409Conflict,
-                new { error = "This Proxmox host is missing SSH host / username / private key — the console needs SSH." });
+        var profile = connectionMapper.BuildProfile(connection);
 
-        // 3) Enforce concurrency caps before accepting the socket.
+        // 3) Enforce concurrency caps before accepting the socket (shared with the
+        //    LXC console so a user's total console tally is one number).
         using var lease = sessionRegistry.TryAcquire(userId, connectionId, out var rejection);
         if (lease is null)
         {
@@ -119,8 +131,14 @@ public class ProxmoxConsoleController(
             return new EmptyResult();
         }
 
-        using var socket = await HttpContext.WebSockets.AcceptWebSocketAsync();
-        await RunSessionAsync(socket, connection, ssh, redeemed, userId, new HostShellWindow(cols, rows), cancellationToken);
+        // noVNC offers the "binary" subprotocol; confirm it in the handshake response
+        // so the negotiation is complete (an unconfirmed subprotocol can make a proxy
+        // or the browser tear the connection down right after the upgrade).
+        var acceptBinary = HttpContext.WebSockets.WebSocketRequestedProtocols.Contains("binary");
+        using var socket = acceptBinary
+            ? await HttpContext.WebSockets.AcceptWebSocketAsync("binary")
+            : await HttpContext.WebSockets.AcceptWebSocketAsync();
+        await RunSessionAsync(socket, connection, profile, redeemed, userId, cancellationToken);
         return new EmptyResult();
     }
 
@@ -129,42 +147,36 @@ public class ProxmoxConsoleController(
     private async Task RunSessionAsync(
         WebSocket socket,
         ProxmoxConnectionEntity connection,
-        DockerSshCredentials ssh,
-        ProxmoxConsoleTicket ticket,
+        ProxmoxConnectionProfile profile,
+        ProxmoxVncTicket ticket,
         Guid userId,
-        HostShellWindow window,
         CancellationToken cancellationToken)
     {
-        var commandText = string.Join(' ', ticket.Command);
-        // `exec` replaces the login shell so the SSH channel closes when the inner
-        // shell exits. V6.8 — vmId 0 is the **node** itself: run the chosen shell
-        // directly on the host (no `pct exec` wrapper). For an LXC, `pct exec … --`
-        // runs the shell inside the guest.
-        var isNode = ticket.VmId == 0;
-        var initialCommand = isNode
-            ? $"exec {commandText}"
-            : $"exec pct exec {ticket.VmId} -- {commandText}";
-
-        var sessionId = await WriteAuditStartAsync(connection, userId, ticket.VmId, commandText, cancellationToken);
+        // CancellationToken.None, not the request token: HttpContext.RequestAborted
+        // fires spuriously on a WebSocket-upgraded request (see the ConnectAsync note),
+        // and the audit-start row must be written regardless so the session is recorded.
+        var sessionId = await WriteAuditStartAsync(connection, userId, ticket.VmId, CancellationToken.None);
         logger.LogInformation(
-            "Proxmox console opened: user {UserId} → host {ConnectionId} (ssh://{User}@{Host}), target {Target}, command \"{Command}\", session {SessionId}.",
-            userId, connection.Id, ssh.Username, ssh.Host, isNode ? "node" : $"CT {ticket.VmId}", commandText, sessionId);
+            "Proxmox VM console opened: user {UserId} → host {ConnectionId} ({ApiBaseUrl}), VM {VmId}, session {SessionId}.",
+            userId, connection.Id, connection.ApiBaseUrl, ticket.VmId, sessionId);
 
-        var client = new WebSocketShellClientTransport(socket);
-        IHostShellChannel? channel = null;
-        HostShellSessionResult result;
+        var client = new WebSocketVncChannel(socket);
+        IProxmoxVncChannel? host = null;
+        ProxmoxVncSessionResult result;
         try
         {
-            // ssh.Connect() blocks on the network handshake — keep it off the
-            // request thread.
-            channel = await Task.Run(
-                () => connector.Connect(ssh, window, initialCommand, cancellationToken), cancellationToken);
+            // NOT the request token: HttpContext.RequestAborted fires spuriously /
+            // immediately on a WebSocket-upgraded request (seen behind the Vite dev
+            // proxy), which would cancel the Proxmox connect before it starts. The
+            // relay applies its own connect timeout; a real client disconnect is
+            // detected by the pump (the browser→host read returns a Close).
+            host = await relay.ConnectAsync(profile, ticket.VmId, ticket.VncProxy, CancellationToken.None);
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex,
-                "LXC console SSH connect failed for host {ConnectionId}, CT {VmId}.", connection.Id, ticket.VmId);
-            await client.CloseAsync($"SSH connection failed: {ex.Message}", CancellationToken.None);
+                "VM console VNC relay connect failed for host {ConnectionId}, VM {VmId}.", connection.Id, ticket.VmId);
+            await TryCloseAsync(socket, ProxmoxVncRelayMessage(ex), CancellationToken.None);
             await WriteAuditEndAsync(sessionId, HostShellSessionEndReason.Error, 0, 0, ex.Message);
             return;
         }
@@ -175,28 +187,30 @@ public class ProxmoxConsoleController(
                 ? TimeSpan.FromSeconds(consoleOptions.Value.IdleTimeoutSeconds)
                 : Timeout.InfiniteTimeSpan;
 
-            // Link app shutdown into the session token so a graceful stop finalises
-            // the row as ClosedByServer (within the host's shutdown window) rather
-            // than orphaning it as Active for the startup sweep to reap.
+            // Drive the pump off app-shutdown only — NOT the request token, which
+            // fires spuriously on an upgraded WebSocket (see the ConnectAsync note).
+            // A graceful stop still finalises the row as ClosedByServer; a client
+            // disconnect is detected by the pump itself (the browser read returns a
+            // Close), so the session ends without relying on RequestAborted.
             using var sessionCts = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken, appLifetime.ApplicationStopping);
-            result = await HostShellSession.RunAsync(channel, client, idleTimeout, logger, sessionCts.Token);
+                appLifetime.ApplicationStopping);
+            result = await ProxmoxVncSession.RunAsync(client, host, idleTimeout, logger, sessionCts.Token);
         }
         finally
         {
-            channel.Dispose();
+            await host.DisposeAsync();
         }
 
-        await client.CloseAsync(CloseReasonText(result.EndReason), CancellationToken.None);
+        await TryCloseAsync(socket, CloseReasonText(result.EndReason), CancellationToken.None);
         await WriteAuditEndAsync(sessionId, result.EndReason, result.BytesFromClient, result.BytesToClient, result.Error);
 
         logger.LogInformation(
-            "LXC console closed: session {SessionId}, reason {Reason}, {BytesIn} B in / {BytesOut} B out.",
+            "VM console closed: session {SessionId}, reason {Reason}, {BytesIn} B in / {BytesOut} B out.",
             sessionId, result.EndReason, result.BytesFromClient, result.BytesToClient);
     }
 
     private async Task<Guid> WriteAuditStartAsync(
-        ProxmoxConnectionEntity connection, Guid userId, int vmId, string command, CancellationToken cancellationToken)
+        ProxmoxConnectionEntity connection, Guid userId, int vmId, CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var scopedDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -213,7 +227,9 @@ public class ProxmoxConsoleController(
             NodeName = connection.NodeName,
             VmId = vmId,
             GuestName = guestName,
-            Command = command,
+            // No shell for a VNC session — record the transport so the audit view
+            // distinguishes a VM VNC console from an LXC shell session.
+            Command = "VNC console",
             StartedUtc = DateTime.UtcNow,
             CreatedUtc = DateTime.UtcNow,
             EndReason = HostShellSessionEndReason.Active,
@@ -242,17 +258,17 @@ public class ProxmoxConsoleController(
         catch (Exception ex)
         {
             // Never let an audit-write failure crash the request teardown.
-            logger.LogError(ex, "Failed to finalise LXC-console audit row {SessionId}.", sessionId);
+            logger.LogError(ex, "Failed to finalise VM-console audit row {SessionId}.", sessionId);
         }
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Validates the gates the LXC console requires (global switch + per-host
-    /// opt-in) plus host ownership. Returns a non-null error result when blocked,
-    /// or <c>null</c> when eligible. The SSH-configured check happens in the WS
-    /// path (it needs the decrypted profile).
+    /// Validates the gates the VM console requires (global switch + per-host opt-in)
+    /// plus host ownership. Returns a non-null error result when blocked, or
+    /// <c>null</c> when eligible. Unlike the LXC console there is <em>no</em>
+    /// SSH-configured check — a VM's VNC relay uses the API token, not SSH.
     /// </summary>
     private ActionResult? CheckEligibility(ProxmoxConnectionEntity? connection, bool globalEnabled)
     {
@@ -268,22 +284,10 @@ public class ProxmoxConsoleController(
         if (!connection.AllowConsole)
             return StatusCode(StatusCodes.Status403Forbidden, new
             {
-                error = "The guest console is not enabled for this host. Turn on 'Allow guest console' in the host settings.",
+                error = "The console is not enabled for this host. Turn on 'Allow guest console' in the host settings.",
             });
 
         return null;
-    }
-
-    /// <summary>
-    /// Splits the operator-supplied command into argv. Whitespace-separated, no
-    /// shell quoting (most sessions are just a shell path like <c>/bin/bash</c>
-    /// or <c>/bin/sh</c>). Falls back to the configured default when blank.
-    /// </summary>
-    private string[] ParseCommand(string? command)
-    {
-        var raw = string.IsNullOrWhiteSpace(command) ? consoleOptions.Value.DefaultCommand : command;
-        var parts = raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return parts.Length > 0 ? parts : new[] { "/bin/bash" };
     }
 
     private Task<ProxmoxConnectionEntity?> LoadOwnedConnectionAsync(
@@ -291,10 +295,14 @@ public class ProxmoxConsoleController(
         db.ProxmoxConnections.AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == connectionId && c.UserId == userId, cancellationToken);
 
+    private static string ProxmoxVncRelayMessage(Exception ex) =>
+        ex is ProxmoxVncRelayException ? ex.Message
+            : "The Proxmox VNC console could not be opened on this host.";
+
     private static string CloseReasonText(HostShellSessionEndReason reason) => reason switch
     {
         HostShellSessionEndReason.IdleTimeout => "Closed: idle timeout.",
-        HostShellSessionEndReason.RemoteClosed => "Shell exited.",
+        HostShellSessionEndReason.RemoteClosed => "VNC session ended.",
         HostShellSessionEndReason.ClosedByServer => "Closed by server.",
         HostShellSessionEndReason.Error => "Closed: session error.",
         _ => "Session ended.",
@@ -302,10 +310,11 @@ public class ProxmoxConsoleController(
 
     private static async Task TryCloseAsync(WebSocket socket, string reason, CancellationToken cancellationToken)
     {
+        if (socket.State is not (WebSocketState.Open or WebSocketState.CloseReceived)) return;
         try
         {
             var trimmed = reason.Length > 120 ? reason[..120] : reason;
-            await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, trimmed, cancellationToken);
+            await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, trimmed, cancellationToken);
         }
         catch { /* best-effort */ }
     }

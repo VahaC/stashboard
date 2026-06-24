@@ -273,7 +273,7 @@ function GuestCard({ guest, iconDataUri = null, onOpen, onAction, busy = false }
           {!vm && <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('logs') }}><ScrollText className="h-3.5 w-3.5" /> Logs</button>}
           <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('stats') }}><Activity className="h-3.5 w-3.5" /> Stats</button>
           {!vm && <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('watch') }}><Bell className="h-3.5 w-3.5" /> Watch</button>}
-          {!vm && <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('console') }}><SquareChevronRight className="h-3.5 w-3.5" /> Console</button>}
+          <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('console') }}><SquareChevronRight className="h-3.5 w-3.5" /> Console</button>
           <div className="cgroup-menu-sep" />
           {guest.isRunning ? (
             <>
