@@ -137,6 +137,22 @@ export interface ProxmoxRestoreAudit {
   createdAtUtc: string
 }
 
+export interface ProxmoxConfigAudit {
+  id: string
+  proxmoxConnectionId: string | null
+  connectionName: string | null
+  nodeName: string | null
+  vmId: number
+  /** 'lxc' | 'qemu'. */
+  guestKind: string
+  /** 'config' | 'resize' | 'move-disk'. */
+  action: string
+  summary: string | null
+  success: boolean
+  error: string | null
+  createdAtUtc: string
+}
+
 export interface ComposeChangeAudit {
   id: string
   dockerConnectionId: string | null
@@ -211,6 +227,9 @@ export const auditApi = {
   },
   async getProxmoxRestoreAudits(opts: PageParams = {}): Promise<ProxmoxRestoreAudit[]> {
     return (await api.get<ProxmoxRestoreAudit[]>('/api/proxmox/restore/sessions', { params: params(opts) })).data
+  },
+  async getProxmoxConfigAudits(opts: PageParams = {}): Promise<ProxmoxConfigAudit[]> {
+    return (await api.get<ProxmoxConfigAudit[]>('/api/proxmox/config/sessions', { params: params(opts) })).data
   },
   async getComposeChanges(opts: PageParams = {}): Promise<ComposeChangeAudit[]> {
     return (await api.get<ComposeChangeAudit[]>('/api/docker/compose-changes', { params: params(opts) })).data

@@ -11,6 +11,9 @@ import type {
   ProxmoxLxcAction,
   ProxmoxLxcClone,
   ProxmoxLxcConfigUpdate,
+  ProxmoxQemuConfigUpdate,
+  ProxmoxQemuDiskResize,
+  ProxmoxQemuDiskMove,
   ProxmoxLxcCreate,
   ProxmoxLxcDetail,
   ProxmoxSnapshot,
@@ -633,6 +636,46 @@ export const useUpdateProxmoxLxcConfig = (connectionId: string, vmId: number) =>
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: proxmoxQk.lxcConfig(connectionId, vmId) })
       void qc.invalidateQueries({ queryKey: proxmoxQk.connections })
+    },
+  })
+}
+
+/** V8.5 — edit a VM's parameters (scalars + NICs + CD-ROM + disk flags); refreshes the
+ *  Config tab + host list. The VM analogue of {@link useUpdateProxmoxLxcConfig}. */
+export const useUpdateProxmoxQemuConfig = (connectionId: string, vmId: number) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (update: ProxmoxQemuConfigUpdate) =>
+      api.put(`/api/proxmox/connections/${connectionId}/qemu/${vmId}/config`, update),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: proxmoxQk.lxcConfig(connectionId, vmId, 'qemu') })
+      void qc.invalidateQueries({ queryKey: proxmoxQk.connections })
+    },
+  })
+}
+
+/** V8.5 — grow a VM disk (grow-only `+NG`). Refreshes the Config tab on success so the
+ *  new size shows. */
+export const useResizeProxmoxQemuDisk = (connectionId: string, vmId: number) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (req: ProxmoxQemuDiskResize) =>
+      api.post(`/api/proxmox/connections/${connectionId}/qemu/${vmId}/resize`, req),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: proxmoxQk.lxcConfig(connectionId, vmId, 'qemu') })
+    },
+  })
+}
+
+/** V8.5 — move a VM disk to another storage (task-polled server-side). Refreshes the
+ *  Config tab on success so the new storage shows. */
+export const useMoveProxmoxQemuDisk = (connectionId: string, vmId: number) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (req: ProxmoxQemuDiskMove) =>
+      api.post(`/api/proxmox/connections/${connectionId}/qemu/${vmId}/move-disk`, req),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: proxmoxQk.lxcConfig(connectionId, vmId, 'qemu') })
     },
   })
 }

@@ -206,15 +206,16 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
         ProxmoxConnectionProfile profile, int vmId, CancellationToken cancellationToken = default)
     {
         int? cores = null, sockets = null;
-        long? memoryBytes = null;
-        string? name = null, osType = null;
-        bool? onboot = null;
+        long? memoryBytes = null, balloonBytes = null;
+        string? name = null, osType = null, bootOrder = null, description = null, tags = null;
+        bool? onboot = null, agent = null;
         var networks = new List<ProxmoxLxcConfigLine>();
         var disks = new List<ProxmoxLxcConfigLine>();
 
         // ── Static config. A VM's NICs are net<n> (same as LXC) and its disks are
         //    scsi<n> / virtio<n> / ide<n> / sata<n> / efidisk<n> / tpmstate<n>.
-        //    Read-only for now — VM disk/PCI editing is out of scope. ──
+        //    V8.5 surfaces the editable scalars (sockets / agent / boot order /
+        //    balloon / description / tags) the read-only V6.14 view didn't need. ──
         using (var cfg = await GetJsonAsync(profile, $"nodes/{profile.NodeName}/qemu/{vmId}/config", cancellationToken))
         {
             if (cfg.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object)
@@ -226,9 +227,16 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
                         case "cores": cores = ReadInt(data, "cores"); break;
                         case "sockets": sockets = ReadInt(data, "sockets"); break;
                         case "memory": memoryBytes = MebibytesToBytes(ReadLong(data, "memory")); break;
+                        case "balloon": balloonBytes = MebibytesToBytes(ReadLong(data, "balloon")); break;
                         case "name": name = ReadString(prop.Value); break;
                         case "ostype": osType = ReadString(prop.Value); break;
                         case "onboot": onboot = ReadBool(data, "onboot"); break;
+                        case "agent": agent = ParseQemuAgent(ReadString(prop.Value)); break;
+                        case "description": description = ReadString(prop.Value); break;
+                        case "tags": tags = ReadString(prop.Value); break;
+                        // boot is "order=scsi0;ide2;net0" (or a legacy "cdn" form) —
+                        // keep the order list for the editor; drop the "order=" prefix.
+                        case "boot": bootOrder = ParseBootOrder(ReadString(prop.Value)); break;
                         default:
                             if (IsIndexed(prop.Name, "net")) AddLine(networks, prop);
                             else if (IsDiskKey(prop.Name)) AddLine(disks, prop);
@@ -237,10 +245,6 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
                 }
             }
         }
-
-        // QEMU reports cores-per-socket; the user-facing vCPU count is cores ×
-        // sockets (sockets defaults to 1 when omitted).
-        var totalCores = cores is { } c ? c * (sockets ?? 1) : (int?)null;
 
         // ── Live status — best-effort, exactly like the LXC path. ──
         var status = "unknown";
@@ -271,11 +275,38 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
 
         // The LXC-only fields (swap / arch / unprivileged / features) don't apply
         // to a VM and stay null; name maps onto the hostname slot the read view
-        // already renders.
+        // already renders. V8.5 — Cores carries the cores-per-socket value (raw, for
+        // the editor) and Sockets the socket count; the read view multiplies them for
+        // the vCPU display.
         return new ProxmoxLxcDetail(
-            vmId, status, totalCores, memoryBytes, SwapBytes: null, name, osType, Arch: null,
+            vmId, status, cores, memoryBytes, SwapBytes: null, name, osType, Arch: null,
             onboot, Unprivileged: null, Features: null,
-            networks, disks, cpu, memUsed, memMax, diskUsed, diskMax, uptime);
+            networks, disks, cpu, memUsed, memMax, diskUsed, diskMax, uptime,
+            Sockets: sockets, Agent: agent, BootOrder: bootOrder, Description: description,
+            Tags: tags, BalloonBytes: balloonBytes);
+    }
+
+    /// <summary>V8.5 — the QEMU <c>agent</c> config value is either a bare flag
+    /// (<c>1</c> / <c>0</c>) or an option line (<c>enabled=1,fstrim_cloned_disks=1</c>).
+    /// Either way the guest agent is on when the leading flag / <c>enabled=</c> is 1.</summary>
+    private static bool? ParseQemuAgent(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var first = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "";
+        if (first is "1") return true;
+        if (first is "0") return false;
+        var eq = first.IndexOf('=');
+        return eq >= 0 && first[(eq + 1)..].Trim() == "1";
+    }
+
+    /// <summary>V8.5 — strips the <c>order=</c> prefix off the QEMU <c>boot</c> value,
+    /// leaving the semicolon-separated device list (<c>scsi0;ide2;net0</c>) the editor
+    /// shows. A legacy "cdn"-style value is returned as-is.</summary>
+    private static string? ParseBootOrder(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var t = raw.Trim();
+        return t.StartsWith("order=", StringComparison.OrdinalIgnoreCase) ? t["order=".Length..] : t;
     }
 
     public Task<IReadOnlyList<ProxmoxLxcRrdPoint>> GetLxcRrdDataAsync(
@@ -970,6 +1001,95 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
 
         if (form.Count == 0) return;   // nothing changed — don't bother the host
         await PutFormAsync(profile, $"nodes/{profile.NodeName}/lxc/{vmId}/config", form, cancellationToken);
+    }
+
+    public async Task UpdateQemuConfigAsync(
+        ProxmoxConnectionProfile profile, int vmId, ProxmoxQemuConfigUpdate update, CancellationToken cancellationToken = default)
+    {
+        // Only the fields the caller set — Proxmox merges the form keys into the
+        // existing config, so omitting a key leaves it as-is (the V6.5 posture).
+        var form = new List<KeyValuePair<string, string>>();
+        if (update.Name is { } name) form.Add(new("name", name));
+        if (update.Cores is { } cores) form.Add(new("cores", cores.ToString()));
+        if (update.Sockets is { } sockets) form.Add(new("sockets", sockets.ToString()));
+        if (update.MemoryMib is { } mem) form.Add(new("memory", mem.ToString()));
+        if (update.BalloonMib is { } balloon) form.Add(new("balloon", balloon.ToString()));
+        if (update.Onboot is { } onboot) form.Add(new("onboot", onboot ? "1" : "0"));
+        if (update.OsType is { } ostype) form.Add(new("ostype", ostype));
+        if (update.Agent is { } agent) form.Add(new("agent", agent ? "1" : "0"));
+        if (update.Description is { } desc) form.Add(new("description", desc));
+        if (update.Tags is { } tags) form.Add(new("tags", tags));
+        // The editor hands back the device list; Proxmox wants it as "order=…".
+        if (update.BootOrder is { } boot)
+            form.Add(new("boot", string.IsNullOrWhiteSpace(boot) ? "" : $"order={boot.Trim()}"));
+
+        // ── structured network / disk-flag / CD-ROM edits ────────────────────────
+        var deletes = new List<string>();
+
+        // A net add (empty key) needs the next free net<n>; read the current config
+        // once, only when there's actually an add, so the server owns key numbering.
+        var needsKeys = update.Networks?.Any(n => !n.Remove && string.IsNullOrWhiteSpace(n.Key)) ?? false;
+        var netKeys = new KeyAllocator("net");
+        if (needsKeys)
+        {
+            var detail = await GetQemuDetailAsync(profile, vmId, cancellationToken);
+            netKeys.Seed(detail.Networks.Select(n => n.Key));
+        }
+
+        if (update.Networks is { } nets)
+        {
+            foreach (var n in nets)
+            {
+                if (n.Remove) { deletes.Add(n.Key); continue; }
+                var key = string.IsNullOrWhiteSpace(n.Key) ? netKeys.Next() : n.Key.Trim();
+                form.Add(new(key, ProxmoxQemuConfigCodec.FormatNet(n)));
+            }
+        }
+
+        // Disk-flag toggles re-emit the existing disk line (volume + size preserved)
+        // with only the safe flags changed; resize / move are out of band.
+        if (update.Disks is { } qdisks)
+            foreach (var disk in qdisks)
+                form.Add(new(disk.Key.Trim(), ProxmoxQemuConfigCodec.FormatDisk(disk)));
+
+        // ide2 swap (a volid) or eject (none, keeping the empty drive).
+        if (update.Cdrom is { } cd)
+            form.Add(new("ide2", string.IsNullOrWhiteSpace(cd.Volid)
+                ? "none,media=cdrom"
+                : $"{cd.Volid.Trim()},media=cdrom"));
+
+        if (deletes.Count > 0)
+            form.Add(new("delete", string.Join(',', deletes)));
+
+        if (form.Count == 0) return;   // nothing changed — don't bother the host
+        await PutFormAsync(profile, $"nodes/{profile.NodeName}/qemu/{vmId}/config", form, cancellationToken);
+    }
+
+    public async Task ResizeQemuDiskAsync(
+        ProxmoxConnectionProfile profile, int vmId, string disk, string size, CancellationToken cancellationToken = default)
+    {
+        // size is a grow increment ("+8G"); the endpoint is grow-only by design.
+        var form = new List<KeyValuePair<string, string>> { new("disk", disk), new("size", size) };
+        await PutFormAsync(profile, $"nodes/{profile.NodeName}/qemu/{vmId}/resize", form, cancellationToken);
+    }
+
+    public async Task MoveQemuDiskAsync(
+        ProxmoxConnectionProfile profile, int vmId, string disk, string storage, string? format,
+        bool deleteSource, CancellationToken cancellationToken = default)
+    {
+        var form = new List<KeyValuePair<string, string>>
+        {
+            new("disk", disk),
+            new("storage", storage),
+            new("delete", deleteSource ? "1" : "0"),
+        };
+        if (!string.IsNullOrWhiteSpace(format)) form.Add(new("format", format.Trim()));
+
+        // move_disk copies asynchronously and returns a task UPID — poll it to a
+        // terminal state so the caller reports real success/failure (like a clone).
+        var upid = await PostFormReadUpidAsync(profile, $"nodes/{profile.NodeName}/qemu/{vmId}/move_disk", form, cancellationToken);
+        if (!string.IsNullOrEmpty(upid))
+            await PollTaskAsync(profile, upid, cancellationToken);
     }
 
     /// <summary>Hands out the lowest free <c>{prefix}{n}</c> key, seeded from the

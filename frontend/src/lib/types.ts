@@ -1355,6 +1355,14 @@ export interface ProxmoxLxcDetail {
   diskUsedBytes: number | null
   diskMaxBytes: number | null
   uptimeSeconds: number | null
+  // V8.5 — QEMU-only editable fields (null for an LXC). For a VM `cores` is the
+  // cores-per-socket value and `sockets` the socket count (vCPU = cores × sockets).
+  sockets: number | null
+  agent: boolean | null
+  bootOrder: string | null
+  description: string | null
+  tags: string | null
+  balloonBytes: number | null
 }
 
 /** V6.3 — one RRD sample for an LXC. Rate fields are bytes/s averaged over the
@@ -1743,6 +1751,77 @@ export interface ProxmoxLxcConfigUpdate {
   rootfs?: ProxmoxLxcRootfsChange | null
 }
 
+/** V8.5 — one intentful change to a QEMU `net<n>` interface. A VM NIC's first token
+ *  is the device `model` carrying the optional MAC as its value
+ *  (`virtio=AA:BB:CC:DD:EE:FF`); a VM has no in-config IP. `key` empty ⇒ add;
+ *  `remove` ⇒ `delete=net<n>`. */
+export interface ProxmoxQemuNetChange {
+  key: string
+  remove?: boolean
+  raw?: string | null
+  model?: string | null   // virtio / e1000 / e1000e / rtl8139 / vmxnet3 …
+  macAddr?: string | null
+  bridge?: string | null
+  tag?: number | null
+  firewall?: boolean | null
+  rate?: number | null
+  mtu?: number | null
+  queues?: number | null
+  linkDown?: boolean | null
+  extra?: string | null
+}
+
+/** V8.5 — a flag-only edit to an existing VM disk: the line is re-emitted preserving
+ *  `volume` + `size` with only the safe flags toggled. Grow / move are separate. */
+export interface ProxmoxQemuDiskChange {
+  key: string
+  raw?: string | null
+  volume?: string | null
+  size?: string | null
+  discard?: boolean | null
+  ssd?: boolean | null
+  cache?: string | null
+  extra?: string | null
+}
+
+/** V8.5 — swap (a volid) or eject (null/empty) the VM's install CD-ROM (`ide2`). */
+export interface ProxmoxQemuCdromChange {
+  volid?: string | null
+}
+
+/** V8.5 — edit a VM's config (`PUT …/qemu/{vmid}/config`). Every scalar is optional
+ *  per-field (null ⇒ leave untouched); the structured lists are intentful changes. */
+export interface ProxmoxQemuConfigUpdate {
+  name?: string | null
+  cores?: number | null
+  sockets?: number | null
+  memoryMib?: number | null
+  balloonMib?: number | null
+  onboot?: boolean | null
+  osType?: string | null
+  agent?: boolean | null
+  bootOrder?: string | null
+  description?: string | null
+  tags?: string | null
+  networks?: ProxmoxQemuNetChange[] | null
+  disks?: ProxmoxQemuDiskChange[] | null
+  cdrom?: ProxmoxQemuCdromChange | null
+}
+
+/** V8.5 — grow a VM disk (`size` is a grow increment like `+8G` — grow-only). */
+export interface ProxmoxQemuDiskResize {
+  disk: string
+  size: string
+}
+
+/** V8.5 — move a VM disk to another storage (task-polled). */
+export interface ProxmoxQemuDiskMove {
+  disk: string
+  storage: string
+  format?: string | null
+  deleteSource?: boolean
+}
+
 /** V6.13.1 — one container template (a `vztmpl` volume) for the create form's
  *  template dropdown. `volid` is passed back as `ProxmoxLxcCreate.osTemplate`. */
 export interface ProxmoxTemplate {
@@ -1910,6 +1989,24 @@ export interface ProxmoxCloneAudit {
   action: ProxmoxCloneAction
   /** New vmid (+ hostname) for a clone, or the snapshot name for a snapshot action. */
   target: string | null
+  success: boolean
+  error: string | null
+  createdAtUtc: string
+}
+
+/** V8.5 — one guest config-edit audit row (LXC + VM config writes, VM disk grow / move)
+ *  for the central Audit page's "Guest config" tab. */
+export interface ProxmoxConfigAudit {
+  id: string
+  proxmoxConnectionId: string | null
+  connectionName: string | null
+  nodeName: string | null
+  vmId: number
+  /** 'lxc' | 'qemu'. */
+  guestKind: string
+  /** 'config' | 'resize' | 'move-disk'. */
+  action: string
+  summary: string | null
   success: boolean
   error: string | null
   createdAtUtc: string

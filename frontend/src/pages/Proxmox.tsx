@@ -21,6 +21,7 @@ import {
   Plus,
   Power,
   RefreshCw,
+  Square,
   ScrollText,
   Search,
   Settings,
@@ -267,7 +268,8 @@ function GuestCard({ guest, iconDataUri = null, onOpen, onAction, busy = false }
           <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('overview') }}><Info className="h-3.5 w-3.5" /> Overview</button>
           <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('config') }}><Settings className="h-3.5 w-3.5" /> Config</button>
           <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('tasks') }}><FileText className="h-3.5 w-3.5" /> Tasks</button>
-          {!vm && <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('snapshots') }}><Camera className="h-3.5 w-3.5" /> Snapshots</button>}
+          <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('snapshots') }}><Camera className="h-3.5 w-3.5" /> Snapshots</button>
+          <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('audit') }}><Camera className="h-3.5 w-3.5" /> Audit</button>
           {!vm && <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('logs') }}><ScrollText className="h-3.5 w-3.5" /> Logs</button>}
           <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('stats') }}><Activity className="h-3.5 w-3.5" /> Stats</button>
           {!vm && <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('watch') }}><Bell className="h-3.5 w-3.5" /> Watch</button>}
@@ -277,7 +279,7 @@ function GuestCard({ guest, iconDataUri = null, onOpen, onAction, busy = false }
             <>
               <button className="cgroup-menu-item" disabled={busy || !onAction} onClick={() => { setMenuPos(null); setConfirmPower('shutdown') }}><Power className="h-3.5 w-3.5" /> Shutdown</button>
               <button className="cgroup-menu-item" disabled={busy || !onAction} onClick={() => { setMenuPos(null); onAction?.('reboot') }}><RefreshCw className="h-3.5 w-3.5" /> Reboot</button>
-              {/* <button className="cgroup-menu-item cgroup-menu-item--danger" disabled={busy || !onAction} onClick={() => { setMenuPos(null); setConfirmPower('stop') }}><Square className="h-3.5 w-3.5" /> Stop</button> */}
+              <button className="cgroup-menu-item cgroup-menu-item--danger" disabled={busy || !onAction} onClick={() => { setMenuPos(null); setConfirmPower('stop') }}><Square className="h-3.5 w-3.5" /> Stop</button>
             </>
           ) : (
             <button className="cgroup-menu-item" disabled={busy || !onAction} onClick={() => { setMenuPos(null); onAction?.('start') }}><Play className="h-3.5 w-3.5" /> Start</button>

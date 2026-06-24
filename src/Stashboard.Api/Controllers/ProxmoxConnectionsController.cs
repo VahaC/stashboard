@@ -1639,16 +1639,200 @@ public class ProxmoxConnectionsController(
         if (problems.Count > 0)
             return BadRequest(new { error = string.Join(" ", problems) });
 
+        var summary = SummarizeLxcConfig(update);
         var profile = mapper.BuildProfile(connection);
         try
         {
             await apiClient.UpdateLxcConfigAsync(profile, vmId, update, cancellationToken);
-            return NoContent();
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
+            await WriteConfigAuditAsync(connection, vmId, "lxc", "config", summary, success: false, ex.Message, cancellationToken);
             return StatusCode(502, new { error = $"Proxmox rejected the config update: {ex.Message}" });
         }
+
+        await WriteConfigAuditAsync(connection, vmId, "lxc", "config", summary, success: true, error: null, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V8.5 — edit one VM's config: the scalar subset (name / cores / sockets /
+    /// memory / balloon / onboot / ostype / agent / boot order / description / tags) plus
+    /// structured NIC add/update/remove, a CD-ROM swap/eject, and disk safe-flag toggles.
+    /// The VM analogue of <see cref="UpdateLxcConfig"/>: locally-checkable guards reject a
+    /// malformed spec with a 400; everything else writes through to
+    /// <c>PUT …/qemu/{vmid}/config</c> (needs the API token to hold <c>VM.Config.*</c>).
+    /// Returns 204 on success; a host rejection surfaces as a 502 verbatim; every applied
+    /// change is audited.</summary>
+    [HttpPut("{id:guid}/qemu/{vmId:int}/config")]
+    public async Task<IActionResult> UpdateQemuConfig(
+        Guid id, int vmId, [FromBody] ProxmoxQemuConfigUpdateRequest request, CancellationToken cancellationToken)
+    {
+        var connection = await LoadOwnedAsync(id, tracking: false, cancellationToken);
+        if (connection is null) return NotFound();
+
+        var update = new ProxmoxQemuConfigUpdate(
+            string.IsNullOrWhiteSpace(request.Name) ? null : request.Name.Trim(),
+            request.Cores, request.Sockets, request.MemoryMib, request.BalloonMib, request.Onboot,
+            string.IsNullOrWhiteSpace(request.OsType) ? null : request.OsType.Trim(),
+            request.Agent,
+            request.BootOrder is null ? null : request.BootOrder.Trim(),
+            request.Description, request.Tags,
+            request.Networks, request.Disks, request.Cdrom);
+
+        var problems = ProxmoxQemuConfigValidator.Validate(update);
+        if (problems.Count > 0)
+            return BadRequest(new { error = string.Join(" ", problems) });
+
+        var summary = SummarizeQemuConfig(update);
+        var profile = mapper.BuildProfile(connection);
+        try
+        {
+            await apiClient.UpdateQemuConfigAsync(profile, vmId, update, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            await WriteConfigAuditAsync(connection, vmId, "qemu", "config", summary, success: false, ex.Message, cancellationToken);
+            return StatusCode(502, new { error = $"Proxmox rejected the config update: {ex.Message}" });
+        }
+
+        await WriteConfigAuditAsync(connection, vmId, "qemu", "config", summary, success: true, error: null, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V8.5 — grow one VM disk (<c>PUT …/qemu/{vmid}/resize</c>, grow-only). A
+    /// shrink can't reach the host: the size must be a positive grow increment (<c>+8G</c>).
+    /// Returns 204; a host rejection is a 502 verbatim; audited.</summary>
+    [HttpPost("{id:guid}/qemu/{vmId:int}/resize")]
+    public async Task<IActionResult> ResizeQemuDisk(
+        Guid id, int vmId, [FromBody] ProxmoxQemuDiskResizeRequest request, CancellationToken cancellationToken)
+    {
+        var connection = await LoadOwnedAsync(id, tracking: false, cancellationToken);
+        if (connection is null) return NotFound();
+
+        var problems = ProxmoxQemuConfigValidator.ValidateResize(request.Disk, request.Size);
+        if (problems.Count > 0)
+            return BadRequest(new { error = string.Join(" ", problems) });
+
+        var disk = request.Disk.Trim();
+        var size = request.Size.Trim();
+        var summary = $"grow {disk} by {size}";
+        var profile = mapper.BuildProfile(connection);
+        try
+        {
+            await apiClient.ResizeQemuDiskAsync(profile, vmId, disk, size, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            await WriteConfigAuditAsync(connection, vmId, "qemu", "resize", summary, success: false, ex.Message, cancellationToken);
+            return StatusCode(502, new { error = $"Proxmox rejected the disk resize: {ex.Message}" });
+        }
+
+        await WriteConfigAuditAsync(connection, vmId, "qemu", "resize", summary, success: true, error: null, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V8.5 — move one VM disk to another storage
+    /// (<c>POST …/qemu/{vmid}/move_disk</c>, task-polled like a clone). Returns 204 once
+    /// the task completes; a host rejection is a 502 verbatim; audited.</summary>
+    [HttpPost("{id:guid}/qemu/{vmId:int}/move-disk")]
+    public async Task<IActionResult> MoveQemuDisk(
+        Guid id, int vmId, [FromBody] ProxmoxQemuDiskMoveRequest request, CancellationToken cancellationToken)
+    {
+        var connection = await LoadOwnedAsync(id, tracking: false, cancellationToken);
+        if (connection is null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(request.Disk) || string.IsNullOrWhiteSpace(request.Storage))
+            return BadRequest(new { error = "A disk key and target storage are required." });
+
+        var disk = request.Disk.Trim();
+        var storage = request.Storage.Trim();
+        var format = string.IsNullOrWhiteSpace(request.Format) ? null : request.Format.Trim();
+        var summary = $"move {disk} → {storage}{(request.DeleteSource ? "" : " (keep source)")}";
+        var profile = mapper.BuildProfile(connection);
+        try
+        {
+            await apiClient.MoveQemuDiskAsync(profile, vmId, disk, storage, format, request.DeleteSource, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            await WriteConfigAuditAsync(connection, vmId, "qemu", "move-disk", summary, success: false, ex.Message, cancellationToken);
+            return StatusCode(502, new { error = $"Proxmox rejected the disk move: {ex.Message}" });
+        }
+
+        await WriteConfigAuditAsync(connection, vmId, "qemu", "move-disk", summary, success: true, error: null, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V8.5 — writes one guest config-edit audit row (host details
+    /// denormalised at write time so the history survives a rename / delete) and saves
+    /// it. Shared by the LXC config edit (retrofit), the VM config edit, and the disk
+    /// resize / move endpoints.</summary>
+    private async Task WriteConfigAuditAsync(
+        ProxmoxConnectionEntity connection, int vmId, string guestKind, string action, string? summary,
+        bool success, string? error, CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        db.ProxmoxConfigAudits.Add(new ProxmoxConfigAuditEntity
+        {
+            Id = Guid.NewGuid(),
+            InitiatedByUserId = UserId,
+            ProxmoxConnectionId = connection.Id,
+            ConnectionName = connection.Name,
+            NodeName = connection.NodeName,
+            VmId = vmId,
+            GuestKind = guestKind,
+            Action = action,
+            Summary = Truncate(summary, 512),
+            Success = success,
+            Error = error,
+            CreatedAtUtc = now,
+            CreatedUtc = now,
+        });
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static string? Truncate(string? value, int max) =>
+        value is null || value.Length <= max ? value : value[..max];
+
+    /// <summary>Builds the audit summary for an LXC config edit — the changed keys.</summary>
+    private static string SummarizeLxcConfig(ProxmoxLxcConfigUpdate u)
+    {
+        var parts = new List<string>();
+        if (u.Cores is not null) parts.Add("cores");
+        if (u.MemoryMib is not null) parts.Add("memory");
+        if (u.SwapMib is not null) parts.Add("swap");
+        if (u.Hostname is not null) parts.Add("hostname");
+        if (u.Onboot is not null) parts.Add("onboot");
+        AppendStructured(parts, u.Networks?.Count ?? 0, "net");
+        AppendStructured(parts, u.Mounts?.Count ?? 0, "mp");
+        if (u.Rootfs is not null) parts.Add("rootfs");
+        return parts.Count == 0 ? "(no changes)" : string.Join(", ", parts);
+    }
+
+    /// <summary>Builds the audit summary for a VM config edit — the changed keys.</summary>
+    private static string SummarizeQemuConfig(ProxmoxQemuConfigUpdate u)
+    {
+        var parts = new List<string>();
+        if (u.Name is not null) parts.Add("name");
+        if (u.Cores is not null) parts.Add("cores");
+        if (u.Sockets is not null) parts.Add("sockets");
+        if (u.MemoryMib is not null) parts.Add("memory");
+        if (u.BalloonMib is not null) parts.Add("balloon");
+        if (u.Onboot is not null) parts.Add("onboot");
+        if (u.OsType is not null) parts.Add("ostype");
+        if (u.Agent is not null) parts.Add("agent");
+        if (u.BootOrder is not null) parts.Add("boot");
+        if (u.Description is not null) parts.Add("description");
+        if (u.Tags is not null) parts.Add("tags");
+        AppendStructured(parts, u.Networks?.Count ?? 0, "net");
+        AppendStructured(parts, u.Disks?.Count ?? 0, "disk-flags");
+        if (u.Cdrom is not null) parts.Add("ide2");
+        return parts.Count == 0 ? "(no changes)" : string.Join(", ", parts);
+    }
+
+    private static void AppendStructured(List<string> parts, int count, string label)
+    {
+        if (count > 0) parts.Add($"{count} {label} change{(count == 1 ? "" : "s")}");
     }
 
     // ── V6.8 — PVE node card ─────────────────────────────────────────────────

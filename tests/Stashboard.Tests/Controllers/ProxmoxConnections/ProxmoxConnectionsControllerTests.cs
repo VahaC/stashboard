@@ -251,6 +251,170 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         Assert.IsType<NotFoundResult>(result);
     }
 
+    [Fact]
+    public async Task UpdateLxcConfig_Success_WritesConfigAudit()
+    {
+        // V8.5 — the LXC config edit was retrofitted to write a config-edit audit row.
+        var conn = await SeedConnectionAsync(_userId);
+        var ctrl = BuildController();
+
+        var result = await ctrl.UpdateLxcConfig(
+            conn.Id, 101, new ProxmoxLxcConfigUpdateRequest(Cores: 4, MemoryMib: 2048), CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+        var row = await _db.ProxmoxConfigAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal("lxc", row.GuestKind);
+        Assert.Equal("config", row.Action);
+        Assert.Equal(101, row.VmId);
+        Assert.True(row.Success);
+        Assert.Contains("cores", row.Summary);
+        Assert.Equal(_userId, row.InitiatedByUserId);
+    }
+
+    // ── V8.5 — edit VM (QEMU) config / resize / move ────────────────────────────
+
+    [Fact]
+    public async Task UpdateQemuConfig_ValidScalars_PassesChangedKeysThrough_Returns204_AndAudits()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var ctrl = BuildController();
+
+        var result = await ctrl.UpdateQemuConfig(
+            conn.Id, 200,
+            new ProxmoxQemuConfigUpdateRequest(Cores: 4, MemoryMib: 4096, Agent: true),
+            CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+        _apiMock.Verify(a => a.UpdateQemuConfigAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), 200,
+            It.Is<ProxmoxQemuConfigUpdate>(u => u.Cores == 4 && u.MemoryMib == 4096 && u.Agent == true),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        var row = await _db.ProxmoxConfigAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal("qemu", row.GuestKind);
+        Assert.Equal("config", row.Action);
+        Assert.True(row.Success);
+    }
+
+    [Fact]
+    public async Task UpdateQemuConfig_MalformedSpec_Returns400_WithoutTouchingHost()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var ctrl = BuildController();
+
+        // Sockets out of range — rejected by the server validator before any API call.
+        var result = await ctrl.UpdateQemuConfig(
+            conn.Id, 200, new ProxmoxQemuConfigUpdateRequest(Sockets: 9), CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        _apiMock.Verify(a => a.UpdateQemuConfigAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(),
+            It.IsAny<ProxmoxQemuConfigUpdate>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateQemuConfig_HostRejects_Returns502_AndAuditsFailure()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        _apiMock.Setup(a => a.UpdateQemuConfigAsync(
+                It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(),
+                It.IsAny<ProxmoxQemuConfigUpdate>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Proxmox returned 403: Permission check failed (/vms/200, VM.Config.CPU)"));
+        var ctrl = BuildController();
+
+        var result = await ctrl.UpdateQemuConfig(
+            conn.Id, 200, new ProxmoxQemuConfigUpdateRequest(Cores: 4), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(502, obj.StatusCode);
+        var row = await _db.ProxmoxConfigAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.False(row.Success);
+        Assert.Contains("VM.Config.CPU", row.Error);
+    }
+
+    [Fact]
+    public async Task UpdateQemuConfig_ForeignHost_ReturnsNotFound()
+    {
+        var conn = await SeedConnectionAsync(_otherUserId);
+        var ctrl = BuildController();
+
+        var result = await ctrl.UpdateQemuConfig(
+            conn.Id, 200, new ProxmoxQemuConfigUpdateRequest(Cores: 4), CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result);
+    }
+
+    [Fact]
+    public async Task ResizeQemuDisk_NonGrowSize_Returns400_WithoutTouchingHost()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var ctrl = BuildController();
+
+        // An absolute size (could shrink) is rejected — only "+NG" grow increments pass.
+        var result = await ctrl.ResizeQemuDisk(
+            conn.Id, 200, new ProxmoxQemuDiskResizeRequest("scsi0", "16G"), CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        _apiMock.Verify(a => a.ResizeQemuDiskAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResizeQemuDisk_Grow_Returns204_AndAudits()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var ctrl = BuildController();
+
+        var result = await ctrl.ResizeQemuDisk(
+            conn.Id, 200, new ProxmoxQemuDiskResizeRequest("scsi0", "+8G"), CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+        _apiMock.Verify(a => a.ResizeQemuDiskAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), 200, "scsi0", "+8G", It.IsAny<CancellationToken>()), Times.Once);
+        var row = await _db.ProxmoxConfigAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal("resize", row.Action);
+        Assert.True(row.Success);
+    }
+
+    [Fact]
+    public async Task MoveQemuDisk_Valid_Returns204_AndAudits()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        var ctrl = BuildController();
+
+        var result = await ctrl.MoveQemuDisk(
+            conn.Id, 200, new ProxmoxQemuDiskMoveRequest("scsi0", "other-lvm"), CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+        _apiMock.Verify(a => a.MoveQemuDiskAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), 200, "scsi0", "other-lvm", It.IsAny<string?>(), true,
+            It.IsAny<CancellationToken>()), Times.Once);
+        var row = await _db.ProxmoxConfigAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal("move-disk", row.Action);
+        Assert.True(row.Success);
+    }
+
+    [Fact]
+    public async Task MoveQemuDisk_HostRejects_Returns502_AndAuditsFailure()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        _apiMock.Setup(a => a.MoveQemuDiskAsync(
+                It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Proxmox returned 500: storage 'other-lvm' does not exist"));
+        var ctrl = BuildController();
+
+        var result = await ctrl.MoveQemuDisk(
+            conn.Id, 200, new ProxmoxQemuDiskMoveRequest("scsi0", "other-lvm"), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(502, obj.StatusCode);
+        var row = await _db.ProxmoxConfigAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.False(row.Success);
+        Assert.Contains("does not exist", row.Error);
+    }
+
     // ── V6.7.1 apply updates (triple gate + stream + audit) ────────────────────
 
     [Fact]

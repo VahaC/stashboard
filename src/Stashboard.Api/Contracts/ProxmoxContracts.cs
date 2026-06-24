@@ -471,3 +471,65 @@ public sealed record ProxmoxLxcConfigUpdateRequest(
     IReadOnlyList<ProxmoxLxcNetChange>? Networks = null,
     IReadOnlyList<ProxmoxLxcMountChange>? Mounts = null,
     ProxmoxLxcRootfsChange? Rootfs = null);
+
+/// <summary>
+/// V8.5 — edit one VM's config (<c>PUT /nodes/{node}/qemu/{vmid}/config</c>). The VM
+/// analogue of <see cref="ProxmoxLxcConfigUpdateRequest"/>: every scalar is optional
+/// per-field (a <c>null</c> leaves that key untouched, so only the changed keys are
+/// sent), and <see cref="Networks"/> / <see cref="Disks"/> / <see cref="Cdrom"/> are
+/// intentful add/update/remove operations reusing the Core change models (a <c>null</c>
+/// list means "no changes here"). Memory / balloon are in MiB. Locally-checkable guards
+/// (cores/sockets/memory ranges, valid MAC / VLAN, known NIC model / OS type, balloon ≤
+/// memory) are validated up front; Proxmox stays authoritative for the rest. Disk grow
+/// and move go through their own endpoints, not this one.
+/// </summary>
+public sealed record ProxmoxQemuConfigUpdateRequest(
+    [MaxLength(255)] string? Name = null,
+    [Range(1, 8192)] int? Cores = null,
+    [Range(1, 4)] int? Sockets = null,
+    [Range(16, 4194304)] long? MemoryMib = null,
+    [Range(0, 4194304)] long? BalloonMib = null,
+    bool? Onboot = null,
+    [MaxLength(20)] string? OsType = null,
+    bool? Agent = null,
+    [MaxLength(255)] string? BootOrder = null,
+    [MaxLength(8192)] string? Description = null,
+    [MaxLength(1024)] string? Tags = null,
+    IReadOnlyList<ProxmoxQemuNetChange>? Networks = null,
+    IReadOnlyList<ProxmoxQemuDiskChange>? Disks = null,
+    ProxmoxQemuCdromChange? Cdrom = null);
+
+/// <summary>V8.5 — grow one VM disk (<c>PUT /nodes/{node}/qemu/{vmid}/resize</c>).
+/// <see cref="Disk"/> is the disk key (<c>scsi0</c>); <see cref="Size"/> is a positive
+/// grow increment (<c>+8G</c>) — the endpoint is grow-only, shrinking is unsafe.</summary>
+public sealed record ProxmoxQemuDiskResizeRequest(
+    [Required, MaxLength(32)] string Disk,
+    [Required, MaxLength(32)] string Size);
+
+/// <summary>V8.5 — move one VM disk to another storage
+/// (<c>POST /nodes/{node}/qemu/{vmid}/move_disk</c>, task-polled). <see cref="Disk"/> is
+/// the disk key; <see cref="Storage"/> the target storage; <see cref="Format"/> an
+/// optional target disk format; <see cref="DeleteSource"/> removes the source volume on
+/// completion (a real move) vs keeping it as unused.</summary>
+public sealed record ProxmoxQemuDiskMoveRequest(
+    [Required, MaxLength(32)] string Disk,
+    [Required, MaxLength(100)] string Storage,
+    [MaxLength(10)] string? Format = null,
+    bool DeleteSource = true);
+
+/// <summary>V8.5 — one guest config-edit audit row for the central Audit page's
+/// <c>Guest config</c> tab. <see cref="GuestKind"/> is <c>lxc</c> / <c>qemu</c>;
+/// <see cref="Action"/> is <c>config</c> / <c>resize</c> / <c>move-disk</c>;
+/// <see cref="Summary"/> is the short "what changed" denormalised at write time.</summary>
+public sealed record ProxmoxConfigAuditResponse(
+    Guid Id,
+    Guid? ProxmoxConnectionId,
+    string? ConnectionName,
+    string? NodeName,
+    int VmId,
+    string GuestKind,
+    string Action,
+    string? Summary,
+    bool Success,
+    string? Error,
+    DateTime CreatedAtUtc);

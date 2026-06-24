@@ -63,6 +63,11 @@ import {
   useSetProxmoxLxcMonitoring,
   useSnoozeProxmoxLxc,
   useUpdateProxmoxLxcConfig,
+  useUpdateProxmoxQemuConfig,
+  useResizeProxmoxQemuDisk,
+  useMoveProxmoxQemuDisk,
+  useProxmoxIsos,
+  useProxmoxNodeStorage,
   useUploadGuestIcon,
   type ProxmoxGuestKind,
   type ProxmoxRrdTimeframe,
@@ -78,6 +83,9 @@ import type {
   ProxmoxLxcMountChange,
   ProxmoxLxcNetChange,
   ProxmoxLxcRootfsChange,
+  ProxmoxQemuConfigUpdate,
+  ProxmoxQemuNetChange,
+  ProxmoxQemuDiskChange,
   ProxmoxSnapshot,
   ProxmoxTask,
 } from '@/lib/types'
@@ -90,6 +98,16 @@ import {
   parseNet,
   parseRootfs,
 } from '@/lib/proxmox-lxc-config'
+import {
+  OS_TYPES,
+  QEMU_NET_MODELS,
+  cdromVolid,
+  formatQemuDisk,
+  formatQemuNet,
+  isCdromLine,
+  parseQemuDisk,
+  parseQemuNet,
+} from '@/lib/proxmox-qemu-config'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -218,7 +236,7 @@ export function LxcModal({ guest, connection, initialTab = 'overview', onClose }
 
         <div className="container-modal-body" role="tabpanel">
           {tab === 'overview' && <OverviewTab guest={guest} connection={connection} isVm={isVm} onClose={onClose} />}
-          {tab === 'config' && <ConfigTab connectionId={connection.id} vmId={guest.vmId} kind={kind} readOnly={isVm} />}
+          {tab === 'config' && <ConfigTab connection={connection} vmId={guest.vmId} kind={kind} />}
           {tab === 'stats' && <StatsTab connectionId={connection.id} vmId={guest.vmId} kind={kind} />}
           {tab === 'tasks' && <TasksTab connectionId={connection.id} vmId={guest.vmId} kind={kind} />}
           {tab === 'snapshots' && <SnapshotsTab guest={guest} connection={connection} isVm={isVm} kind={kind} />}
@@ -831,7 +849,9 @@ function LogsTab({ guest, connection, active }: { guest: ProxmoxGuest; connectio
 
 // ── Config tab ──────────────────────────────────────────────────────────────
 
-function ConfigTab({ connectionId, vmId, kind, readOnly }: { connectionId: string; vmId: number; kind: ProxmoxGuestKind; readOnly: boolean }) {
+function ConfigTab({ connection, vmId, kind }: { connection: ProxmoxConnection; vmId: number; kind: ProxmoxGuestKind }) {
+  const connectionId = connection.id
+  const isVm = kind === 'qemu'
   const query = useProxmoxLxcConfig(connectionId, vmId, true, kind)
   const [editing, setEditing] = useState(false)
 
@@ -846,14 +866,14 @@ function ConfigTab({ connectionId, vmId, kind, readOnly }: { connectionId: strin
   const d = query.data
   if (!d) return <p className="container-modal-empty">No configuration.</p>
 
-  // V6.14 — VM config is read-only for now (its virtio/scsi/PCI-passthrough
-  // surface is a much larger structured-edit problem than the LXC fields).
-  if (editing && !readOnly) {
-    return (
-      <EditConfigForm connectionId={connectionId} vmId={vmId} detail={d} onDone={() => setEditing(false)} />
-    )
+  // V8.5 — the VM Config tab is now editable, reusing the V6.5/V6.9 edit scaffolding
+  // (per-field "null = leave untouched" merge, structured row editors, single Save).
+  if (editing) {
+    return isVm
+      ? <EditQemuConfigForm connection={connection} vmId={vmId} detail={d} onDone={() => setEditing(false)} />
+      : <EditConfigForm connectionId={connectionId} vmId={vmId} detail={d} onDone={() => setEditing(false)} />
   }
-  return <ConfigReadView detail={d} isVm={readOnly} onEdit={readOnly ? undefined : () => setEditing(true)} />
+  return <ConfigReadView detail={d} isVm={isVm} onEdit={() => setEditing(true)} />
 }
 
 function ConfigReadView({ detail: d, isVm, onEdit }: { detail: ProxmoxLxcDetail; isVm: boolean; onEdit?: () => void }) {
@@ -864,12 +884,14 @@ function ConfigReadView({ detail: d, isVm, onEdit }: { detail: ProxmoxLxcDetail;
   const diskUsed = formatBytes(d.diskUsedBytes)
   const diskMax = formatBytes(d.diskMaxBytes)
   const uptime = formatUptime(d.uptimeSeconds)
+  // For a VM `cores` is cores-per-socket; the vCPU count is cores × sockets.
+  const vcpu = d.cores != null ? (isVm ? d.cores * (d.sockets ?? 1) : d.cores) : null
 
   return (
     <div className="container-modal-overview">
       <div className="container-modal-stats-header">
         <span className="container-modal-empty">
-          Read-only snapshot from Proxmox.{isVm && ' VM configuration is read-only here.'}
+          Read-only snapshot from Proxmox.
         </span>
         {onEdit && (
           <Button type="button" size="sm" variant="outline" onClick={onEdit}>
@@ -881,8 +903,9 @@ function ConfigReadView({ detail: d, isVm, onEdit }: { detail: ProxmoxLxcDetail;
       <section className="container-modal-section">
         <h3 className="container-modal-section-title">Resources</h3>
         <dl className="container-modal-summary">
-          {d.cores != null && (<><dt>Cores</dt><dd>{d.cores} vCPU</dd></>)}
+          {vcpu != null && (<><dt>Cores</dt><dd>{vcpu} vCPU{isVm && d.sockets ? ` (${d.cores} × ${d.sockets})` : ''}</dd></>)}
           {d.memoryBytes != null && (<><dt>Memory</dt><dd>{formatBytes(d.memoryBytes)}</dd></>)}
+          {isVm && d.balloonBytes != null && d.balloonBytes > 0 && (<><dt>Balloon min</dt><dd>{formatBytes(d.balloonBytes)}</dd></>)}
           {d.swapBytes != null && (<><dt>Swap</dt><dd>{formatBytes(d.swapBytes)}</dd></>)}
           {cpuPct && (<><dt>CPU now</dt><dd>{cpuPct}</dd></>)}
           {(memUsed || memMax) && (<><dt>Memory used</dt><dd>{memUsed ?? '—'}{memMax ? ` / ${memMax}` : ''}</dd></>)}
@@ -898,9 +921,13 @@ function ConfigReadView({ detail: d, isVm, onEdit }: { detail: ProxmoxLxcDetail;
           {d.osType && (<><dt>OS type</dt><dd>{d.osType}</dd></>)}
           {d.arch && (<><dt>Arch</dt><dd>{d.arch}</dd></>)}
           <dt>Start at boot</dt><dd>{yesNo(d.onboot)}</dd>
+          {/* QEMU guest-agent toggle / boot order are VM-only. */}
+          {isVm && (<><dt>Guest agent</dt><dd>{yesNo(d.agent)}</dd></>)}
+          {isVm && d.bootOrder && (<><dt>Boot order</dt><dd><code className="container-modal-code">{d.bootOrder}</code></dd></>)}
           {/* Unprivileged / features are LXC-only — a VM leaves them null. */}
           {!isVm && (<><dt>Unprivileged</dt><dd>{yesNo(d.unprivileged)}</dd></>)}
           {d.features && (<><dt>Features</dt><dd><code className="container-modal-code">{d.features}</code></dd></>)}
+          {isVm && d.tags && (<><dt>Tags</dt><dd><code className="container-modal-code">{d.tags}</code></dd></>)}
         </dl>
       </section>
 
@@ -1547,6 +1574,561 @@ function RootfsCard({ model: m, advanced, onPatch, onSetAdvanced, onSetRaw }: {
           <RawExpander generated={generated} onEditRaw={() => { onSetRaw(generated); onSetAdvanced(true) }} />
         </>
       )}
+    </div>
+  )
+}
+
+// ── VM config edit (V8.5: scalars + net codec + ide2 CD-ROM + disk grow/move/flags) ──
+
+/** A net<n> row in the VM editor: identity, the normalised original line (null for a
+ *  freshly added row), the working model, and per-row UI flags. */
+interface QemuNetRow { uid: string; key: string; origNorm: string | null; model: ProxmoxQemuNetChange; removed: boolean; advanced: boolean }
+/** A disk row in the VM editor — flag edits ride the Save; grow / move are separate
+ *  task actions handled inline in the card. */
+interface QemuDiskRow { uid: string; key: string; origNorm: string | null; model: ProxmoxQemuDiskChange }
+
+const QEMU_CACHE_MODES = ['', 'none', 'writeback', 'writethrough', 'directsync', 'unsafe']
+
+/** The editable VM Config form. The QEMU analogue of {@link EditConfigForm}: scalars
+ *  (name / cores / sockets / memory / balloon / onboot / ostype / agent / boot order /
+ *  description / tags) sit alongside structured NIC rows (a QEMU net codec), an ide2
+ *  CD-ROM swap/eject, and per-disk safe-flag edits — all committed by one Save (the
+ *  same review → confirm → single PUT flow). Disk grow and move are separate
+ *  task-polled actions, fired inline per disk (not part of the Save), mirroring how
+ *  snapshot actions sit apart from the config write. */
+function EditQemuConfigForm({ connection, vmId, detail: d, onDone }: {
+  connection: ProxmoxConnection
+  vmId: number
+  detail: ProxmoxLxcDetail
+  onDone: () => void
+}) {
+  const connectionId = connection.id
+  const mutation = useUpdateProxmoxQemuConfig(connectionId, vmId)
+  const isos = useProxmoxIsos(connectionId)
+  const storage = useProxmoxNodeStorage(connectionId)
+  const running = d.status === 'running'
+
+  // ── scalar state ──
+  const [name, setName] = useState(d.hostname ?? '')
+  const [cores, setCores] = useState(d.cores != null ? String(d.cores) : '')
+  const [sockets, setSockets] = useState(d.sockets != null ? String(d.sockets) : '')
+  const [memory, setMemory] = useState(bytesToMib(d.memoryBytes))
+  const [balloon, setBalloon] = useState(bytesToMib(d.balloonBytes))
+  const [onboot, setOnboot] = useState(d.onboot ?? false)
+  const [agent, setAgent] = useState(d.agent ?? false)
+  const [osType, setOsType] = useState(d.osType ?? 'l26')
+  const [bootOrder, setBootOrder] = useState(d.bootOrder ?? '')
+  const [description, setDescription] = useState(d.description ?? '')
+  const [tags, setTags] = useState(d.tags ?? '')
+
+  // ── NICs ──
+  const [nets, setNets] = useState<QemuNetRow[]>(() =>
+    d.networks.map((l) => {
+      const model = parseQemuNet(l.key, l.value)
+      return { uid: nextUid(), key: l.key, origNorm: formatQemuNet(model), model, removed: false, advanced: false }
+    }))
+
+  // ── CD-ROM (ide2) ──
+  const cdromLine = useMemo(() => d.mounts.find((m) => isCdromLine(m.value)) ?? null, [d])
+  const origCdrom = cdromLine ? cdromVolid(cdromLine.value) : ''
+  const [cdrom, setCdrom] = useState(origCdrom)
+  const [cdromCustom, setCdromCustom] = useState(false)
+
+  // ── disks (real disks only — the CD-ROM + EFI/TPM state disks are excluded) ──
+  const editableDiskLines = useMemo(
+    () => d.mounts.filter((m) => !isCdromLine(m.value) && /^(scsi|virtio|sata|ide)\d+$/.test(m.key)),
+    [d])
+  const [disks, setDisks] = useState<QemuDiskRow[]>(() =>
+    editableDiskLines.map((l) => {
+      const model = parseQemuDisk(l.key, l.value)
+      return { uid: nextUid(), key: l.key, origNorm: formatQemuDisk(model), model }
+    }))
+
+  const [confirming, setConfirming] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const patchNet = (uid: string, patch: Partial<ProxmoxQemuNetChange>) =>
+    setNets((rows) => rows.map((r) => (r.uid === uid ? { ...r, model: { ...r.model, ...patch } } : r)))
+  const setNetFlag = (uid: string, patch: Partial<Pick<QemuNetRow, 'removed' | 'advanced'>>) =>
+    setNets((rows) => rows.map((r) => (r.uid === uid ? { ...r, ...patch } : r)))
+  const setNetRaw = (uid: string, raw: string) =>
+    setNets((rows) => rows.map((r) => (r.uid === uid ? { ...r, model: { ...r.model, raw } } : r)))
+  const removeNetRow = (uid: string) => setNets((rows) => rows.filter((r) => r.uid !== uid))
+  const addNet = () =>
+    setNets((rows) => [...rows, {
+      uid: nextUid(), key: '', origNorm: null,
+      model: { key: '', model: 'virtio', bridge: 'vmbr0' }, removed: false, advanced: false,
+    }])
+
+  const patchDisk = (uid: string, patch: Partial<ProxmoxQemuDiskChange>) =>
+    setDisks((rows) => rows.map((r) => (r.uid === uid ? { ...r, model: { ...r.model, ...patch } } : r)))
+
+  const original = useMemo(() => ({
+    name: d.hostname ?? '',
+    cores: d.cores != null ? String(d.cores) : '',
+    sockets: d.sockets != null ? String(d.sockets) : '',
+    memory: bytesToMib(d.memoryBytes),
+    balloon: bytesToMib(d.balloonBytes),
+    onboot: d.onboot ?? false,
+    agent: d.agent ?? false,
+    osType: d.osType ?? 'l26',
+    bootOrder: d.bootOrder ?? '',
+    description: d.description ?? '',
+    tags: d.tags ?? '',
+  }), [d])
+
+  const { update, review } = useMemo(() => {
+    const update: ProxmoxQemuConfigUpdate = {}
+    const review: ReviewItem[] = []
+
+    if (name.trim() !== original.name) { update.name = name.trim(); review.push({ label: 'Name', from: original.name || '—', to: name.trim() || '—', apply: 'restart' }) }
+    if (cores.trim() !== original.cores) { update.cores = cores.trim() === '' ? null : Number(cores); review.push({ label: 'Cores (per socket)', from: original.cores || '—', to: cores.trim() || '—', apply: 'restart' }) }
+    if (sockets.trim() !== original.sockets) { update.sockets = sockets.trim() === '' ? null : Number(sockets); review.push({ label: 'Sockets', from: original.sockets || '—', to: sockets.trim() || '—', apply: 'restart' }) }
+    if (memory.trim() !== original.memory) { update.memoryMib = memory.trim() === '' ? null : Number(memory); review.push({ label: 'Memory (MiB)', from: original.memory || '—', to: memory.trim() || '—', apply: 'restart' }) }
+    if (balloon.trim() !== original.balloon) { update.balloonMib = balloon.trim() === '' ? null : Number(balloon); review.push({ label: 'Balloon min (MiB)', from: original.balloon || '—', to: balloon.trim() || '—', apply: 'live' }) }
+    if (onboot !== original.onboot) { update.onboot = onboot; review.push({ label: 'Start at boot', from: original.onboot ? 'yes' : 'no', to: onboot ? 'yes' : 'no', apply: 'nextboot' }) }
+    if (agent !== original.agent) { update.agent = agent; review.push({ label: 'Guest agent', from: original.agent ? 'yes' : 'no', to: agent ? 'yes' : 'no', apply: 'restart' }) }
+    if (osType.trim() !== original.osType) { update.osType = osType.trim(); review.push({ label: 'OS type', from: original.osType || '—', to: osType.trim() || '—', apply: 'nextboot' }) }
+    if (bootOrder.trim() !== original.bootOrder) { update.bootOrder = bootOrder.trim(); review.push({ label: 'Boot order', from: original.bootOrder || '—', to: bootOrder.trim() || '—', apply: 'nextboot' }) }
+    if (description !== original.description) { update.description = description; review.push({ label: 'Description', to: description.trim() || '(cleared)', apply: 'live' }) }
+    if (tags !== original.tags) { update.tags = tags; review.push({ label: 'Tags', from: original.tags || '—', to: tags.trim() || '(cleared)', apply: 'live' }) }
+
+    const netOps: ProxmoxQemuNetChange[] = []
+    for (const r of nets) {
+      if (r.origNorm === null) {
+        if (r.removed) continue
+        netOps.push({ ...r.model, key: '' })
+        review.push({ label: 'New interface', to: formatQemuNet(r.model) || '(empty)', apply: 'restart' })
+      } else if (r.removed) {
+        netOps.push({ key: r.key, remove: true })
+        review.push({ label: r.key, to: 'removed', apply: 'destructive', note: `Interface ${r.key} will be deleted from the config (delete=${r.key}).` })
+      } else if (formatQemuNet(r.model) !== r.origNorm) {
+        netOps.push({ ...r.model, key: r.key })
+        review.push({ label: r.key, from: r.origNorm, to: formatQemuNet(r.model), apply: 'restart' })
+      }
+    }
+    if (netOps.length) update.networks = netOps
+
+    const diskOps: ProxmoxQemuDiskChange[] = []
+    for (const r of disks) {
+      if (r.origNorm !== null && formatQemuDisk(r.model) !== r.origNorm) {
+        diskOps.push({ ...r.model, key: r.key })
+        review.push({ label: `${r.key} flags`, from: r.origNorm, to: formatQemuDisk(r.model), apply: 'restart' })
+      }
+    }
+    if (diskOps.length) update.disks = diskOps
+
+    if (cdrom !== origCdrom) {
+      update.cdrom = { volid: cdrom || null }
+      review.push({ label: 'Install media (ide2)', from: origCdrom || '(empty)', to: cdrom || '(ejected)', apply: 'live' })
+    }
+
+    return { update, review }
+  }, [name, cores, sockets, memory, balloon, onboot, agent, osType, bootOrder, description, tags, original, nets, disks, cdrom, origCdrom])
+
+  // Client-side guards mirroring ProxmoxQemuConfigValidator.
+  const errors = useMemo(() => {
+    const errs: string[] = []
+    const n = (s: string) => (s.trim() === '' ? null : Number(s))
+    const c = n(cores), so = n(sockets), m = n(memory), b = n(balloon)
+    if (c != null && (!Number.isInteger(c) || c < 1 || c > 8192)) errs.push('Cores must be a whole number between 1 and 8192.')
+    if (so != null && (!Number.isInteger(so) || so < 1 || so > 4)) errs.push('Sockets must be between 1 and 4.')
+    if (m != null && (!Number.isInteger(m) || m < 16)) errs.push('Memory must be at least 16 MiB.')
+    if (b != null && (!Number.isInteger(b) || b < 0)) errs.push('Balloon minimum cannot be negative.')
+    if (b != null && b > 0 && m != null && b > m) errs.push('Balloon minimum cannot exceed the memory ceiling.')
+
+    for (const r of nets) {
+      if (r.removed || r.advanced || r.model.raw) continue
+      const x = r.model
+      const lbl = r.origNorm === null ? 'New interface' : r.key
+      if (x.model && !QEMU_NET_MODELS.includes(x.model.trim() as (typeof QEMU_NET_MODELS)[number])) errs.push(`${lbl}: '${x.model}' is not a known NIC model.`)
+      if (x.macAddr?.trim() && !MAC_RE.test(x.macAddr.trim())) errs.push(`${lbl}: '${x.macAddr}' is not a valid MAC address.`)
+      if (x.tag != null && (x.tag < 1 || x.tag > 4094)) errs.push(`${lbl}: VLAN tag must be between 1 and 4094.`)
+      if (x.mtu != null && (x.mtu < 64 || x.mtu > 65520)) errs.push(`${lbl}: MTU must be between 64 and 65520.`)
+    }
+    return errs
+  }, [cores, sockets, memory, balloon, nets])
+
+  const apply = () => {
+    setError(null)
+    mutation.mutate(update, {
+      onError: (e) => setError(getApiErrorMessage(e) ?? 'Failed to update configuration'),
+      onSuccess: () => { setConfirming(false); setSaved(true) },
+    })
+  }
+
+  const busy = mutation.isPending
+  const diskStorages = useMemo(
+    () => (storage.data ?? []).filter((s) => s.content?.split(',').some((c) => c.trim() === 'images')),
+    [storage.data])
+
+  if (saved) {
+    const needsRestart = running && review.some((r) => r.apply === 'restart' || r.apply === 'destructive')
+    return (
+      <div className="container-modal-overview">
+        <section className="container-modal-section">
+          <h3 className="container-modal-section-title">Saved</h3>
+          <p className="container-modal-empty">
+            <CheckCircle2 className="h-3.5 w-3.5 inline" /> Proxmox accepted the configuration changes.
+          </p>
+          {needsRestart && (
+            <p className="container-modal-empty">
+              <TriangleAlert className="h-3.5 w-3.5 inline" /> This VM is running — Proxmox applies some changes (CPU /
+              memory / NIC) only on the next <strong>shutdown + start</strong> (a reboot from inside the guest is not
+              enough).
+            </p>
+          )}
+          <div className="container-modal-actions">
+            <Button type="button" size="sm" onClick={onDone}>Done</Button>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  if (confirming) {
+    const destructive = review.filter((r) => r.apply === 'destructive')
+    const hasRestart = review.some((r) => r.apply === 'restart')
+    return (
+      <div className="container-modal-overview">
+        <section className="container-modal-section">
+          <h3 className="container-modal-section-title">Review {review.length} change{review.length === 1 ? '' : 's'}</h3>
+          <dl className="container-modal-summary">
+            {review.map((c, i) => (
+              <Fragment key={`${c.label}-${i}`}>
+                <dt>{c.label}</dt>
+                <dd>
+                  {c.from != null && <>{c.from} → </>}
+                  <strong>{c.to}</strong>{' '}
+                  <span className="container-modal-empty">({applyHint(c.apply)})</span>
+                </dd>
+              </Fragment>
+            ))}
+          </dl>
+          {destructive.length > 0 && (
+            <div className="container-modal-error">
+              <p><TriangleAlert className="h-3.5 w-3.5 inline" /> Destructive changes:</p>
+              <ul style={{ margin: '0.25rem 0 0', paddingLeft: '1.1rem' }}>
+                {destructive.map((c, i) => <li key={i}>{c.note ?? c.label}</li>)}
+              </ul>
+            </div>
+          )}
+          {hasRestart && running && (
+            <p className="container-modal-empty">
+              Some changes apply only after a VM <strong>stop + start</strong> (the guest is running).
+            </p>
+          )}
+          {error && <p className="container-modal-error"><AlertCircle className="h-3.5 w-3.5 inline" /> {error}</p>}
+          <div className="container-modal-actions">
+            <Button type="button" size="sm" disabled={busy} onClick={apply}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Apply
+            </Button>
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(false)}>Back</Button>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  return (
+    <div className="container-modal-overview">
+      <section className="container-modal-section">
+        <h3 className="container-modal-section-title">Edit resources</h3>
+        <div className="container-modal-edit-grid">
+          <label className="service-modal-label">
+            Cores (per socket)
+            <Input type="number" min={1} max={8192} value={cores} onChange={(e) => setCores(e.target.value)} placeholder="e.g. 2" />
+          </label>
+          <label className="service-modal-label">
+            Sockets
+            <Input type="number" min={1} max={4} value={sockets} onChange={(e) => setSockets(e.target.value)} placeholder="1" />
+          </label>
+          <label className="service-modal-label">
+            Memory (MiB)
+            <Input type="number" min={16} value={memory} onChange={(e) => setMemory(e.target.value)} placeholder="e.g. 2048" />
+          </label>
+          <label className="service-modal-label">
+            Balloon min (MiB) <span className="service-modal-label-help">(0 = off)</span>
+            <Input type="number" min={0} value={balloon} onChange={(e) => setBalloon(e.target.value)} placeholder="—" />
+          </label>
+        </div>
+      </section>
+
+      <section className="container-modal-section">
+        <h3 className="container-modal-section-title">Edit system</h3>
+        <div className="container-modal-edit-grid">
+          <label className="service-modal-label">
+            Name
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. debian-vm" />
+          </label>
+          <label className="service-modal-label">
+            OS type
+            <select className="proxmox-select" value={osType} onChange={(e) => setOsType(e.target.value)}>
+              {OS_TYPES.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+            </select>
+          </label>
+          <label className="service-modal-label">
+            Boot order <span className="service-modal-label-help">(e.g. scsi0;ide2;net0)</span>
+            <Input value={bootOrder} onChange={(e) => setBootOrder(e.target.value)} placeholder="scsi0;net0" />
+          </label>
+          <label className="service-modal-label">
+            Tags <span className="service-modal-label-help">(semicolon-separated)</span>
+            <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="prod;net" />
+          </label>
+        </div>
+        <label className="service-modal-label">
+          Description
+          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="optional note" />
+        </label>
+        <div className="container-modal-actions">
+          <LxcCheck label="Start at boot" checked={onboot} onChange={setOnboot} />
+          <LxcCheck label="QEMU guest agent" checked={agent} onChange={setAgent} />
+        </div>
+      </section>
+
+      <section className="container-modal-section">
+        <h3 className="container-modal-section-title">Install media (CD-ROM)</h3>
+        <label className="service-modal-label">
+          ISO image <span className="service-modal-label-help">(swap or eject the ide2 media)</span>
+          {cdromCustom ? (
+            <>
+              <Input value={cdrom} onChange={(e) => setCdrom(e.target.value)} placeholder="local:iso/debian-12.iso" />
+              <button type="button" className="lxc-create-link" onClick={() => { setCdromCustom(false); setCdrom(origCdrom) }}>← Choose from list</button>
+            </>
+          ) : (
+            <select
+              className="proxmox-select"
+              value={cdrom}
+              onChange={(e) => { if (e.target.value === '__custom__') { setCdromCustom(true); setCdrom('') } else setCdrom(e.target.value) }}
+            >
+              {origCdrom && !isos.data?.some((i) => i.volid === origCdrom) && <option value={origCdrom}>{origCdrom}</option>}
+              {isos.isLoading && <option value="">Loading…</option>}
+              {isos.data?.map((i) => (<option key={i.volid} value={i.volid}>{i.volid}</option>))}
+              <option value="">No media (eject)</option>
+              <option value="__custom__">Custom volid…</option>
+            </select>
+          )}
+        </label>
+      </section>
+
+      <section className="container-modal-section">
+        <div className="lxc-config-row-header">
+          <h3 className="container-modal-section-title"><Network className="h-3.5 w-3.5 inline" /> Network interfaces</h3>
+          <Button type="button" size="sm" variant="outline" onClick={addNet}><Plus className="h-3.5 w-3.5" /> Add</Button>
+        </div>
+        <div className="lxc-config-rows">
+          {nets.length === 0 && <p className="container-modal-empty">No network interfaces.</p>}
+          {nets.map((r) => (
+            <QemuNetRowCard
+              key={r.uid}
+              row={r}
+              onPatch={(p) => patchNet(r.uid, p)}
+              onToggleRemove={() => (r.origNorm === null ? removeNetRow(r.uid) : setNetFlag(r.uid, { removed: !r.removed }))}
+              onSetAdvanced={(adv) => setNetFlag(r.uid, { advanced: adv })}
+              onSetRaw={(raw) => setNetRaw(r.uid, raw)}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section className="container-modal-section">
+        <div className="lxc-config-row-header">
+          <h3 className="container-modal-section-title"><HardDrive className="h-3.5 w-3.5 inline" /> Disks</h3>
+        </div>
+        <div className="lxc-config-rows">
+          {disks.length === 0 && <p className="container-modal-empty">No editable disks.</p>}
+          {disks.map((r) => (
+            <QemuDiskCard
+              key={r.uid}
+              connectionId={connectionId}
+              vmId={vmId}
+              row={r}
+              storages={diskStorages.map((s) => s.storage)}
+              onPatch={(p) => patchDisk(r.uid, p)}
+            />
+          ))}
+        </div>
+        <p className="container-modal-empty">
+          Flag changes (discard / SSD / cache) apply on <strong>Save</strong>. Growing or moving a disk is a separate
+          action that runs immediately and is task-polled.
+        </p>
+      </section>
+
+      {errors.length > 0 && (
+        <p className="container-modal-error"><AlertCircle className="h-3.5 w-3.5 inline" /> {errors[0]}</p>
+      )}
+
+      <div className="container-modal-actions">
+        <Button type="button" size="sm" disabled={review.length === 0 || errors.length > 0} onClick={() => { setError(null); setConfirming(true) }}>
+          Review changes{review.length > 0 ? ` (${review.length})` : ''}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={onDone}>Cancel</Button>
+      </div>
+    </div>
+  )
+}
+
+function QemuNetRowCard({ row, onPatch, onToggleRemove, onSetAdvanced, onSetRaw }: {
+  row: QemuNetRow
+  onPatch: (patch: Partial<ProxmoxQemuNetChange>) => void
+  onToggleRemove: () => void
+  onSetAdvanced: (adv: boolean) => void
+  onSetRaw: (raw: string) => void
+}) {
+  const m = row.model
+  const isNew = row.origNorm === null
+  const generated = formatQemuNet(m)
+
+  return (
+    <div className={cn('lxc-config-row', row.removed && 'lxc-config-row-removed')}>
+      <div className="lxc-config-row-header">
+        <span className="lxc-config-row-key">{isNew ? 'New interface' : row.key}{m.model ? ` · ${m.model}` : ''}</span>
+        <Button type="button" size="sm" variant="outline" className={cn(!row.removed && 'ui-button-danger')} onClick={onToggleRemove}>
+          {row.removed ? 'Restore' : <><Trash2 className="h-3.5 w-3.5" /> Remove</>}
+        </Button>
+      </div>
+
+      {row.removed ? (
+        <p className="container-modal-empty">{isNew ? 'Discarded.' : `${row.key} will be deleted from the config (delete=${row.key}).`}</p>
+      ) : row.advanced ? (
+        <>
+          <label className="service-modal-label">
+            Raw option string
+            <Textarea value={m.raw ?? generated} rows={2} onChange={(e) => onSetRaw(e.target.value)} />
+          </label>
+          <div className="container-modal-actions">
+            <Button type="button" size="sm" variant="outline" onClick={() => onSetAdvanced(false)}>Back to structured</Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="container-modal-edit-grid">
+            <label className="service-modal-label">
+              Model
+              <select className="proxmox-select" value={m.model ?? 'virtio'} onChange={(e) => onPatch({ model: e.target.value })}>
+                {QEMU_NET_MODELS.map((mo) => (<option key={mo} value={mo}>{mo}</option>))}
+              </select>
+            </label>
+            <LxcField label="Bridge" value={m.bridge ?? ''} onChange={(v) => onPatch({ bridge: v })} placeholder="vmbr0" />
+            <LxcField label="MAC" value={m.macAddr ?? ''} onChange={(v) => onPatch({ macAddr: v })} placeholder="auto" />
+            <LxcField label="VLAN tag" type="number" value={m.tag == null ? '' : String(m.tag)} onChange={(v) => onPatch({ tag: numOrNull(v) })} placeholder="—" />
+            <LxcField label="Rate (MB/s)" type="number" value={m.rate == null ? '' : String(m.rate)} onChange={(v) => onPatch({ rate: numOrNull(v) })} placeholder="—" />
+            <LxcField label="MTU" type="number" value={m.mtu == null ? '' : String(m.mtu)} onChange={(v) => onPatch({ mtu: numOrNull(v) })} placeholder="1500" />
+            <LxcField label="Queues" type="number" value={m.queues == null ? '' : String(m.queues)} onChange={(v) => onPatch({ queues: numOrNull(v) })} placeholder="—" />
+          </div>
+          <div className="container-modal-actions">
+            <LxcCheck label="Firewall" checked={!!m.firewall} onChange={(c) => onPatch({ firewall: c })} />
+            <LxcCheck label="Disconnected (link down)" checked={!!m.linkDown} onChange={(c) => onPatch({ linkDown: c })} />
+          </div>
+          {hasUnknownOptions(m.extra) && (
+            <p className="container-modal-empty">
+              <TriangleAlert className="h-3.5 w-3.5 inline" /> Options Stashboard doesn't model are preserved: <code className="container-modal-code">{m.extra}</code>
+            </p>
+          )}
+          <RawExpander generated={generated} onEditRaw={() => { onSetRaw(generated); onSetAdvanced(true) }} />
+        </>
+      )}
+    </div>
+  )
+}
+
+/** One VM disk: the safe flags (discard / SSD / cache) ride the parent Save, while
+ *  Grow and Move are separate task-polled actions fired inline here. */
+function QemuDiskCard({ connectionId, vmId, row, storages, onPatch }: {
+  connectionId: string
+  vmId: number
+  row: QemuDiskRow
+  storages: string[]
+  onPatch: (patch: Partial<ProxmoxQemuDiskChange>) => void
+}) {
+  const m = row.model
+  const generated = formatQemuDisk(m)
+  const resize = useResizeProxmoxQemuDisk(connectionId, vmId)
+  const move = useMoveProxmoxQemuDisk(connectionId, vmId)
+
+  const [growGib, setGrowGib] = useState('')
+  const [growMsg, setGrowMsg] = useState<string | null>(null)
+  const [growErr, setGrowErr] = useState<string | null>(null)
+  const [target, setTarget] = useState('')
+  const [deleteSource, setDeleteSource] = useState(true)
+  const [moveMsg, setMoveMsg] = useState<string | null>(null)
+  const [moveErr, setMoveErr] = useState<string | null>(null)
+
+  const grow = () => {
+    setGrowMsg(null); setGrowErr(null)
+    const n = Number(growGib)
+    if (!Number.isInteger(n) || n < 1) { setGrowErr('Enter a whole number of GiB to grow by.'); return }
+    resize.mutate({ disk: row.key, size: `+${n}G` }, {
+      onError: (e) => setGrowErr(getApiErrorMessage(e) ?? 'Grow failed'),
+      onSuccess: () => { setGrowGib(''); setGrowMsg(`Grew ${row.key} by ${n} GiB.`) },
+    })
+  }
+  const doMove = () => {
+    setMoveMsg(null); setMoveErr(null)
+    if (!target) { setMoveErr('Pick a target storage.'); return }
+    move.mutate({ disk: row.key, storage: target, deleteSource }, {
+      onError: (e) => setMoveErr(getApiErrorMessage(e) ?? 'Move failed'),
+      onSuccess: () => { setMoveMsg(`Moved ${row.key} to ${target}.`) },
+    })
+  }
+
+  return (
+    <div className="lxc-config-row">
+      <div className="lxc-config-row-header">
+        <span className="lxc-config-row-key">{row.key}{m.volume ? ` · ${m.volume}` : ''}{m.size ? ` (${m.size})` : ''}</span>
+      </div>
+      <div className="container-modal-actions">
+        <LxcCheck label="Discard (TRIM)" checked={!!m.discard} onChange={(c) => onPatch({ discard: c })} />
+        <LxcCheck label="SSD emulation" checked={!!m.ssd} onChange={(c) => onPatch({ ssd: c })} />
+        <label className="service-modal-label">
+          Cache
+          <select className="proxmox-select" value={m.cache ?? ''} onChange={(e) => onPatch({ cache: e.target.value || null })}>
+            {QEMU_CACHE_MODES.map((c) => (<option key={c} value={c}>{c === '' ? 'default' : c}</option>))}
+          </select>
+        </label>
+      </div>
+
+      <div className="container-modal-edit-grid">
+        <label className="service-modal-label">
+          Grow by (GiB) <span className="service-modal-label-help">(grow-only)</span>
+          <div className="lxc-config-row-header" style={{ gap: '0.4rem' }}>
+            <Input type="number" min={1} value={growGib} onChange={(e) => setGrowGib(e.target.value)} placeholder="e.g. 10" />
+            <Button type="button" size="sm" variant="outline" disabled={resize.isPending} onClick={grow}>
+              {resize.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Grow'}
+            </Button>
+          </div>
+        </label>
+        <label className="service-modal-label">
+          Move to storage
+          <div className="lxc-config-row-header" style={{ gap: '0.4rem' }}>
+            <select className="proxmox-select" value={target} onChange={(e) => setTarget(e.target.value)}>
+              <option value="">—</option>
+              {storages.map((s) => (<option key={s} value={s}>{s}</option>))}
+            </select>
+            <Button type="button" size="sm" variant="outline" disabled={move.isPending} onClick={doMove}>
+              {move.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Move'}
+            </Button>
+          </div>
+        </label>
+      </div>
+      <label className="service-modal-checkbox-label service-modal-label">
+        <input type="checkbox" checked={deleteSource} onChange={(e) => setDeleteSource(e.target.checked)} /> Delete source volume after move
+      </label>
+      {(growMsg || moveMsg) && <p className="container-modal-empty"><CheckCircle2 className="h-3.5 w-3.5 inline" /> {growMsg ?? moveMsg}</p>}
+      {(growErr || moveErr) && <p className="container-modal-error"><AlertCircle className="h-3.5 w-3.5 inline" /> {growErr ?? moveErr}</p>}
+
+      {hasUnknownOptions(m.extra) && (
+        <p className="container-modal-empty">
+          <TriangleAlert className="h-3.5 w-3.5 inline" /> Options Stashboard doesn't model are preserved: <code className="container-modal-code">{m.extra}</code>
+        </p>
+      )}
+      <details className="container-modal-collapsible">
+        <summary className="container-modal-collapsible-with-action">
+          <span className="task-type-row">Raw option string (on Save)</span>
+        </summary>
+        <code className="container-modal-code container-modal-code-block lxc-config-raw">{generated || '(empty)'}</code>
+      </details>
     </div>
   )
 }

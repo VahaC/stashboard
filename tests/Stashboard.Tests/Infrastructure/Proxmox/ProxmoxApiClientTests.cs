@@ -385,10 +385,11 @@ public class ProxmoxApiClientTests
     }
 
     [Fact]
-    public async Task GetQemuDetail_ParsesConfig_MapsDisksAndNics_ComputesTotalCores()
+    public async Task GetQemuDetail_ParsesConfig_MapsDisksAndNics_AndEditableScalars()
     {
         const string qemuConfig = """
-            {"data":{"cores":2,"sockets":2,"memory":4096,"name":"win11","ostype":"win11","onboot":1,
+            {"data":{"cores":2,"sockets":2,"memory":4096,"balloon":2048,"name":"win11","ostype":"win11","onboot":1,
+            "agent":"1","boot":"order=scsi0;ide2;net0","description":"my vm","tags":"prod;win",
             "scsi0":"local-lvm:vm-200-disk-0,size=64G","virtio0":"local-lvm:vm-200-disk-1,size=32G",
             "net0":"virtio=AA:BB:CC:DD:EE:FF,bridge=vmbr0","ide2":"none,media=cdrom",
             "smbios1":"uuid=abc","digest":"x"}}
@@ -400,11 +401,19 @@ public class ProxmoxApiClientTests
 
         var d = await client.GetQemuDetailAsync(Profile(), 200);
 
-        Assert.Equal(4, d.Cores);                       // cores 2 × sockets 2
+        // V8.5 — Cores is now the raw cores-per-socket value; Sockets is surfaced so
+        // the editor can change them independently (vCPU = cores × sockets).
+        Assert.Equal(2, d.Cores);
+        Assert.Equal(2, d.Sockets);
         Assert.Equal(4096L * 1024 * 1024, d.MemoryBytes); // MiB → bytes
+        Assert.Equal(2048L * 1024 * 1024, d.BalloonBytes);
         Assert.Equal("win11", d.Hostname);              // VM name → hostname slot
         Assert.Equal("win11", d.OsType);
         Assert.True(d.Onboot);
+        Assert.True(d.Agent);
+        Assert.Equal("scsi0;ide2;net0", d.BootOrder);   // "order=" prefix stripped
+        Assert.Equal("my vm", d.Description);
+        Assert.Equal("prod;win", d.Tags);
         // LXC-only fields stay null for a VM.
         Assert.Null(d.SwapBytes);
         Assert.Null(d.Unprivileged);
@@ -1757,6 +1766,291 @@ public class ProxmoxApiClientTests
         Assert.True(ifaces[1].Active);
         Assert.Equal("eno1", ifaces[1].BridgePorts);
         Assert.Equal("192.168.1.1", ifaces[1].Gateway);
+    }
+
+    // ── V8.5 — UpdateQemuConfigAsync / ResizeQemuDiskAsync / MoveQemuDiskAsync ──
+
+    private const string QemuConfigJson = """
+        {"data":{"cores":2,"sockets":1,"memory":2048,"name":"vm","ostype":"l26","onboot":1,
+        "net0":"virtio=AA:BB:CC:DD:EE:FF,bridge=vmbr0","ide2":"local:iso/old.iso,media=cdrom",
+        "scsi0":"local-lvm:vm-200-disk-0,size=32G","digest":"x"}}
+        """;
+
+    [Fact]
+    public async Task UpdateQemuConfig_PutsScalarFields_OnlyChangedKeys()
+    {
+        HttpMethod? method = null;
+        string? path = null;
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            method = req.Method;
+            path = req.RequestUri!.AbsolutePath;
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        await client.UpdateQemuConfigAsync(Profile(), 200, new ProxmoxQemuConfigUpdate(
+            Name: "router", Cores: 4, Sockets: 2, MemoryMib: 4096, BalloonMib: 1024,
+            Onboot: true, OsType: "l26", Agent: true));
+
+        Assert.Equal(HttpMethod.Put, method);
+        Assert.Equal("/api2/json/nodes/pve/qemu/200/config", path);
+        Assert.NotNull(body);
+        Assert.Contains("name=router", body);
+        Assert.Contains("cores=4", body);
+        Assert.Contains("sockets=2", body);
+        Assert.Contains("memory=4096", body);    // MiB
+        Assert.Contains("balloon=1024", body);
+        Assert.Contains("onboot=1", body);
+        Assert.Contains("agent=1", body);
+    }
+
+    [Fact]
+    public async Task UpdateQemuConfig_OmitsUnsetFields()
+    {
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        await client.UpdateQemuConfigAsync(Profile(), 200, new ProxmoxQemuConfigUpdate(Cores: 8));
+
+        Assert.Equal("cores=8", body);
+        Assert.DoesNotContain("memory", body!);
+        Assert.DoesNotContain("name", body!);
+        Assert.DoesNotContain("sockets", body!);
+    }
+
+    [Fact]
+    public async Task UpdateQemuConfig_BootOrder_WrapsInOrderPrefix()
+    {
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        await client.UpdateQemuConfigAsync(Profile(), 200, new ProxmoxQemuConfigUpdate(BootOrder: "scsi0;net0"));
+
+        Assert.Contains("boot=order%3Dscsi0%3Bnet0", body);
+    }
+
+    [Fact]
+    public async Task UpdateQemuConfig_UpdatesNic_FormatsQemuLineUnderItsKey()
+    {
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            if (req.Method == HttpMethod.Put)
+                body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        await client.UpdateQemuConfigAsync(Profile(), 200, new ProxmoxQemuConfigUpdate(
+            Networks: [new ProxmoxQemuNetChange("net0", Model: "e1000", Bridge: "vmbr1", Tag: 10, Firewall: true)]));
+
+        Assert.NotNull(body);
+        var decoded = Uri.UnescapeDataString(body!);
+        Assert.Contains("net0=e1000", decoded);     // model leads the line
+        Assert.Contains("bridge=vmbr1", decoded);
+        Assert.Contains("tag=10", decoded);
+        Assert.Contains("firewall=1", decoded);
+    }
+
+    [Fact]
+    public async Task UpdateQemuConfig_AddNic_AssignsNextFreeKey_FromCurrentConfig()
+    {
+        // Current config (QemuConfigJson) has net0 → an add must become net1, proving
+        // the server reads the config and owns key numbering.
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            if (req.Method == HttpMethod.Put)
+            {
+                body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            }
+            return req.RequestUri!.AbsolutePath.EndsWith("/status/current")
+                ? Json("""{"data":{"status":"running"}}""")
+                : Json(QemuConfigJson);
+        });
+
+        await client.UpdateQemuConfigAsync(Profile(), 200, new ProxmoxQemuConfigUpdate(
+            Networks: [new ProxmoxQemuNetChange("", Model: "virtio", Bridge: "vmbr0")]));
+
+        Assert.NotNull(body);
+        Assert.Contains("net1=", Uri.UnescapeDataString(body!));
+    }
+
+    [Fact]
+    public async Task UpdateQemuConfig_RemoveNic_EmitsDeleteList()
+    {
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            if (req.Method == HttpMethod.Put)
+                body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        await client.UpdateQemuConfigAsync(Profile(), 200, new ProxmoxQemuConfigUpdate(
+            Networks: [new ProxmoxQemuNetChange("net1", Remove: true)]));
+
+        Assert.NotNull(body);
+        Assert.Contains("delete=net1", Uri.UnescapeDataString(body!));
+    }
+
+    [Fact]
+    public async Task UpdateQemuConfig_DiskFlags_ReEmitLine_PreservingVolumeAndSize()
+    {
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        await client.UpdateQemuConfigAsync(Profile(), 200, new ProxmoxQemuConfigUpdate(
+            Disks: [new ProxmoxQemuDiskChange("scsi0", Volume: "local-lvm:vm-200-disk-0", Size: "32G", Discard: true, Ssd: true)]));
+
+        Assert.NotNull(body);
+        var decoded = Uri.UnescapeDataString(body!);
+        Assert.Contains("scsi0=local-lvm:vm-200-disk-0", decoded);   // volume preserved
+        Assert.Contains("size=32G", decoded);                        // size preserved
+        Assert.Contains("discard=on", decoded);
+        Assert.Contains("ssd=1", decoded);
+    }
+
+    [Fact]
+    public async Task UpdateQemuConfig_CdromSwap_SetsIde2Volid()
+    {
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        await client.UpdateQemuConfigAsync(Profile(), 200, new ProxmoxQemuConfigUpdate(
+            Cdrom: new ProxmoxQemuCdromChange("local:iso/new.iso")));
+
+        Assert.Contains("ide2=local%3Aiso%2Fnew.iso%2Cmedia%3Dcdrom", body);
+    }
+
+    [Fact]
+    public async Task UpdateQemuConfig_CdromEject_SetsNoneMedia()
+    {
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        await client.UpdateQemuConfigAsync(Profile(), 200, new ProxmoxQemuConfigUpdate(
+            Cdrom: new ProxmoxQemuCdromChange(null)));
+
+        Assert.Contains("ide2=none%2Cmedia%3Dcdrom", body);
+    }
+
+    [Fact]
+    public async Task UpdateQemuConfig_NothingToChange_MakesNoCall()
+    {
+        var calls = 0;
+        var client = BuildClient(_ => { calls++; return new HttpResponseMessage(HttpStatusCode.OK); });
+
+        await client.UpdateQemuConfigAsync(Profile(), 200, new ProxmoxQemuConfigUpdate());
+
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public async Task UpdateQemuConfig_NonSuccess_ThrowsWithProxmoxErrorBody()
+    {
+        var client = BuildClient(_ => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("Permission check failed (/vms/200, VM.Config.CPU)"),
+        });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.UpdateQemuConfigAsync(Profile(), 200, new ProxmoxQemuConfigUpdate(Cores: 4)));
+
+        Assert.Contains("403", ex.Message);
+        Assert.Contains("VM.Config.CPU", ex.Message);
+    }
+
+    [Fact]
+    public async Task ResizeQemuDisk_PutsGrowIncrement()
+    {
+        HttpMethod? method = null;
+        string? path = null;
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            method = req.Method;
+            path = req.RequestUri!.AbsolutePath;
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        await client.ResizeQemuDiskAsync(Profile(), 200, "scsi0", "+8G");
+
+        Assert.Equal(HttpMethod.Put, method);
+        Assert.Equal("/api2/json/nodes/pve/qemu/200/resize", path);
+        Assert.Contains("disk=scsi0", body);
+        Assert.Contains("size=%2B8G", body);   // "+8G" url-encoded
+    }
+
+    [Fact]
+    public async Task MoveQemuDisk_PostsForm_ThenPollsTaskToTerminal()
+    {
+        HttpMethod? method = null;
+        string? path = null;
+        string? body = null;
+        var statusPolls = 0;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+            {
+                statusPolls++;
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            }
+            method = req.Method;
+            path = req.RequestUri!.AbsolutePath;
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json("""{"data":"UPID:pve:0000:qmmove::root@pam:"}""");
+        });
+
+        await client.MoveQemuDiskAsync(Profile(), 200, "scsi0", "other-lvm", format: null, deleteSource: true);
+
+        Assert.Equal(HttpMethod.Post, method);
+        Assert.Equal("/api2/json/nodes/pve/qemu/200/move_disk", path);
+        Assert.Contains("disk=scsi0", body);
+        Assert.Contains("storage=other-lvm", body);
+        Assert.Contains("delete=1", body);
+        Assert.True(statusPolls >= 1);   // polled the task to terminal
+    }
+
+    [Fact]
+    public async Task MoveQemuDisk_KeepSource_SendsDeleteZero()
+    {
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json("""{"data":"UPID:pve:0000:qmmove::root@pam:"}""");
+        });
+
+        await client.MoveQemuDiskAsync(Profile(), 200, "scsi0", "other-lvm", format: "qcow2", deleteSource: false);
+
+        Assert.Contains("delete=0", body);
+        Assert.Contains("format=qcow2", body);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
