@@ -21,23 +21,26 @@ function connection(guests: Guest[] = []): ProxmoxConnection {
 }
 
 const BACKUP = 'local:backup/vzdump-lxc-101-2026_01_01-00_00_00.tar.zst'
+const VM_BACKUP = 'local:backup/vzdump-qemu-200-2026_01_01-00_00_00.vma.zst'
 
 function routeGet(url: string) {
   if (url.includes('/lxc/nextid')) return Promise.resolve({ data: { vmId: 150 } })
   if (url.includes('/lxc/backups'))
     return Promise.resolve({ data: [{ volid: BACKUP, storage: 'local', vmId: 101, cTime: 1767225600, size: 12345, format: 'tar.zst', notes: null }] })
+  if (url.includes('/qemu/backups'))
+    return Promise.resolve({ data: [{ volid: VM_BACKUP, storage: 'local', vmId: 200, cTime: 1767225600, size: 999, format: 'vma.zst', notes: null }] })
   if (url.includes('/node/storage'))
     return Promise.resolve({ data: [{ storage: 'local-lvm', content: 'rootdir,images', enabled: true, active: true }] })
   return Promise.resolve({ data: [] })
 }
 
-function renderModal(conn: ProxmoxConnection, onClose = () => {}) {
+function renderModal(conn: ProxmoxConnection, onClose = () => {}, isVm = false) {
   mockApi.get.mockImplementation((url: string) => routeGet(url))
   mockApi.post.mockResolvedValue({ data: conn })
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
   return render(
     <QueryClientProvider client={qc}>
-      <LxcRestoreModal connection={conn} onClose={onClose} />
+      <LxcRestoreModal connection={conn} isVm={isVm} onClose={onClose} />
     </QueryClientProvider>,
   )
 }
@@ -101,6 +104,47 @@ describe('LxcRestoreModal — V8.1', () => {
 
     // Confirming fires the restore with force=true.
     fireEvent.click(screen.getByRole('button', { name: /Overwrite CT 150/ }))
+    await waitFor(() => expect(mockApi.post).toHaveBeenCalled())
+    const [, spec] = mockApi.post.mock.calls[0]
+    expect(spec.force).toBe(true)
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+})
+
+describe('LxcRestoreModal — V8.3 (VM)', () => {
+  it('lists vzdump-qemu archives and POSTs to the qemu restore endpoint', async () => {
+    const onClose = vi.fn()
+    renderModal(connection(), onClose, true)
+
+    await waitFor(() => expect(screen.getByDisplayValue('150')).toBeInTheDocument())
+    // The archive dropdown is populated from /qemu/backups and labelled "VM …".
+    await waitFor(() => expect(screen.getByDisplayValue(/VM 200/)).toBeInTheDocument())
+    // The LXC-only "Unprivileged container" option is hidden for a VM.
+    expect(screen.queryByLabelText(/Unprivileged/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Restore VM/ }))
+
+    await waitFor(() => expect(mockApi.post).toHaveBeenCalled())
+    const [url, spec] = mockApi.post.mock.calls[0]
+    expect(url).toBe('/api/proxmox/connections/c1/qemu/restore')
+    expect(spec.vmId).toBe(150)
+    expect(spec.backupVolid).toBe(VM_BACKUP)
+    expect(spec.force).toBe(false)
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+
+  it('double-confirms an overwrite over a stopped VM, then POSTs force', async () => {
+    const onClose = vi.fn()
+    renderModal(connection([{ vmId: 150, name: 'web', isRunning: false, guestType: 'Qemu' }]), onClose, true)
+
+    await waitFor(() => expect(screen.getByDisplayValue('150')).toBeInTheDocument())
+    fireEvent.click(screen.getByLabelText(/Overwrite existing VM/))
+
+    fireEvent.click(screen.getByRole('button', { name: /Restore VM/ }))
+    expect(mockApi.post).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByText('Overwrite VM?')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /Overwrite VM 150/ }))
     await waitFor(() => expect(mockApi.post).toHaveBeenCalled())
     const [, spec] = mockApi.post.mock.calls[0]
     expect(spec.force).toBe(true)

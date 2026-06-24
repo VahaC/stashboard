@@ -433,13 +433,13 @@ export function ProxmoxConnectionModal({
               {!isPbs && (
                 <>
                   <PermRow checked={allowDestroy} onChange={setAllowDestroy} label="Allow destroy"
-                    hint="Adds a Destroy button to a stopped LXC's Lifecycle section (removes the container and its disk). Needs Settings → Destroy LXC + an explicit double confirmation." />
+                    hint="Adds a Destroy button to a stopped guest's Lifecycle section (LXC or VM — removes the guest and its disk(s)). Needs Settings → Destroy guest + an explicit double confirmation." />
                   <PermRow checked={allowCreate} onChange={setAllowCreate} label="Allow create"
                     hint="Adds a New LXC button to this host's header that provisions a container from a template. Needs Settings → Create LXC." />
                   <PermRow checked={allowClone} onChange={setAllowClone} label="Allow clone/snapshot"
                     hint="Adds a Clone button + a Snapshots tab to a guest (LXC or VM) — duplicate it and take / roll back / delete snapshots. Needs Settings → Clone/snapshot; rollback / delete double-confirm." />
                   <PermRow checked={allowRestore} onChange={setAllowRestore} label="Allow restore"
-                    hint="Adds a Restore LXC button that re-creates a container from a vzdump backup archive. Needs Settings → Restore LXC; overwriting an existing container needs it stopped + double-confirm." />
+                    hint="Adds Restore LXC + Restore VM buttons that re-create a guest from a vzdump backup archive. Needs Settings → Restore guest; overwriting an existing guest needs it stopped + double-confirm." />
                 </>
               )}
             </details>

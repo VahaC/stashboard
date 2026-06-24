@@ -519,8 +519,9 @@ function ConnectionBlock({
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false)
   // V6.13.1 — New LXC.
   const [createOpen, setCreateOpen] = useState(false)
-  // V8.1 — Restore LXC from a backup archive.
+  // V8.1 — Restore LXC from a backup archive. V8.3 — Restore VM (separate modal kind).
   const [restoreOpen, setRestoreOpen] = useState(false)
+  const [restoreVmOpen, setRestoreVmOpen] = useState(false)
   const [cloneGuest, setCloneGuest] = useState<ProxmoxGuest | null>(null)
 
   const totalPending = connection.guests.reduce((sum, g) => sum + (g.pendingUpdates ?? 0), 0)
@@ -594,6 +595,11 @@ function ConnectionBlock({
               {canRestore && (
                 <button className="cgroup-menu-item" onClick={() => { setConnMenuPos(null); setRestoreOpen(true) }}>
                   <ArchiveRestore className="h-3.5 w-3.5" /> Restore LXC
+                </button>
+              )}
+              {canRestore && (
+                <button className="cgroup-menu-item" onClick={() => { setConnMenuPos(null); setRestoreVmOpen(true) }}>
+                  <ArchiveRestore className="h-3.5 w-3.5" /> Restore VM
                 </button>
               )}
               {(canCreate || canRestore) && <div className="cgroup-menu-sep" />}
@@ -731,6 +737,9 @@ function ConnectionBlock({
 
       {restoreOpen && (
         <LxcRestoreModal connection={connection} onClose={() => setRestoreOpen(false)} />
+      )}
+      {restoreVmOpen && (
+        <LxcRestoreModal connection={connection} isVm onClose={() => setRestoreVmOpen(false)} />
       )}
 
       {cloneGuest && (

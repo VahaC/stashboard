@@ -5,6 +5,42 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [8.3.0] — 2026-06-21
+
+### Added
+- **Restore a VM from a backup (V8.3).** The VM analogue of V8.1 (LXC restore):
+  re-create a QEMU/KVM virtual machine from an existing `vzdump` backup archive,
+  entirely from the Proxmox page. With guest-restore enabled for a host, a **Restore
+  VM** item joins **Restore LXC** in the host's actions menu. Together with create
+  (V6.13.1) and clone (V8.0/V8.2), every "make a guest" path is now mirrored for VMs
+  as well as containers.
+- **Kind-aware backup discovery (V8.3).** `IProxmoxApiClient.ListBackupsAsync` gained a
+  `qemu` flag selecting **`vzdump-qemu-*`** archives (VM) vs `vzdump-lxc-*` (LXC) from
+  the node's backup-capable storages; the controller exposes a `GET …/qemu/backups`
+  read alongside `…/lxc/backups`. PBS datastores (`pbs:`) stay out of scope.
+- **QEMU restore endpoint (V8.3).** A new `RestoreQemuAsync` POSTs **`archive=<volid>`**
+  (+ `force=1` only when overwriting an existing — necessarily stopped — vmid, optional
+  `storage=` / `name=`) to `POST /nodes/{node}/qemu` and polls the task UPID — the QEMU
+  restore shape, distinct from the LXC's `ostemplate=…` + `restore=1`. The controller
+  routes both kinds through a shared `qemu`-flag `RestoreGuestAsync` handler with a
+  `/qemu/restore` route (mirroring the V8.2 clone/snapshot split); the kind-aware
+  `ProxmoxLxcRestoreValidator` checks the expected archive marker.
+- **Reused restore UI (V8.3).** `LxcRestoreModal` takes an `isVm` prop (exactly like
+  `LxcCloneModal`): VM wording, the `vzdump-qemu-*` archive list, `images` storage, a
+  **Name** field (posts as `name`), and the LXC-only **unprivileged** option hidden.
+  The overwrite double-confirm names the target VM. The central Audit tab is generalised
+  to **Guest restore** (CT/VM derived from the archive name).
+
+### Notes
+- Gating is unchanged and shared with V8.1: the same `Stashboard:AllowProxmoxRestore`
+  master switch (**Settings → Restore guest**) + per-host `ProxmoxConnection.AllowRestore`
+  opt-in (both off by default) gate VMs too — deterministic `403`s before any host call,
+  a `409` on a vmid collision or an overwrite of a running/absent target, and a host
+  rejection surfaced verbatim as a `502`. No new database table — `ProxmoxRestoreAudit`
+  records the vmid / archive irrespective of guest kind.
+- Out of scope (deferred), same exclusions as V8.1: restoring from Proxmox Backup
+  Server datastores, `--bwlimit` tuning, and live-restore.
+
 ## [8.2.0] — 2026-06-20
 
 ### Added

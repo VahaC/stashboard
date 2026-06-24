@@ -9,8 +9,9 @@ import { parseApiErrors } from '@/lib/utils'
 import '@/styles/account-page.css'
 
 /**
- * V6.13 — Settings → Destroy LXC. The app-wide master switch for the irreversible
- * destroy action (`DELETE /nodes/{node}/lxc/{vmid}`). Like the LXC console and
+ * V6.13 / V6.14 — Settings → Destroy guest. The app-wide master switch for the
+ * irreversible destroy action — an LXC container (`DELETE /nodes/{node}/lxc/{vmid}`)
+ * or a QEMU VM (`DELETE /nodes/{node}/qemu/{vmid}`, V6.14). Like the LXC console and
  * Proxmox updates, the page leads with the risks and spells out every condition
  * required before the Destroy button appears.
  */
@@ -40,7 +41,7 @@ export function ProxmoxDestroySettings() {
       setMessage({ kind: 'ok', text: enabled ? 'Destroy enabled server-wide.' : 'Destroy disabled.' })
     } catch (error: unknown) {
       const { globalError } = parseApiErrors(error)
-      setMessage({ kind: 'err', text: globalError ?? 'Failed to save destroy-LXC setting.' })
+      setMessage({ kind: 'err', text: globalError ?? 'Failed to save destroy setting.' })
     } finally {
       setSaving(false)
     }
@@ -48,27 +49,28 @@ export function ProxmoxDestroySettings() {
 
   return (
     <div className="account-page account-stack">
-      <h1 className="text-2xl font-semibold">Destroy LXC (Proxmox)</h1>
+      <h1 className="text-2xl font-semibold">Destroy guest (Proxmox)</h1>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Trash2 className="h-5 w-5" /> Destroy LXC
+            <Trash2 className="h-5 w-5" /> Destroy guest
           </CardTitle>
           <CardDescription>
-            Adds a <strong>Destroy</strong> button to a stopped LXC's Lifecycle section on the Proxmox page — the
-            container analogue of Docker's "Remove container". Stashboard calls
-            <code> DELETE /nodes/&#123;node&#125;/lxc/&#123;vmid&#125;</code> on the Proxmox API, which removes the
-            container and its root disk.
+            Adds a <strong>Destroy</strong> button to a stopped guest's Lifecycle section on the Proxmox page — the
+            Proxmox analogue of Docker's "Remove container". Stashboard calls
+            <code> DELETE /nodes/&#123;node&#125;/lxc/&#123;vmid&#125;</code> for a container or
+            <code> DELETE /nodes/&#123;node&#125;/qemu/&#123;vmid&#125;</code> for a VM, which removes the guest and
+            its disk(s).
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="host-shell-settings-warning">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <div>
-              <strong>This permanently destroys the container and its disk.</strong> There is no undo — the
-              container's writable storage is gone. Associated backups and external storage volumes are not touched.
-              Leave it off unless you understand and accept that. It is off by default.
+              <strong>This permanently destroys the guest and its disk(s).</strong> There is no undo — the guest's
+              writable storage is gone. Associated backups and external storage volumes are not touched. Leave it off
+              unless you understand and accept that. It is off by default.
             </div>
           </div>
 
@@ -80,7 +82,7 @@ export function ProxmoxDestroySettings() {
                 disabled={!loaded}
                 onChange={(event) => setEnabled(event.target.checked)}
               />
-              Enable destroy LXC server-wide
+              Enable guest destroy server-wide
             </label>
 
             {message && (
@@ -104,7 +106,7 @@ export function ProxmoxDestroySettings() {
                 <strong>The host has opted in.</strong> Open the Proxmox host and tick
                 <strong> “Allow destroy”</strong>. It's off by default and set per host.
               </li>
-              <li><strong>The container is stopped.</strong> A running guest is refused — stop it first.</li>
+              <li><strong>The guest is stopped.</strong> A running container or VM is refused — stop it first.</li>
             </ol>
             <p>
               If any condition is missing, the destroy request is refused server-side — the gate isn't just a hidden
@@ -115,13 +117,13 @@ export function ProxmoxDestroySettings() {
           <section className="host-shell-settings-section">
             <h3>Guardrails (always enforced)</h3>
             <ul className="host-shell-settings-conditions">
-              <li><strong>Double confirmation.</strong> The browser names the exact guest (<code>CT &lt;vmid&gt; · &lt;name&gt;</code>) and asks for an explicit destructive click before anything runs.</li>
+              <li><strong>Double confirmation.</strong> The browser names the exact guest (<code>CT/VM &lt;vmid&gt; · &lt;name&gt;</code>) and asks for an explicit destructive click before anything runs.</li>
               <li><strong>Stopped only.</strong> A running guest is rejected with a clear "stop first" message — server-side, not just in the UI.</li>
-              <li><strong>Audited.</strong> Every attempt records who triggered it, when, against which host / node / guest, and the result — on the Audit page's <strong>LXC destroy</strong> tab.</li>
+              <li><strong>Audited.</strong> Every attempt records who triggered it, when, against which host / node / guest, and the result — on the Audit page's <strong>Guest destroy</strong> tab.</li>
             </ul>
             <p className="host-shell-settings-note">
-              Purging associated backups or external storage volumes is out of scope — only the container and its root
-              disk are removed.
+              Purging associated backups or external storage volumes is out of scope — only the guest and its disk(s)
+              are removed.
             </p>
           </section>
         </CardContent>

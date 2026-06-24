@@ -535,6 +535,25 @@ public interface IProxmoxApiClient
     Task CreateLxcAsync(
         ProxmoxConnectionProfile profile, ProxmoxLxcCreate spec, CancellationToken cancellationToken = default);
 
+    /// <summary>V8.3 — restores a QEMU/KVM VM from a vzdump backup archive via
+    /// <c>POST /nodes/{node}/qemu</c> with <c>archive=&lt;backup volid&gt;</c>, then polls
+    /// the returned task UPID to a terminal state (same posture as
+    /// <see cref="CreateLxcAsync"/>). The VM analogue of the LXC restore, but the QEMU
+    /// create endpoint takes <c>archive=</c> (not the LXC's <c>ostemplate=…</c> +
+    /// <c>restore=1</c>): the archive carries the VM's disks and config, so only the
+    /// target vmid, the optional default <c>storage=</c>, the optional new <c>name=</c>,
+    /// and <c>force=1</c> (overwrite an existing — necessarily stopped — vmid) are sent.
+    /// The reused <see cref="ProxmoxLxcCreate"/> carries the archive volid in
+    /// <see cref="ProxmoxLxcCreate.OsTemplate"/>, the target storage in
+    /// <see cref="ProxmoxLxcCreate.RootfsStorage"/>, and the VM name in
+    /// <see cref="ProxmoxLxcCreate.Hostname"/>; the LXC-only fields (unprivileged / swap /
+    /// rootfs size) do not apply. A host rejection — the initial POST or a non-<c>OK</c>
+    /// task exit — surfaces the host's own message as an <see cref="HttpRequestException"/>
+    /// so the controller can relay it verbatim. Needs the API token to hold
+    /// <c>VM.Allocate</c> on the host.</summary>
+    Task RestoreQemuAsync(
+        ProxmoxConnectionProfile profile, ProxmoxLxcCreate spec, CancellationToken cancellationToken = default);
+
     /// <summary>V6.13.1 — registers a freshly-created guest with the cluster's HA
     /// manager (<c>POST /cluster/ha/resources</c>, <c>sid=ct:{vmid}</c>). Called
     /// best-effort after a create when the user opted in; throws the host's message
@@ -554,14 +573,16 @@ public interface IProxmoxApiClient
     Task<IReadOnlyList<ProxmoxTemplate>> ListTemplatesAsync(
         ProxmoxConnectionProfile profile, CancellationToken cancellationToken = default);
 
-    /// <summary>V8.1 — lists the restorable LXC backup archives across the node's
+    /// <summary>V8.1 / V8.3 — lists the restorable backup archives across the node's
     /// backup-capable storages (each storage whose content advertises <c>backup</c>,
-    /// then <c>GET …/storage/{storage}/content?content=backup</c>), filtered to
-    /// <c>vzdump-lxc-*</c> volumes, for the restore form's archive dropdown. Mirrors
-    /// <see cref="ListTemplatesAsync"/>. PBS datastores (<c>pbs:</c> volumes) are out
-    /// of scope and skipped.</summary>
+    /// then <c>GET …/storage/{storage}/content?content=backup</c>), for the restore
+    /// form's archive dropdown. Kind-aware: <paramref name="qemu"/> <c>false</c> filters
+    /// to <c>vzdump-lxc-*</c> volumes (V8.1), <c>true</c> to <c>vzdump-qemu-*</c> volumes
+    /// (V8.3 — VM restore), because an LXC archive and a VM archive restore through
+    /// different endpoints. Mirrors <see cref="ListTemplatesAsync"/>. PBS datastores
+    /// (<c>pbs:</c> volumes) are out of scope and skipped.</summary>
     Task<IReadOnlyList<ProxmoxBackup>> ListBackupsAsync(
-        ProxmoxConnectionProfile profile, CancellationToken cancellationToken = default);
+        ProxmoxConnectionProfile profile, bool qemu = false, CancellationToken cancellationToken = default);
 
     /// <summary>V8.0 — clones an existing LXC via
     /// <c>POST /nodes/{node}/lxc/{vmid}/clone</c>, then polls the returned task
