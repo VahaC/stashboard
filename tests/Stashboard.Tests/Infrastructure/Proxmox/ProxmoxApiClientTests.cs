@@ -856,6 +856,148 @@ public class ProxmoxApiClientTests
         Assert.Equal("vma.zst", only.Format);
     }
 
+    // ── V8.4 — create a VM (QEMU) from scratch ───────────────────────────────
+
+    [Fact]
+    public async Task CreateQemu_PostsExpectedHardwareForm_ThenPollsTaskToTerminal()
+    {
+        HttpMethod? method = null;
+        string? path = null;
+        string? body = null;
+        var statusPolls = 0;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+            {
+                statusPolls++;
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            }
+            method = req.Method;
+            path = req.RequestUri!.AbsolutePath;
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json("""{"data":"UPID:pve:0000:qemu-create::root@pam:"}""");
+        });
+
+        await client.CreateQemuAsync(Profile(), new ProxmoxQemuCreate(
+            VmId: 200,
+            DiskStorage: "local-lvm",
+            DiskSizeGib: 32,
+            Name: "debian-vm",
+            Cores: 2,
+            Sockets: 1,
+            MemoryMib: 2048,
+            Bridge: "vmbr0",
+            OsType: "l26",
+            Bios: "seabios",
+            Machine: "q35",
+            IsoVolid: "local:iso/debian-12.iso",
+            Agent: true,
+            Start: true));
+
+        Assert.Equal(HttpMethod.Post, method);
+        Assert.Equal("/api2/json/nodes/pve/qemu", path);   // the QEMU create endpoint
+        Assert.NotNull(body);
+        Assert.Contains("vmid=200", body);
+        Assert.Contains("name=debian-vm", body);            // VM name rides in name=
+        Assert.Contains("scsihw=virtio-scsi-pci", body);
+        Assert.Contains("scsi0=local-lvm%3A32", body);      // storage:size, url-encoded ':'
+        Assert.Contains("net0=virtio%2Cbridge%3Dvmbr0", body);
+        Assert.Contains("ide2=local%3Aiso%2Fdebian-12.iso%2Cmedia%3Dcdrom", body);
+        Assert.Contains("boot=order%3Dscsi0%3Bide2%3Bnet0", body);
+        Assert.Contains("ostype=l26", body);
+        Assert.Contains("bios=seabios", body);
+        Assert.Contains("machine=q35", body);
+        Assert.Contains("cores=2", body);
+        Assert.Contains("memory=2048", body);
+        Assert.Contains("agent=1", body);
+        Assert.Contains("start=1", body);
+        Assert.DoesNotContain("efidisk0", body);            // SeaBIOS needs no EFI vars disk
+        Assert.True(statusPolls >= 1);                       // polled the task to terminal
+    }
+
+    [Fact]
+    public async Task CreateQemu_Ovmf_AddsEfiDisk_OnSameStorage()
+    {
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json("""{"data":"UPID:pve:0000:qemu-create::root@pam:"}""");
+        });
+
+        await client.CreateQemuAsync(Profile(), new ProxmoxQemuCreate(
+            201, "local-lvm", 32, Bridge: "vmbr0", Bios: "ovmf"));
+
+        Assert.NotNull(body);
+        Assert.Contains("efidisk0=local-lvm%3A1%2Cefitype%3D4m", body);   // OVMF default EFI vars disk
+    }
+
+    [Fact]
+    public async Task CreateQemu_NoIso_OmitsCdRom_AndBootOrder()
+    {
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json("""{"data":"UPID:pve:0000:qemu-create::root@pam:"}""");
+        });
+
+        await client.CreateQemuAsync(Profile(), new ProxmoxQemuCreate(
+            202, "local-lvm", 16, Bridge: "vmbr0"));
+
+        Assert.NotNull(body);
+        Assert.DoesNotContain("ide2=", body);
+        Assert.Contains("boot=order%3Dscsi0%3Bnet0", body);
+    }
+
+    [Fact]
+    public async Task CreateQemu_PostNonSuccess_SurfacesHostMessage()
+    {
+        var client = BuildClient(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StringContent("vmid 200 already exists"),
+        });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => client.CreateQemuAsync(
+            Profile(), new ProxmoxQemuCreate(200, "local-lvm", 32, Bridge: "vmbr0")));
+        Assert.Contains("already exists", ex.Message);
+    }
+
+    [Fact]
+    public async Task ListIsoImages_ReadsIsoStoragesOnly()
+    {
+        var client = BuildClient(req =>
+        {
+            var path = req.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/storage"))
+                return Json("""
+                    {"data":[
+                      {"storage":"local","content":"vztmpl,iso,backup","enabled":1,"active":1},
+                      {"storage":"local-lvm","content":"rootdir,images","enabled":1,"active":1}
+                    ]}
+                    """);
+            // Only the iso-capable storage's content is requested.
+            Assert.Contains("/storage/local/content", path);
+            Assert.Contains("content=iso", req.RequestUri!.Query);
+            return Json("""
+                {"data":[
+                  {"volid":"local:iso/debian-12.iso","size":700000000},
+                  {"volid":"local:iso/alpine.iso","size":200000000}
+                ]}
+                """);
+        });
+
+        var isos = await client.ListIsoImagesAsync(Profile());
+
+        Assert.Equal(2, isos.Count);
+        Assert.All(isos, i => Assert.Equal("local", i.Storage));
+        Assert.Contains(isos, i => i.Volid == "local:iso/debian-12.iso");
+    }
+
     // ── V8.0 — clone & snapshot ──────────────────────────────────────────────
 
     [Fact]

@@ -5,6 +5,38 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [8.4.0] — 2026-06-21
+
+### Added
+- **Create a VM from scratch (V8.4).** The VM analogue of V6.13.1 (LXC create):
+  provision a brand-new QEMU/KVM virtual machine entirely from the Proxmox page. With
+  guest-create enabled for a host, a **New VM** item joins **New LXC** in the host's
+  actions menu. Together with clone (V8.2) and restore (V8.3), every "make a guest"
+  path — create / clone / restore — is now mirrored for VMs as well as containers.
+- **ISO discovery (V8.4).** A new `IProxmoxApiClient.ListIsoImagesAsync` lists the
+  installable **`iso`** images across the node's iso-capable storages (the VM analogue
+  of `ListTemplatesAsync`, sharing one storage-content helper); the controller exposes a
+  `GET …/qemu/isos` read for the create modal's **Installation media** dropdown.
+- **QEMU create endpoint (V8.4).** A new `CreateQemuAsync` + `ProxmoxQemuCreate` spec +
+  `ProxmoxQemuCreateValidator` POST VM **hardware** to `POST /nodes/{node}/qemu` — a SCSI
+  system disk (`scsi0=<storage>:<GiB>` on `scsihw=virtio-scsi-pci`), a virtio NIC
+  (`net0`), firmware (`bios`) + chipset (`machine`), an OS-type hint, an optional install
+  CD-ROM (`ide2=<volid>,media=cdrom`) and a boot order — then poll the task UPID for real
+  success/failure. OVMF (UEFI) auto-provisions its EFI vars disk (`efidisk0`) on the same
+  storage.
+- **New VM UI (V8.4).** A `QemuCreateModal` reusing the **exact** Docker container modal
+  shell (`container-modal-*` / `service-modal-*`) — identity, installation media, system
+  disk + storage, resources, NIC bridge, and firmware / machine / OS type — with
+  client-side guards mirroring the server validator.
+
+### Changed
+- **Create gating generalised to guests (V8.4).** The existing
+  `Stashboard:AllowProxmoxCreate` master switch and per-host `AllowCreate` opt-in now gate
+  **both** LXC and VM create (no new switch); **Settings → Create LXC** is renamed
+  **Settings → Create guest**. The `ProxmoxCreateAuditEntity` / `ProxmoxCreateAudits`
+  table stays guest-kind-agnostic — VM and LXC creates share one audit history, surfaced
+  on the Audit page's **Create** tab.
+
 ## [8.3.0] — 2026-06-21
 
 ### Added

@@ -885,7 +885,7 @@ public class ProxmoxConnectionsController(
         if (!await createSettings.IsEnabledAsync(cancellationToken))
             return StatusCode(StatusCodes.Status403Forbidden, new
             {
-                error = "Create is disabled on this server. Enable it on the Settings page (Settings → Create LXC).",
+                error = "Create is disabled on this server. Enable it on the Settings page (Settings → Create guest).",
             });
 
         var connection = await LoadOwnedAsync(id, tracking: true, cancellationToken);
@@ -940,13 +940,13 @@ public class ProxmoxConnectionsController(
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            db.ProxmoxCreateAudits.Add(BuildCreateAudit(connection, spec, success: false, ex.Message));
+            db.ProxmoxCreateAudits.Add(BuildCreateAudit(connection, spec.VmId, spec.Hostname, spec.OsTemplate, success: false, ex.Message));
             await db.SaveChangesAsync(cancellationToken);
             logger.LogWarning(ex, "LXC create failed: host {ConnectionId}, CT {VmId}.", connection.Id, spec.VmId);
             return StatusCode(502, new { error = $"Proxmox rejected the create: {ex.Message}" });
         }
 
-        db.ProxmoxCreateAudits.Add(BuildCreateAudit(connection, spec, success: true, error: null));
+        db.ProxmoxCreateAudits.Add(BuildCreateAudit(connection, spec.VmId, spec.Hostname, spec.OsTemplate, success: true, error: null));
         await db.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
@@ -983,10 +983,113 @@ public class ProxmoxConnectionsController(
     public Task<ActionResult<IReadOnlyList<ProxmoxTemplate>>> GetTemplates(Guid id, CancellationToken cancellationToken) =>
         ReadNodeAsync(id, (p, ct) => apiClient.ListTemplatesAsync(p, ct), cancellationToken);
 
-    /// <summary>Builds one create-audit row with the host / spec details
-    /// denormalised at write time so the history survives a rename / delete.</summary>
+    // ── V8.4 — create a VM (QEMU) from scratch ───────────────────────────────
+
+    /// <summary>
+    /// V8.4 — <strong>create</strong> a QEMU/KVM VM from scratch
+    /// (<c>POST /nodes/{node}/qemu</c>). The VM analogue of <see cref="CreateLxc"/>:
+    /// the same double gate (the global <c>Stashboard:AllowProxmoxCreate</c> switch +
+    /// the per-host <c>AllowCreate</c> opt-in, both deterministic 403s before any API
+    /// call), the same 409 when the vmid is already on the host, the same 400 on a
+    /// malformed spec, the same re-scan + audit (reusing <c>ProxmoxCreateAudits</c>),
+    /// routed to the QEMU create endpoint, which posts hardware (disk / NIC / firmware
+    /// / install ISO) instead of a single template. Needs the API token to hold
+    /// <c>VM.Allocate</c> on the host.
+    /// </summary>
+    [HttpPost("{id:guid}/qemu")]
+    public async Task<IActionResult> CreateQemu(
+        Guid id, [FromBody] ProxmoxQemuCreateRequest request, CancellationToken cancellationToken)
+    {
+        // Gate 1: the server-wide master switch. Deterministic 403 before any
+        // host lookup or API call.
+        if (!await createSettings.IsEnabledAsync(cancellationToken))
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                error = "Create is disabled on this server. Enable it on the Settings page (Settings → Create guest).",
+            });
+
+        var connection = await LoadOwnedAsync(id, tracking: true, cancellationToken);
+        if (connection is null) return NotFound();
+
+        // Gate 2: the per-host opt-in.
+        if (!connection.AllowCreate)
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                error = "Create is not enabled for this host. Turn on 'Allow create' in the host settings.",
+            });
+
+        var name = string.IsNullOrWhiteSpace(request.Name) ? null : request.Name.Trim();
+        var spec = new ProxmoxQemuCreate(
+            request.VmId,
+            request.DiskStorage.Trim(),
+            request.DiskSizeGib,
+            name,
+            request.Cores,
+            request.Sockets,
+            request.MemoryMib,
+            string.IsNullOrWhiteSpace(request.Bridge) ? "vmbr0" : request.Bridge.Trim(),
+            request.VlanTag,
+            string.IsNullOrWhiteSpace(request.MacAddr) ? null : request.MacAddr.Trim(),
+            request.NetFirewall,
+            request.OsType.Trim(),
+            request.Bios.Trim(),
+            string.IsNullOrWhiteSpace(request.Machine) ? null : request.Machine.Trim(),
+            string.IsNullOrWhiteSpace(request.IsoVolid) ? null : request.IsoVolid.Trim(),
+            request.Agent,
+            request.Onboot,
+            request.Start,
+            string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+            string.IsNullOrWhiteSpace(request.Tags) ? null : request.Tags.Trim());
+
+        var problems = ProxmoxQemuCreateValidator.Validate(spec);
+        if (problems.Count > 0)
+            return BadRequest(new { error = string.Join(" ", problems) });
+
+        // Reject a vmid we already know about from the last scan — a clean 409
+        // before the API call, mirroring CreateLxc.
+        var vmidTaken = await db.ProxmoxGuests.AsNoTracking()
+            .AnyAsync(g => g.ProxmoxConnectionId == id && g.VmId == request.VmId, cancellationToken);
+        if (vmidTaken)
+            return Conflict(new { error = $"VMID {request.VmId} is already in use on this host." });
+
+        var profile = mapper.BuildProfile(connection);
+        try
+        {
+            await apiClient.CreateQemuAsync(profile, spec, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            db.ProxmoxCreateAudits.Add(BuildCreateAudit(connection, spec.VmId, name, spec.IsoVolid, success: false, ex.Message));
+            await db.SaveChangesAsync(cancellationToken);
+            logger.LogWarning(ex, "VM create failed: host {ConnectionId}, VM {VmId}.", connection.Id, spec.VmId);
+            return StatusCode(502, new { error = $"Proxmox rejected the create: {ex.Message}" });
+        }
+
+        db.ProxmoxCreateAudits.Add(BuildCreateAudit(connection, spec.VmId, name, spec.IsoVolid, success: true, error: null));
+        await db.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "VM created: user {UserId} → host {ConnectionId}, VM {VmId} ({Name}).",
+            UserId, connection.Id, spec.VmId, name);
+
+        // Re-scan so the brand-new VM appears as a card immediately (the scan's upsert
+        // adds the new guest), then return the refreshed host.
+        await scanService.CheckConnectionAsync(connection, cancellationToken);
+        return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
+    }
+
+    /// <summary>V8.4 — the installable ISO images across the node's iso-capable
+    /// storages, for the VM create form's Installation media dropdown.</summary>
+    [HttpGet("{id:guid}/qemu/isos")]
+    public Task<ActionResult<IReadOnlyList<ProxmoxIso>>> GetIsos(Guid id, CancellationToken cancellationToken) =>
+        ReadNodeAsync(id, (p, ct) => apiClient.ListIsoImagesAsync(p, ct), cancellationToken);
+
+    /// <summary>Builds one create-audit row with the host / guest details
+    /// denormalised at write time so the history survives a rename / delete. Reused by
+    /// both guest kinds (LXC + V8.4 VM) — <paramref name="name"/> is the hostname /
+    /// VM name and <paramref name="source"/> is the template / install-ISO volid.</summary>
     private ProxmoxCreateAuditEntity BuildCreateAudit(
-        ProxmoxConnectionEntity connection, ProxmoxLxcCreate spec, bool success, string? error)
+        ProxmoxConnectionEntity connection, int vmId, string? name, string? source, bool success, string? error)
     {
         var now = DateTime.UtcNow;
         return new ProxmoxCreateAuditEntity
@@ -996,9 +1099,9 @@ public class ProxmoxConnectionsController(
             ProxmoxConnectionId = connection.Id,
             ConnectionName = connection.Name,
             NodeName = connection.NodeName,
-            VmId = spec.VmId,
-            Hostname = spec.Hostname,
-            Template = spec.OsTemplate,
+            VmId = vmId,
+            Hostname = name,
+            Template = source,
             Success = success,
             Error = error,
             CreatedAtUtc = now,

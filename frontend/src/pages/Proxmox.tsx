@@ -44,6 +44,7 @@ import { StateBadge } from '@/components/shared/StateBadge'
 import { ProxmoxConnectionModal } from '@/components/ProxmoxConnectionModal'
 import { LxcModal, type LxcModalTab } from '@/components/proxmox/LxcModal'
 import { LxcCreateModal } from '@/components/proxmox/LxcCreateModal'
+import { QemuCreateModal } from '@/components/proxmox/QemuCreateModal'
 import { LxcRestoreModal } from '@/components/proxmox/LxcRestoreModal'
 import { LxcCloneModal } from '@/components/proxmox/LxcCloneModal'
 import { LxcPowerConfirmDialog } from '@/components/proxmox/LxcPowerConfirmDialog'
@@ -517,8 +518,9 @@ function ConnectionBlock({
   // V6.11 — host-wide bulk controls.
   const [confirmBulk, setConfirmBulk] = useState<'enable' | 'disable' | null>(null)
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false)
-  // V6.13.1 — New LXC.
+  // V6.13.1 — New LXC. V8.4 — New VM (QEMU).
   const [createOpen, setCreateOpen] = useState(false)
+  const [createVmOpen, setCreateVmOpen] = useState(false)
   // V8.1 — Restore LXC from a backup archive. V8.3 — Restore VM (separate modal kind).
   const [restoreOpen, setRestoreOpen] = useState(false)
   const [restoreVmOpen, setRestoreVmOpen] = useState(false)
@@ -590,6 +592,11 @@ function ConnectionBlock({
               {canCreate && (
                 <button className="cgroup-menu-item" onClick={() => { setConnMenuPos(null); setCreateOpen(true) }}>
                   <Plus className="h-3.5 w-3.5" /> New LXC
+                </button>
+              )}
+              {canCreate && (
+                <button className="cgroup-menu-item" onClick={() => { setConnMenuPos(null); setCreateVmOpen(true) }}>
+                  <Plus className="h-3.5 w-3.5" /> New VM
                 </button>
               )}
               {canRestore && (
@@ -733,6 +740,9 @@ function ConnectionBlock({
 
       {createOpen && (
         <LxcCreateModal connection={connection} onClose={() => setCreateOpen(false)} />
+      )}
+      {createVmOpen && (
+        <QemuCreateModal connection={connection} onClose={() => setCreateVmOpen(false)} />
       )}
 
       {restoreOpen && (

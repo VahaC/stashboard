@@ -175,6 +175,60 @@ public sealed record ProxmoxLxcCreate(
 /// as <see cref="ProxmoxLxcCreate.OsTemplate"/>.</summary>
 public sealed record ProxmoxTemplate(string Volid, string Storage, long? Size);
 
+/// <summary>V8.4 — one installable ISO image (an <c>iso</c> volume) from
+/// <c>GET /nodes/{node}/storage/{storage}/content?content=iso</c>, for the VM
+/// create form's Installation media dropdown. The VM analogue of
+/// <see cref="ProxmoxTemplate"/>: <see cref="Volid"/> is the value passed back as
+/// <see cref="ProxmoxQemuCreate.IsoVolid"/> and attached as the install CD-ROM
+/// (<c>ide2=&lt;volid&gt;,media=cdrom</c>).</summary>
+public sealed record ProxmoxIso(string Volid, string Storage, long? Size);
+
+/// <summary>
+/// V8.4 — the minimum-viable spec for <strong>creating</strong> a QEMU/KVM VM from
+/// scratch via <c>POST /nodes/{node}/qemu</c>. The VM analogue of
+/// <see cref="ProxmoxLxcCreate"/>, but a VM is hardware rather than a single
+/// <c>ostemplate</c>: a primary SCSI disk (<c>scsi0=&lt;storage&gt;:&lt;sizeGiB&gt;</c>
+/// with <c>scsihw=virtio-scsi-pci</c>), a virtio NIC (<c>net0=virtio,bridge=…</c>),
+/// the firmware (<see cref="Bios"/> SeaBIOS / OVMF) and chipset (<see cref="Machine"/>
+/// q35), the guest <see cref="OsType"/>, an optional install ISO mounted as a CD-ROM
+/// (<c>ide2=&lt;volid&gt;,media=cdrom</c>), and the agent / onboot / start toggles. The
+/// client builds the on-wire form shape; this stays decoupled from it.
+/// <para>Out of scope (add later via edit): extra disks / NICs, PCI/USB passthrough,
+/// cloud-init drives, and EFI/TPM state disks beyond the OVMF default (which the
+/// client provisions automatically when <see cref="Bios"/> is <c>ovmf</c>).</para>
+/// </summary>
+/// <param name="VmId">Numeric guest id (100..999999999).</param>
+/// <param name="DiskStorage">Storage the primary disk lands on, e.g. <c>local-lvm</c>.</param>
+/// <param name="DiskSizeGib">Primary disk size in GiB.</param>
+/// <param name="Name">VM name (<c>name=</c>); <c>null</c> ⇒ Proxmox derives one.</param>
+/// <param name="Bridge">NIC bridge (<c>net0</c>'s <c>bridge=</c>), e.g. <c>vmbr0</c>.</param>
+/// <param name="OsType">Proxmox OS type hint (<c>l26</c>, <c>win11</c>, …).</param>
+/// <param name="Bios"><c>seabios</c> or <c>ovmf</c> (UEFI).</param>
+/// <param name="Machine">Chipset (<c>q35</c> / <c>i440fx</c>); <c>null</c> ⇒ Proxmox default.</param>
+/// <param name="IsoVolid">Install-media volume id mounted as <c>ide2</c> CD-ROM;
+/// <c>null</c> ⇒ no CD-ROM attached.</param>
+public sealed record ProxmoxQemuCreate(
+    int VmId,
+    string DiskStorage,
+    int DiskSizeGib,
+    string? Name = null,
+    int? Cores = null,
+    int? Sockets = null,
+    long? MemoryMib = null,
+    string? Bridge = null,
+    int? VlanTag = null,
+    string? MacAddr = null,
+    bool NetFirewall = false,
+    string OsType = "l26",
+    string Bios = "seabios",
+    string? Machine = "q35",
+    string? IsoVolid = null,
+    bool Agent = false,
+    bool Onboot = false,
+    bool Start = false,
+    string? Description = null,
+    string? Tags = null);
+
 /// <summary>V8.1 — one restorable LXC backup archive (a <c>vzdump-lxc-*</c> volume)
 /// from <c>GET /nodes/{node}/storage/{storage}/content?content=backup</c>, for the
 /// restore form's archive dropdown. <see cref="Volid"/> is the value passed back as
@@ -535,6 +589,21 @@ public interface IProxmoxApiClient
     Task CreateLxcAsync(
         ProxmoxConnectionProfile profile, ProxmoxLxcCreate spec, CancellationToken cancellationToken = default);
 
+    /// <summary>V8.4 — creates a QEMU/KVM VM from scratch via
+    /// <c>POST /nodes/{node}/qemu</c>, then polls the returned task UPID to a
+    /// terminal state so the caller reports real success/failure (same posture as
+    /// <see cref="CreateLxcAsync"/>). The VM analogue of the LXC create, but it posts
+    /// hardware — <c>scsi0</c> / <c>scsihw</c> / <c>net0</c> / <c>ide2</c> / <c>bios</c>
+    /// / <c>machine</c> / <c>ostype</c> / boot order — rather than a single
+    /// <c>ostemplate</c>. When <see cref="ProxmoxQemuCreate.Bios"/> is <c>ovmf</c> an
+    /// EFI vars disk (<c>efidisk0</c>) is provisioned on the same storage as the system
+    /// disk (the OVMF default). A host rejection — the initial POST or a non-<c>OK</c>
+    /// task exit — surfaces the host's own message as an
+    /// <see cref="HttpRequestException"/> so the controller can relay it verbatim.
+    /// Needs the API token to hold <c>VM.Allocate</c> on the host.</summary>
+    Task CreateQemuAsync(
+        ProxmoxConnectionProfile profile, ProxmoxQemuCreate spec, CancellationToken cancellationToken = default);
+
     /// <summary>V8.3 — restores a QEMU/KVM VM from a vzdump backup archive via
     /// <c>POST /nodes/{node}/qemu</c> with <c>archive=&lt;backup volid&gt;</c>, then polls
     /// the returned task UPID to a terminal state (same posture as
@@ -571,6 +640,14 @@ public interface IProxmoxApiClient
     /// <c>vztmpl</c>, then <c>GET …/storage/{storage}/content?content=vztmpl</c>),
     /// for the create form's template dropdown.</summary>
     Task<IReadOnlyList<ProxmoxTemplate>> ListTemplatesAsync(
+        ProxmoxConnectionProfile profile, CancellationToken cancellationToken = default);
+
+    /// <summary>V8.4 — lists the installable ISO images across the node's
+    /// iso-capable storages (each storage whose content advertises <c>iso</c>, then
+    /// <c>GET …/storage/{storage}/content?content=iso</c>), for the VM create form's
+    /// Installation media dropdown. The VM analogue of
+    /// <see cref="ListTemplatesAsync"/>.</summary>
+    Task<IReadOnlyList<ProxmoxIso>> ListIsoImagesAsync(
         ProxmoxConnectionProfile profile, CancellationToken cancellationToken = default);
 
     /// <summary>V8.1 / V8.3 — lists the restorable backup archives across the node's

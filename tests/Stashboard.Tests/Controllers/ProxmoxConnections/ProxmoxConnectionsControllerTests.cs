@@ -1326,6 +1326,128 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         Assert.Contains("does not support container directories", row.Error);
     }
 
+    // ── V8.4 — create VM (QEMU) from scratch (double gate + validation + audit) ──
+
+    private static ProxmoxQemuCreateRequest CreateVmReq(int vmId = 200) =>
+        new(vmId, "local-lvm", 32, Name: "debian-vm", IsoVolid: "local:iso/debian-12.iso");
+
+    [Fact]
+    public async Task CreateQemu_GlobalDisabled_Returns403_WithoutTouchingHost()
+    {
+        _createSettingsMock.Setup(s => s.IsEnabledAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var conn = await SeedConnectionAsync(_userId, allowCreate: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CreateQemu(conn.Id, CreateVmReq(), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        _apiMock.Verify(a => a.CreateQemuAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxQemuCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(await _db.ProxmoxCreateAudits.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateQemu_PerHostDisabled_Returns403_WithoutTouchingHost()
+    {
+        _createSettingsMock.Setup(s => s.IsEnabledAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var conn = await SeedConnectionAsync(_userId, allowCreate: false);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CreateQemu(conn.Id, CreateVmReq(), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        _apiMock.Verify(a => a.CreateQemuAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxQemuCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateQemu_VmidAlreadyExists_Returns409_WithoutTouchingHost()
+    {
+        _createSettingsMock.Setup(s => s.IsEnabledAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var conn = await SeedConnectionAsync(_userId, allowCreate: true);
+        await SeedGuestAsync(conn.Id, vmId: 200, pendingUpdates: null, monitoringEnabled: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CreateQemu(conn.Id, CreateVmReq(vmId: 200), CancellationToken.None);
+
+        Assert.IsType<ConflictObjectResult>(result);
+        _apiMock.Verify(a => a.CreateQemuAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxQemuCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(await _db.ProxmoxCreateAudits.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateQemu_MalformedSpec_Returns400_WithoutTouchingHost()
+    {
+        _createSettingsMock.Setup(s => s.IsEnabledAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var conn = await SeedConnectionAsync(_userId, allowCreate: true);
+        var ctrl = BuildController();
+
+        // A vmid below the allowed range + an unknown bios are both rejected by the
+        // server validator before any API call.
+        var bad = new ProxmoxQemuCreateRequest(42, "local-lvm", 32, Bios: "coreboot");
+
+        var result = await ctrl.CreateQemu(conn.Id, bad, CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        _apiMock.Verify(a => a.CreateQemuAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxQemuCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateQemu_AllGatesPass_CreatesScansAndAudits()
+    {
+        _createSettingsMock.Setup(s => s.IsEnabledAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var conn = await SeedConnectionAsync(_userId, allowCreate: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CreateQemu(conn.Id, CreateVmReq(vmId: 200), CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        _apiMock.Verify(a => a.CreateQemuAsync(
+            It.IsAny<ProxmoxConnectionProfile>(),
+            It.Is<ProxmoxQemuCreate>(s => s.VmId == 200 && s.DiskStorage == "local-lvm" && s.IsoVolid == "local:iso/debian-12.iso"),
+            It.IsAny<CancellationToken>()), Times.Once);
+        // The host is re-scanned so the new card appears without waiting for the schedule.
+        _scanMock.Verify(s => s.CheckConnectionAsync(
+            It.Is<ProxmoxConnectionEntity>(c => c.Id == conn.Id), It.IsAny<CancellationToken>()), Times.Once);
+
+        // The create audit reuses ProxmoxCreateAudits (guest-kind-agnostic): the VM
+        // name lands in Hostname and the install ISO in Template.
+        var row = await _db.ProxmoxCreateAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal(200, row.VmId);
+        Assert.Equal("debian-vm", row.Hostname);
+        Assert.Equal("local:iso/debian-12.iso", row.Template);
+        Assert.True(row.Success);
+        Assert.Null(row.Error);
+        Assert.Equal(_userId, row.InitiatedByUserId);
+    }
+
+    [Fact]
+    public async Task CreateQemu_HostRejects_Returns502_AndAuditsFailure()
+    {
+        _createSettingsMock.Setup(s => s.IsEnabledAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var conn = await SeedConnectionAsync(_userId, allowCreate: true);
+        _apiMock.Setup(a => a.CreateQemuAsync(
+                It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxQemuCreate>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Proxmox returned 500: storage 'local-lvm' does not support vm images"));
+        var ctrl = BuildController();
+
+        var result = await ctrl.CreateQemu(conn.Id, CreateVmReq(vmId: 200), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(502, obj.StatusCode);
+        // No scan on a failed create.
+        _scanMock.Verify(s => s.CheckConnectionAsync(
+            It.IsAny<ProxmoxConnectionEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        var row = await _db.ProxmoxCreateAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.False(row.Success);
+        Assert.Contains("does not support vm images", row.Error);
+    }
+
     // ── V8.1 — restore LXC from backup (double gate + overwrite guard + audit) ──
 
     private static ProxmoxLxcRestoreRequest RestoreReq(int vmId = 150, bool force = false) =>

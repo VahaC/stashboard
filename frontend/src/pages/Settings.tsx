@@ -13,7 +13,7 @@ const settingsNavItems = [
   { to: '/settings/image-cleanup', label: 'Image cleanup', group: 'Docker', icon: HardDrive },
   { to: '/settings/proxmox-console', label: 'LXC console', group: 'Proxmox', icon: Server },
   { to: '/settings/proxmox-updates', label: 'Proxmox updates', group: 'Proxmox', icon: RefreshCw },
-  { to: '/settings/proxmox-create', label: 'Create LXC', group: 'Proxmox', icon: Plus },
+  { to: '/settings/proxmox-create', label: 'Create guest', group: 'Proxmox', icon: Plus },
   { to: '/settings/proxmox-clone', label: 'Clone/snapshot', group: 'Proxmox', icon: Copy },
   { to: '/settings/proxmox-restore', label: 'Restore guest', group: 'Proxmox', icon: ArchiveRestore },
   { to: '/settings/proxmox-destroy', label: 'Destroy guest', group: 'Proxmox', icon: Trash2 },

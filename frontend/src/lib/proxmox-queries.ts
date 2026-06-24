@@ -19,6 +19,8 @@ import type {
   ProxmoxLxcStatus,
   ProxmoxNextId,
   ProxmoxTemplate,
+  ProxmoxIso,
+  ProxmoxQemuCreate,
   ProxmoxBackup,
   ProxmoxLxcRestore,
   ProxmoxNodeAlert,
@@ -82,6 +84,8 @@ export const proxmoxQk = {
   // V6.13.1 — create form.
   nextId: (id: string) => ['proxmox', 'connections', id, 'lxc', 'nextid'] as const,
   templates: (id: string) => ['proxmox', 'connections', id, 'lxc', 'templates'] as const,
+  // V8.4 — VM create form's Installation media dropdown.
+  isos: (id: string) => ['proxmox', 'connections', id, 'qemu', 'isos'] as const,
   // V8.1 — restore form's backup-archive dropdown. V8.3 — keyed by guest kind
   // (lxc / qemu) so the LXC and VM restore forms never share an archive list.
   backups: (id: string, kind: ProxmoxGuestKind = 'lxc') =>
@@ -472,6 +476,32 @@ export const useCreateProxmoxLxc = (connectionId: string) => {
   return useMutation({
     mutationFn: async (spec: ProxmoxLxcCreate) =>
       (await api.post<ProxmoxConnection>(`/api/proxmox/connections/${connectionId}/lxc`, spec)).data,
+    onSuccess: (updated) => {
+      qc.setQueryData<ProxmoxConnection[]>(proxmoxQk.connections, (prev) =>
+        prev ? prev.map((c) => (c.id === updated.id ? updated : c)) : prev)
+    },
+  })
+}
+
+/** V8.4 — installable ISO images across the node's iso-capable storages, for the VM
+ *  create form's Installation media dropdown. */
+export const useProxmoxIsos = (connectionId: string, enabled = true) =>
+  useQuery({
+    queryKey: proxmoxQk.isos(connectionId),
+    queryFn: async (): Promise<ProxmoxIso[]> =>
+      (await api.get<ProxmoxIso[]>(`/api/proxmox/connections/${connectionId}/qemu/isos`)).data,
+    enabled,
+    staleTime: 30_000,
+  })
+
+/** V8.4 — create a new QEMU/KVM VM from scratch. Gated server-side (the same global
+ *  switch + per-host opt-in as LXC create). On success the host is re-scanned
+ *  server-side and the refreshed host returned, so the new card appears immediately. */
+export const useCreateProxmoxQemu = (connectionId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (spec: ProxmoxQemuCreate) =>
+      (await api.post<ProxmoxConnection>(`/api/proxmox/connections/${connectionId}/qemu`, spec)).data,
     onSuccess: (updated) => {
       qc.setQueryData<ProxmoxConnection[]>(proxmoxQk.connections, (prev) =>
         prev ? prev.map((c) => (c.id === updated.id ? updated : c)) : prev)
