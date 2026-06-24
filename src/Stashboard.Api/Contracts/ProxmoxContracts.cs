@@ -34,6 +34,8 @@ public sealed record ProxmoxConnectionResponse(
     bool AllowDestroy,
     /// <summary>V6.13.1 — per-host opt-in to creating an LXC.</summary>
     bool AllowCreate,
+    /// <summary>V8.0 — per-host opt-in to cloning a guest + snapshots.</summary>
+    bool AllowClone,
     bool Enabled,
     bool UpdateNotificationsEnabled,
     bool TelegramNotificationsEnabled,
@@ -181,6 +183,62 @@ public sealed record ProxmoxLxcCreateRequest(
     [MaxLength(255)] string? SearchDomain = null,
     bool AddToHa = false);
 
+/// <summary>
+/// V8.0 — app-wide clone/snapshot master switch, managed from the Settings page.
+/// This is the global gate; a per-host opt-in (<c>AllowClone</c>) is also required,
+/// and a snapshot rollback / delete additionally needs a UI double confirmation.
+/// </summary>
+public sealed record ProxmoxCloneSettingsResponse(bool Enabled);
+
+/// <summary>V8.0 — update payload for the clone/snapshot master switch.</summary>
+public sealed record UpdateProxmoxCloneSettingsRequest(bool Enabled);
+
+/// <summary>
+/// V8.0 — clone one LXC from an existing guest (<c>POST …/lxc/{vmid}/clone</c>).
+/// Validation mirrors create (vmid range + not already on the host); Proxmox stays
+/// authoritative for everything that needs the host (storage existence, whether a
+/// linked clone is possible, snapshot existence).
+/// </summary>
+public sealed record ProxmoxLxcCloneRequest(
+    [Range(100, 999_999_999)] int NewVmId,
+    [MaxLength(255)] string? Hostname = null,
+    [MaxLength(100)] string? TargetStorage = null,
+    bool Full = true,
+    [MaxLength(40)] string? SnapName = null,
+    [MaxLength(8192)] string? Description = null);
+
+/// <summary>V8.0 — one LXC snapshot for the modal's Snapshots tab. <c>SnapTime</c>
+/// is a unix second; <c>Vmstate</c> is <c>true</c> when the snapshot captured the
+/// running memory state.</summary>
+public sealed record ProxmoxSnapshotResponse(
+    string Name,
+    string? Description,
+    long? SnapTime,
+    string? Parent,
+    bool Vmstate);
+
+/// <summary>V8.0 — take a snapshot (<c>POST …/lxc/{vmid}/snapshot</c>). An LXC
+/// snapshot has no running-memory option (unlike a QEMU VM snapshot).</summary>
+public sealed record ProxmoxSnapshotCreateRequest(
+    [Required, MaxLength(40)] string Name,
+    [MaxLength(8192)] string? Description = null);
+
+/// <summary>V8.0 — one clone/snapshot audit row for the modal's Audit tab.
+/// <c>Action</c> is the lower-camel enum name (<c>clone</c> / <c>snapshotCreate</c>
+/// / <c>snapshotRollback</c> / <c>snapshotDelete</c>, serialized by the global enum
+/// converter).</summary>
+public sealed record ProxmoxCloneAuditResponse(
+    Guid Id,
+    Guid? ProxmoxConnectionId,
+    string? ConnectionName,
+    string? NodeName,
+    int VmId,
+    ProxmoxCloneAction Action,
+    string? Target,
+    bool Success,
+    string? Error,
+    DateTime CreatedAtUtc);
+
 /// <summary>V6.7.1 — the exact remote command a one-click "Update now" will run,
 /// surfaced so the UI can show + let the operator copy it before confirming
 /// (the Proxmox analogue of the Docker "Update command" panel).</summary>
@@ -208,6 +266,7 @@ public sealed record ProxmoxConnectionUpsertRequest(
     bool AllowUpdates = false,
     bool AllowDestroy = false,
     bool AllowCreate = false,
+    bool AllowClone = false,
     bool Enabled = true,
     bool UpdateNotificationsEnabled = true,
     bool TelegramNotificationsEnabled = false,

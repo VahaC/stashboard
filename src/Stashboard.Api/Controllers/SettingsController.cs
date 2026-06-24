@@ -30,6 +30,7 @@ public class SettingsController(
     IProxmoxUpdateApplySettingsService proxmoxUpdates,
     IProxmoxDestroySettingsService proxmoxDestroy,
     IProxmoxCreateSettingsService proxmoxCreate,
+    IProxmoxCloneSettingsService proxmoxClone,
     IImagePruneSettingsService imagePrune,
     IHealthCheckSettingsService healthCheck) : ControllerBase
 {
@@ -108,6 +109,19 @@ public class SettingsController(
         [FromBody] UpdateProxmoxCreateSettingsRequest request, CancellationToken cancellationToken)
     {
         await proxmoxCreate.UpdateAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V8.0 — the clone/snapshot master switch (the global gate for V8.0).</summary>
+    [HttpGet("proxmox-clone")]
+    public async Task<ActionResult<ProxmoxCloneSettingsResponse>> GetProxmoxClone(CancellationToken cancellationToken)
+        => Ok(await proxmoxClone.GetAsync(cancellationToken));
+
+    [HttpPut("proxmox-clone")]
+    public async Task<IActionResult> UpdateProxmoxClone(
+        [FromBody] UpdateProxmoxCloneSettingsRequest request, CancellationToken cancellationToken)
+    {
+        await proxmoxClone.UpdateAsync(request, cancellationToken);
         return NoContent();
     }
 

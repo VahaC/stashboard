@@ -82,6 +82,15 @@
   margin-top: 0.25rem;
 }
 
+.app-nav-link-button {
+  width: 100%;
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
 .app-nav-link:hover {
   background: var(--accent);
   color: var(--accent-foreground);

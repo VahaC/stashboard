@@ -513,6 +513,92 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
         return result;
     }
 
+    public async Task CloneLxcAsync(
+        ProxmoxConnectionProfile profile, int sourceVmId, ProxmoxLxcClone spec, CancellationToken cancellationToken = default)
+    {
+        var form = new List<KeyValuePair<string, string>>
+        {
+            new("newid", spec.NewVmId.ToString()),
+            new("full", spec.Full ? "1" : "0"),
+        };
+        if (!string.IsNullOrWhiteSpace(spec.Hostname)) form.Add(new("hostname", spec.Hostname.Trim()));
+        // The target storage only applies to a full clone (a linked clone references
+        // the source's volumes), but Proxmox ignores it harmlessly for linked, so we
+        // send it whenever set rather than second-guessing the host.
+        if (!string.IsNullOrWhiteSpace(spec.TargetStorage)) form.Add(new("storage", spec.TargetStorage.Trim()));
+        if (!string.IsNullOrWhiteSpace(spec.SnapName)) form.Add(new("snapname", spec.SnapName.Trim()));
+        if (!string.IsNullOrWhiteSpace(spec.Description)) form.Add(new("description", spec.Description.Trim()));
+
+        var upid = await PostFormReadUpidAsync(
+            profile, $"nodes/{profile.NodeName}/lxc/{sourceVmId}/clone", form, cancellationToken);
+        if (!string.IsNullOrEmpty(upid))
+            await PollTaskAsync(profile, upid, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ProxmoxSnapshot>> ListSnapshotsAsync(
+        ProxmoxConnectionProfile profile, int vmId, CancellationToken cancellationToken = default)
+    {
+        using var doc = await GetJsonAsync(
+            profile, $"nodes/{profile.NodeName}/lxc/{vmId}/snapshot", cancellationToken);
+        if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            return [];
+
+        var result = new List<ProxmoxSnapshot>();
+        foreach (var item in data.EnumerateArray())
+        {
+            var name = item.TryGetProperty("name", out var n) ? ReadString(n) : null;
+            // The synthetic "current" pseudo-entry is the live state, not a real
+            // snapshot — drop it so the list is purely restorable points.
+            if (string.IsNullOrEmpty(name) || string.Equals(name, "current", StringComparison.OrdinalIgnoreCase))
+                continue;
+            result.Add(new ProxmoxSnapshot(
+                name,
+                item.TryGetProperty("description", out var d) ? ReadString(d) : null,
+                ReadLong(item, "snaptime"),
+                item.TryGetProperty("parent", out var p) ? ReadString(p) : null,
+                ReadBool(item, "vmstate") ?? false));
+        }
+        // Newest first (a null snaptime — rare — sorts last).
+        result.Sort((a, b) => (b.SnapTime ?? long.MinValue).CompareTo(a.SnapTime ?? long.MinValue));
+        return result;
+    }
+
+    public async Task CreateSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, string? description,
+        CancellationToken cancellationToken = default)
+    {
+        // Only snapname (+ optional description) — the LXC snapshot endpoint has no
+        // vmstate option (that's a QEMU-only feature; its schema rejects vmstate).
+        var form = new List<KeyValuePair<string, string>> { new("snapname", name) };
+        if (!string.IsNullOrWhiteSpace(description)) form.Add(new("description", description.Trim()));
+
+        var upid = await PostFormReadUpidAsync(
+            profile, $"nodes/{profile.NodeName}/lxc/{vmId}/snapshot", form, cancellationToken);
+        if (!string.IsNullOrEmpty(upid))
+            await PollTaskAsync(profile, upid, cancellationToken);
+    }
+
+    public async Task RollbackSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default)
+    {
+        var upid = await PostFormReadUpidAsync(
+            profile, $"nodes/{profile.NodeName}/lxc/{vmId}/snapshot/{Uri.EscapeDataString(name)}/rollback",
+            [], cancellationToken);
+        if (!string.IsNullOrEmpty(upid))
+            await PollTaskAsync(profile, upid, cancellationToken);
+    }
+
+    public async Task DeleteSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default)
+    {
+        // Snapshot delete is asynchronous on Proxmox — the DELETE returns a task
+        // UPID, so poll it to a terminal state like the other write actions.
+        var upid = await DeleteReadUpidAsync(
+            profile, $"nodes/{profile.NodeName}/lxc/{vmId}/snapshot/{Uri.EscapeDataString(name)}", cancellationToken);
+        if (!string.IsNullOrEmpty(upid))
+            await PollTaskAsync(profile, upid, cancellationToken);
+    }
+
     /// <summary>Reads one task's status (<c>GET …/tasks/{upid}/status</c>):
     /// <c>(running, exitStatus)</c>. A finished task reports <c>status ==
     /// "stopped"</c> with an <c>exitstatus</c> string (<c>OK</c> on success).</summary>
@@ -1040,6 +1126,34 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
             var detail = string.IsNullOrWhiteSpace(body) ? response.ReasonPhrase : body.Trim();
             throw new HttpRequestException($"Proxmox returned {(int)response.StatusCode}: {detail}");
         }
+    }
+
+    /// <summary>V8.0 — DELETEs a Proxmox resource that completes asynchronously
+    /// (e.g. a snapshot) and returns the task UPID from the response's <c>data</c>
+    /// field so the caller can poll it. Like <see cref="DeleteAsync"/>, a non-success
+    /// status reads the host error body and throws an
+    /// <see cref="HttpRequestException"/> carrying it.</summary>
+    private async Task<string?> DeleteReadUpidAsync(
+        ProxmoxConnectionProfile profile, string path, CancellationToken cancellationToken)
+    {
+        var client = httpClientFactory.CreateClient(
+            profile.SkipTlsVerify ? InsecureHttpClientName : HttpClientName);
+
+        var baseUrl = profile.ApiBaseUrl.TrimEnd('/');
+        var request = new HttpRequestMessage(HttpMethod.Delete, $"{baseUrl}/api2/json/{path}");
+        request.Headers.Authorization = BuildAuthHeader(profile);
+
+        using var response = await client.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            var detail = string.IsNullOrWhiteSpace(body) ? response.ReasonPhrase : body.Trim();
+            throw new HttpRequestException($"Proxmox returned {(int)response.StatusCode}: {detail}");
+        }
+
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+        return doc.RootElement.TryGetProperty("data", out var data) ? ReadString(data) : null;
     }
 
     /// <summary>PUTs a form-url-encoded body (the Proxmox config-write shape).

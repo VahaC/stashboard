@@ -27,7 +27,8 @@ public class FeaturesController(
     IProxmoxConsoleSettingsService proxmoxConsoleSettings,
     IProxmoxUpdateApplySettingsService proxmoxUpdatesSettings,
     IProxmoxDestroySettingsService proxmoxDestroySettings,
-    IProxmoxCreateSettingsService proxmoxCreateSettings) : ControllerBase
+    IProxmoxCreateSettingsService proxmoxCreateSettings,
+    IProxmoxCloneSettingsService proxmoxCloneSettings) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<StashboardFeaturesResponse>> Get(CancellationToken cancellationToken) =>
@@ -45,5 +46,7 @@ public class FeaturesController(
             // V6.13 — destroy-LXC master switch, same DB-backed pattern.
             await proxmoxDestroySettings.IsEnabledAsync(cancellationToken),
             // V6.13.1 — create-LXC master switch, same DB-backed pattern.
-            await proxmoxCreateSettings.IsEnabledAsync(cancellationToken)));
+            await proxmoxCreateSettings.IsEnabledAsync(cancellationToken),
+            // V8.0 — clone/snapshot master switch, same DB-backed pattern.
+            await proxmoxCloneSettings.IsEnabledAsync(cancellationToken)));
 }

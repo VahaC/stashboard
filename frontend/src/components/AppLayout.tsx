@@ -5,8 +5,10 @@ import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { useAuthStore } from '@/lib/auth-store'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useWhatsNew } from '@/lib/use-whats-new'
+import { WhatsNewModal } from '@/components/WhatsNewModal'
 import logo from '@/assets/logo.svg'
-import { LayoutGrid, FolderTree, LogOut, Menu, X, Container, Settings, ScrollText, Server, BookOpen } from 'lucide-react'
+import { LayoutGrid, FolderTree, LogOut, Menu, X, Container, Settings, ScrollText, Server, BookOpen, Sparkles } from 'lucide-react'
 import '@/styles/app-layout.css'
 
 const mainNavItems = [
@@ -21,6 +23,7 @@ export function AppLayout() {
   const nav = useNavigate()
   const { user, refreshToken, clear } = useAuthStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const whatsNew = useWhatsNew()
 
   const logout = async () => {
     try {
@@ -96,6 +99,13 @@ export function AppLayout() {
           >
             <BookOpen className="h-3.5 w-3.5" /> Setup guides
           </NavLink>
+          <button
+            type="button"
+            className="app-nav-link app-nav-link-button"
+            onClick={() => { whatsNew.setOpen(true); closeSidebar() }}
+          >
+            <Sparkles className="h-3.5 w-3.5" /> What's new
+          </button>
         </div>
         <div className="app-sidebar-footer">
           <div className="app-theme-switcher-wrap">
@@ -122,6 +132,8 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      <WhatsNewModal open={whatsNew.open} onOpenChange={whatsNew.setOpen} />
     </div>
   )
 }

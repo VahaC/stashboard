@@ -10,6 +10,8 @@ export default defineConfig({
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },
+  // Provided by vite.config.ts in app builds; stub it for tests.
+  define: { __APP_VERSION__: JSON.stringify('9.9.9') },
   test: {
     environment: 'jsdom',
     globals: true,

@@ -35,6 +35,7 @@ public class ProxmoxConnectionsController(
     IProxmoxUpdateApplySettingsService updateSettings,
     IProxmoxDestroySettingsService destroySettings,
     IProxmoxCreateSettingsService createSettings,
+    IProxmoxCloneSettingsService cloneSettings,
     IProxmoxNodeAlertService alertService,
     IDockerWebhookTokenGenerator webhookTokenGenerator,
     IContainerIconResolver iconResolver,
@@ -1002,6 +1003,245 @@ public class ProxmoxConnectionsController(
             CreatedAtUtc = now,
             CreatedUtc = now,
         };
+    }
+
+    // ── V8.0 — clone & snapshot ──────────────────────────────────────────────
+
+    /// <summary>
+    /// V8.0 — <strong>clone</strong> an existing LXC into a new one
+    /// (<c>POST …/lxc/{vmid}/clone</c>). Double-gated like create: the global
+    /// <c>Stashboard:AllowProxmoxClone</c> switch and the per-host
+    /// <c>AllowClone</c> opt-in (both deterministic 403s before any API call). The
+    /// destination vmid is validated (range) and rejected (409) when it's already in
+    /// the host's last scan, mirroring create. On success the host is re-scanned so
+    /// the cloned guest's card appears without waiting for the schedule, and the
+    /// refreshed host is returned. Every attempt that reaches the host is audited —
+    /// success or failure. Needs the API token to hold <c>VM.Allocate</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/lxc/{vmId:int}/clone")]
+    public async Task<IActionResult> CloneLxc(
+        Guid id, int vmId, [FromBody] ProxmoxLxcCloneRequest request, CancellationToken cancellationToken)
+    {
+        var (error, connection) = await LoadCloneAllowedAsync(id, tracking: true, cancellationToken);
+        if (error is not null) return error;
+
+        var spec = new ProxmoxLxcClone(
+            request.NewVmId,
+            string.IsNullOrWhiteSpace(request.Hostname) ? null : request.Hostname.Trim(),
+            string.IsNullOrWhiteSpace(request.TargetStorage) ? null : request.TargetStorage.Trim(),
+            request.Full,
+            string.IsNullOrWhiteSpace(request.SnapName) ? null : request.SnapName.Trim(),
+            string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim());
+
+        var problems = ProxmoxLxcCloneValidator.Validate(spec);
+        if (problems.Count > 0)
+            return BadRequest(new { error = string.Join(" ", problems) });
+
+        // Reject a destination vmid we already know about from the last scan — a
+        // clean 409 before the API call (Proxmox also refuses it; defense in depth +
+        // a friendlier message), mirroring create.
+        var vmidTaken = await db.ProxmoxGuests.AsNoTracking()
+            .AnyAsync(g => g.ProxmoxConnectionId == id && g.VmId == request.NewVmId, cancellationToken);
+        if (vmidTaken)
+            return Conflict(new { error = $"VMID {request.NewVmId} is already in use on this host." });
+
+        var target = spec.Hostname is { Length: > 0 } h ? $"CT {request.NewVmId} ({h})" : $"CT {request.NewVmId}";
+        var profile = mapper.BuildProfile(connection!);
+        try
+        {
+            await apiClient.CloneLxcAsync(profile, vmId, spec, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            await WriteCloneAuditAsync(connection!, vmId, ProxmoxCloneAction.Clone, target, success: false, ex.Message, cancellationToken);
+            logger.LogWarning(ex, "LXC clone failed: host {ConnectionId}, source CT {VmId} → CT {NewVmId}.",
+                connection!.Id, vmId, request.NewVmId);
+            return StatusCode(502, new { error = $"Proxmox rejected the clone: {ex.Message}" });
+        }
+
+        await WriteCloneAuditAsync(connection!, vmId, ProxmoxCloneAction.Clone, target, success: true, error: null, cancellationToken);
+        logger.LogInformation(
+            "LXC cloned: user {UserId} → host {ConnectionId}, source CT {VmId} → CT {NewVmId}.",
+            UserId, connection!.Id, vmId, request.NewVmId);
+
+        // Re-scan so the brand-new clone appears as a card immediately, then return
+        // the refreshed host (mirrors create).
+        await scanService.CheckConnectionAsync(connection!, cancellationToken);
+        return Ok(await ToResponseAsync(connection!, await LoadGuestsAsync(id, cancellationToken), cancellationToken));
+    }
+
+    /// <summary>V8.0 — lists an LXC's snapshots
+    /// (<c>GET …/lxc/{vmid}/snapshot</c>) for the modal's Snapshots tab. A read, so
+    /// it only needs host ownership; the write actions below carry the clone gate.</summary>
+    [HttpGet("{id:guid}/lxc/{vmId:int}/snapshots")]
+    public Task<ActionResult<IReadOnlyList<ProxmoxSnapshotResponse>>> ListSnapshots(
+        Guid id, int vmId, CancellationToken cancellationToken) =>
+        ReadNodeAsync(id, async (p, ct) =>
+            (IReadOnlyList<ProxmoxSnapshotResponse>)(await apiClient.ListSnapshotsAsync(p, vmId, ct))
+                .Select(s => new ProxmoxSnapshotResponse(s.Name, s.Description, s.SnapTime, s.Parent, s.Vmstate))
+                .ToList(),
+            cancellationToken);
+
+    /// <summary>V8.0 — takes a snapshot of an LXC
+    /// (<c>POST …/lxc/{vmid}/snapshot</c>). Double-gated + audited like clone. The
+    /// snapshot name is validated locally; Proxmox stays authoritative (e.g. a
+    /// duplicate name is its 400, surfaced verbatim).</summary>
+    [HttpPost("{id:guid}/lxc/{vmId:int}/snapshots")]
+    public async Task<IActionResult> CreateSnapshot(
+        Guid id, int vmId, [FromBody] ProxmoxSnapshotCreateRequest request, CancellationToken cancellationToken)
+    {
+        var (error, connection) = await LoadCloneAllowedAsync(id, tracking: false, cancellationToken);
+        if (error is not null) return error;
+
+        var name = request.Name.Trim();
+        if (!ProxmoxLxcCloneValidator.IsValidSnapshotName(name))
+            return BadRequest(new { error = "Snapshot name must start with a letter and use only letters, digits, '-' or '_'." });
+
+        var description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
+        try
+        {
+            await apiClient.CreateSnapshotAsync(mapper.BuildProfile(connection!), vmId, name, description, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            await WriteCloneAuditAsync(connection!, vmId, ProxmoxCloneAction.SnapshotCreate, name, success: false, ex.Message, cancellationToken);
+            logger.LogWarning(ex, "LXC snapshot create failed: host {ConnectionId}, CT {VmId}, snap {Snap}.", connection!.Id, vmId, name);
+            return StatusCode(502, new { error = $"Proxmox rejected the snapshot: {ex.Message}" });
+        }
+
+        await WriteCloneAuditAsync(connection!, vmId, ProxmoxCloneAction.SnapshotCreate, name, success: true, error: null, cancellationToken);
+        logger.LogInformation("LXC snapshot taken: user {UserId} → host {ConnectionId}, CT {VmId}, snap {Snap}.", UserId, connection!.Id, vmId, name);
+        return NoContent();
+    }
+
+    /// <summary>V8.0 — rolls an LXC back to a snapshot
+    /// (<c>POST …/lxc/{vmid}/snapshot/{name}/rollback</c>). Double-gated + audited;
+    /// the UI double-confirms because this <em>discards</em> any state newer than
+    /// the snapshot.</summary>
+    [HttpPost("{id:guid}/lxc/{vmId:int}/snapshots/{name}/rollback")]
+    public async Task<IActionResult> RollbackSnapshot(
+        Guid id, int vmId, string name, CancellationToken cancellationToken)
+    {
+        var (error, connection) = await LoadCloneAllowedAsync(id, tracking: false, cancellationToken);
+        if (error is not null) return error;
+
+        if (!ProxmoxLxcCloneValidator.IsValidSnapshotName(name))
+            return BadRequest(new { error = "Invalid snapshot name." });
+
+        try
+        {
+            await apiClient.RollbackSnapshotAsync(mapper.BuildProfile(connection!), vmId, name, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            await WriteCloneAuditAsync(connection!, vmId, ProxmoxCloneAction.SnapshotRollback, name, success: false, ex.Message, cancellationToken);
+            logger.LogWarning(ex, "LXC snapshot rollback failed: host {ConnectionId}, CT {VmId}, snap {Snap}.", connection!.Id, vmId, name);
+            return StatusCode(502, new { error = $"Proxmox rejected the rollback: {ex.Message}" });
+        }
+
+        await WriteCloneAuditAsync(connection!, vmId, ProxmoxCloneAction.SnapshotRollback, name, success: true, error: null, cancellationToken);
+        logger.LogInformation("LXC rolled back: user {UserId} → host {ConnectionId}, CT {VmId}, snap {Snap}.", UserId, connection!.Id, vmId, name);
+        return NoContent();
+    }
+
+    /// <summary>V8.0 — deletes one LXC snapshot
+    /// (<c>DELETE …/lxc/{vmid}/snapshot/{name}</c>). Double-gated + audited; the UI
+    /// double-confirms.</summary>
+    [HttpDelete("{id:guid}/lxc/{vmId:int}/snapshots/{name}")]
+    public async Task<IActionResult> DeleteSnapshot(
+        Guid id, int vmId, string name, CancellationToken cancellationToken)
+    {
+        var (error, connection) = await LoadCloneAllowedAsync(id, tracking: false, cancellationToken);
+        if (error is not null) return error;
+
+        if (!ProxmoxLxcCloneValidator.IsValidSnapshotName(name))
+            return BadRequest(new { error = "Invalid snapshot name." });
+
+        try
+        {
+            await apiClient.DeleteSnapshotAsync(mapper.BuildProfile(connection!), vmId, name, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            await WriteCloneAuditAsync(connection!, vmId, ProxmoxCloneAction.SnapshotDelete, name, success: false, ex.Message, cancellationToken);
+            logger.LogWarning(ex, "LXC snapshot delete failed: host {ConnectionId}, CT {VmId}, snap {Snap}.", connection!.Id, vmId, name);
+            return StatusCode(502, new { error = $"Proxmox rejected the snapshot delete: {ex.Message}" });
+        }
+
+        await WriteCloneAuditAsync(connection!, vmId, ProxmoxCloneAction.SnapshotDelete, name, success: true, error: null, cancellationToken);
+        logger.LogInformation("LXC snapshot deleted: user {UserId} → host {ConnectionId}, CT {VmId}, snap {Snap}.", UserId, connection!.Id, vmId, name);
+        return NoContent();
+    }
+
+    /// <summary>V8.0 — the clone/snapshot audit rows for one guest, newest first,
+    /// for the modal's Audit tab. A read, so it only needs host ownership; the
+    /// history outlives a later gate-off so it is intentionally ungated.</summary>
+    [HttpGet("{id:guid}/lxc/{vmId:int}/clone-audit")]
+    public async Task<ActionResult<IReadOnlyList<ProxmoxCloneAuditResponse>>> GetCloneAudit(
+        Guid id, int vmId, CancellationToken cancellationToken)
+    {
+        var connection = await LoadOwnedAsync(id, tracking: false, cancellationToken);
+        if (connection is null) return NotFound();
+
+        var rows = await db.ProxmoxCloneAudits.AsNoTracking()
+            .Where(a => a.ProxmoxConnectionId == id && a.VmId == vmId)
+            .OrderByDescending(a => a.CreatedAtUtc)
+            .Take(100)
+            .ToListAsync(cancellationToken);
+
+        return Ok(rows.Select(a => new ProxmoxCloneAuditResponse(
+            a.Id, a.ProxmoxConnectionId, a.ConnectionName, a.NodeName, a.VmId,
+            a.Action, a.Target, a.Success, a.Error, a.CreatedAtUtc)).ToList());
+    }
+
+    /// <summary>Shared two-gate check for the clone/snapshot write actions: the
+    /// global <c>AllowProxmoxClone</c> switch (deterministic 403 before any host
+    /// lookup) and the per-host <c>AllowClone</c> opt-in (403). Returns the loaded
+    /// connection on success.</summary>
+    private async Task<(IActionResult? Error, ProxmoxConnectionEntity? Connection)> LoadCloneAllowedAsync(
+        Guid id, bool tracking, CancellationToken cancellationToken)
+    {
+        if (!await cloneSettings.IsEnabledAsync(cancellationToken))
+            return (StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                error = "Clone/snapshot is disabled on this server. Enable it on the Settings page (Settings → Clone/snapshot LXC).",
+            }), null);
+
+        var connection = await LoadOwnedAsync(id, tracking, cancellationToken);
+        if (connection is null) return (NotFound(), null);
+
+        if (!connection.AllowClone)
+            return (StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                error = "Clone/snapshot is not enabled for this host. Turn on 'Allow clone/snapshot' in the host settings.",
+            }), null);
+
+        return (null, connection);
+    }
+
+    /// <summary>Writes one clone/snapshot audit row (host details denormalised at
+    /// write time so the history survives a rename / delete) and saves it.</summary>
+    private async Task WriteCloneAuditAsync(
+        ProxmoxConnectionEntity connection, int vmId, ProxmoxCloneAction action, string? target,
+        bool success, string? error, CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        db.ProxmoxCloneAudits.Add(new ProxmoxCloneAuditEntity
+        {
+            Id = Guid.NewGuid(),
+            InitiatedByUserId = UserId,
+            ProxmoxConnectionId = connection.Id,
+            ConnectionName = connection.Name,
+            NodeName = connection.NodeName,
+            VmId = vmId,
+            Action = action,
+            Target = target,
+            Success = success,
+            Error = error,
+            CreatedAtUtc = now,
+            CreatedUtc = now,
+        });
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>V6.5 / V6.9 — edit one LXC's config: the scalar subset

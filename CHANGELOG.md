@@ -5,6 +5,39 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [8.0.0] — 2026-06-19
+
+### Added
+- **Clone an LXC (V8.0).** A guest's **Lifecycle** action row gains a **Clone**
+  button that opens an `LxcCloneModal` reusing the `LxcCreateModal` styling: a new
+  `vmid` (defaulted from `/cluster/nextid`), hostname, optional target storage,
+  **full vs linked** clone, and — when the source has snapshots — an optional
+  **source snapshot**. It calls a new `IProxmoxApiClient.CloneLxcAsync`
+  (`POST /nodes/{node}/lxc/{vmid}/clone`) and polls the returned task UPID via the
+  existing `PollTaskAsync`, so success/failure is real rather than "accepted".
+  Validation mirrors create (vmid range + not already on the host → a clean 409);
+  on success the host is re-scanned so the cloned card appears immediately.
+- **Snapshots tab on the LXC modal (V8.0).** A new **Snapshots** tab lists an LXC's
+  snapshots (`GET …/snapshot`, the synthetic `current` pseudo-entry filtered out,
+  newest first) and can **take** one (`POST …/snapshot`, name + optional
+  description — an LXC snapshot has no running-memory option), **roll back** to one
+  (`POST …/snapshot/{name}/rollback` — double-confirmed, it discards newer state),
+  and **delete** one (`DELETE …/snapshot/{name}`). Each is a task UPID polled to a
+  terminal state. The two destructive actions go through a `SnapshotConfirmDialog`
+  mirroring the destroy double-confirm.
+- **Gating, audit + Audit tab (V8.0).** Clone and the three snapshot writes are
+  double-gated exactly like create/destroy — the `Stashboard:AllowProxmoxClone`
+  master switch (**Settings → Clone/snapshot LXC**) plus the per-host
+  `ProxmoxConnection.AllowClone` opt-in, both off by default, with deterministic
+  `403`s returned **before** any Proxmox call. Every clone / snapshot / rollback /
+  delete that reaches the host writes a `ProxmoxCloneAuditEntity` row (who / when /
+  host / node / vmid / action / target / success / error), surfaced on a new
+  per-guest **Audit** tab; a host rejection surfaces verbatim as a `502`.
+
+### Notes
+- Out of scope (deferred): cross-node / cross-cluster clone migration, scheduled
+  snapshots, and snapshot trees beyond a flat list.
+
 ## [7.9.0] — 2026-06-19
 
 ### Added

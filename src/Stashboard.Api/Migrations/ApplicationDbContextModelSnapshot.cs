@@ -165,6 +165,26 @@ namespace Stashboard.Api.Migrations
                     b.ToTable("ImagePruneSettings");
                 });
 
+            modelBuilder.Entity("Stashboard.Api.Data.ProxmoxCloneSettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ProxmoxCloneSettings");
+                });
+
             modelBuilder.Entity("Stashboard.Api.Data.ProxmoxConsoleSettingsEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1071,11 +1091,67 @@ namespace Stashboard.Api.Migrations
                     b.ToTable("HostShellSessions");
                 });
 
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxCloneAuditEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConnectionName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("InitiatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NodeName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ProxmoxConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Target")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("VmId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InitiatedByUserId", "CreatedAtUtc");
+
+                    b.HasIndex("ProxmoxConnectionId", "VmId", "CreatedAtUtc");
+
+                    b.ToTable("ProxmoxCloneAudits");
+                });
+
             modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxConnectionEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("AllowClone")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("AllowConsole")
                         .HasColumnType("INTEGER");
@@ -2052,6 +2128,20 @@ namespace Stashboard.Api.Migrations
                         .HasForeignKey("InitiatedByUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxCloneAuditEntity", b =>
+                {
+                    b.HasOne("Stashboard.Api.Data.UserEntity", null)
+                        .WithMany()
+                        .HasForeignKey("InitiatedByUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Stashboard.Core.Entities.ProxmoxConnectionEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ProxmoxConnectionId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Stashboard.Core.Entities.ProxmoxConnectionEntity", b =>

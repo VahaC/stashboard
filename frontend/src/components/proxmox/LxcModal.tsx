@@ -8,8 +8,11 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
+  Camera,
+  ClipboardList,
   FileText,
   HardDrive,
+  History,
   Info,
   Loader2,
   Network,
@@ -42,13 +45,18 @@ import { StatTile } from '@/components/shared/StatTile'
 import {
   fetchProxmoxLxcStatus,
   useCheckProxmoxLxc,
+  useCreateProxmoxSnapshot,
+  useDeleteProxmoxSnapshot,
   useDestroyProxmoxLxc,
+  useProxmoxCloneAudit,
   useProxmoxLxcAction,
   useProxmoxGuestIcons,
   useProxmoxLxcConfig,
   useProxmoxLxcRrd,
   useProxmoxLxcTasks,
+  useProxmoxSnapshots,
   useProxmoxTaskLog,
+  useRollbackProxmoxSnapshot,
   useProxmoxUpdateCommand,
   useResetGuestIcon,
   useSetProxmoxGuestService,
@@ -61,6 +69,7 @@ import {
 } from '@/lib/proxmox-queries'
 import { isProxmoxQemu } from '@/lib/proxmox-page'
 import type {
+  ProxmoxCloneAudit,
   ProxmoxConnection,
   ProxmoxGuest,
   ProxmoxLxcAction,
@@ -69,6 +78,7 @@ import type {
   ProxmoxLxcMountChange,
   ProxmoxLxcNetChange,
   ProxmoxLxcRootfsChange,
+  ProxmoxSnapshot,
   ProxmoxTask,
 } from '@/lib/types'
 import {
@@ -87,6 +97,8 @@ import { useFeatures, useServices } from '@/lib/queries'
 import { Link } from 'react-router-dom'
 import { LxcConsolePanel } from '@/components/proxmox/LxcConsolePanel'
 import { LxcDestroyDialog } from '@/components/proxmox/LxcDestroyDialog'
+import { LxcCloneModal } from '@/components/proxmox/LxcCloneModal'
+import { SnapshotConfirmDialog } from '@/components/proxmox/SnapshotConfirmDialog'
 import { LxcPowerConfirmDialog, type LxcPowerAction } from '@/components/proxmox/LxcPowerConfirmDialog'
 import { LxcLogsPanel } from '@/components/proxmox/LxcLogsPanel'
 import { ProxmoxUpdateDialog } from '@/components/proxmox/ProxmoxUpdateDialog'
@@ -109,7 +121,7 @@ import '@/styles/service-modal.css'     // .docker-stats-* tiles + sparkline
  * history) · Logs (≈the Docker live log tail, V6.12) · Stats · Watch · Console
  * (≈Exec, V6.6).
  */
-export type LxcModalTab = 'overview' | 'config' | 'stats' | 'tasks' | 'logs' | 'watch' | 'console'
+export type LxcModalTab = 'overview' | 'config' | 'stats' | 'tasks' | 'snapshots' | 'audit' | 'logs' | 'watch' | 'console'
 
 interface LxcModalProps {
   guest: ProxmoxGuest
@@ -123,6 +135,8 @@ const TABS: ReadonlyArray<{ id: LxcModalTab; label: string; icon: typeof Info; r
   { id: 'overview', label: 'Overview', icon: Info, ready: true },
   { id: 'config', label: 'Config', icon: Settings, ready: true },
   { id: 'tasks', label: 'Tasks', icon: FileText, ready: true },
+  { id: 'snapshots', label: 'Snapshots', icon: Camera, ready: true },
+  { id: 'audit', label: 'Audit', icon: ClipboardList, ready: true },
   { id: 'logs', label: 'Logs', icon: ScrollText, ready: true },
   { id: 'stats', label: 'Stats', icon: Activity, ready: true },
   { id: 'watch', label: 'Watch', icon: Bell, ready: true },
@@ -135,9 +149,19 @@ export function LxcModal({ guest, connection, initialTab = 'overview', onClose }
   // SSH/apt/pct-backed tabs (Watch update-monitoring, Logs, Console) are LXC-only.
   const isVm = isProxmoxQemu(guest.guestType)
   const kind: ProxmoxGuestKind = isVm ? 'qemu' : 'lxc'
+  const features = useFeatures()
+  // V8.0 — the Snapshots + Audit tabs only exist for an LXC when the clone/snapshot
+  // feature is live (global switch + per-host opt-in). The server re-checks both.
+  const canClone = !isVm && (features.data?.allowProxmoxClone ?? false) && connection.allowClone
   const tabs = useMemo(
-    () => (isVm ? TABS.filter((t) => t.id === 'overview' || t.id === 'config' || t.id === 'tasks' || t.id === 'stats') : TABS),
-    [isVm],
+    () => TABS.filter((t) => {
+      // VM tabs: only the ones that generalise to a QEMU guest.
+      if (isVm) return t.id === 'overview' || t.id === 'config' || t.id === 'tasks' || t.id === 'stats'
+      // LXC: hide the clone/snapshot tabs unless the feature is enabled for the host.
+      if (t.id === 'snapshots' || t.id === 'audit') return canClone
+      return true
+    }),
+    [isVm, canClone],
   )
 
   const [tab, setTab] = useState<LxcModalTab>(
@@ -195,6 +219,8 @@ export function LxcModal({ guest, connection, initialTab = 'overview', onClose }
           {tab === 'config' && <ConfigTab connectionId={connection.id} vmId={guest.vmId} kind={kind} readOnly={isVm} />}
           {tab === 'stats' && <StatsTab connectionId={connection.id} vmId={guest.vmId} kind={kind} />}
           {tab === 'tasks' && <TasksTab connectionId={connection.id} vmId={guest.vmId} kind={kind} />}
+          {tab === 'snapshots' && <SnapshotsTab guest={guest} connection={connection} />}
+          {tab === 'audit' && <CloneAuditTab connectionId={connection.id} vmId={guest.vmId} />}
           {tab === 'watch' && <WatchTab guest={guest} connection={connection} />}
           {/* SSH-backed tabs: kept mounted once opened (see seenLogs/seenConsole)
               so the session survives switching tabs; hidden when not active. */}
@@ -421,6 +447,7 @@ function LifecycleSection({ guest, connection, isVm, onClose }: { guest: Proxmox
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<ProxmoxLxcAction | null>(null)
   const [destroyOpen, setDestroyOpen] = useState(false)
+  const [cloneOpen, setCloneOpen] = useState(false)
   // V6.14 — the two power-off verbs go through a confirm dialog that explains the
   // difference (graceful Shutdown vs hard Stop); Start / Reboot run directly.
   const [confirmPower, setConfirmPower] = useState<LxcPowerAction | null>(null)
@@ -430,6 +457,10 @@ function LifecycleSection({ guest, connection, isVm, onClose }: { guest: Proxmox
   // first), so the button is hidden while running; the server re-checks all of
   // this regardless. V6.14 — works for both LXC containers and QEMU VMs.
   const canDestroy = (features.data?.allowProxmoxDestroy ?? false) && connection.allowDestroy
+  // V8.0 — the Clone affordance is LXC-only and gated like create (global switch +
+  // per-host opt-in). A guest can be cloned running or stopped (Proxmox handles a
+  // running source), so the button shows in both states; the server re-checks both.
+  const canClone = !isVm && (features.data?.allowProxmoxClone ?? false) && connection.allowClone
 
   const run = (a: ProxmoxLxcAction) => {
     setError(null)
@@ -472,6 +503,11 @@ function LifecycleSection({ guest, connection, isVm, onClose }: { guest: Proxmox
             )}
           </>
         )}
+        {canClone && (
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => setCloneOpen(true)}>
+            <Copy className="h-3.5 w-3.5" /> Clone
+          </Button>
+        )}
         {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
       </div>
       {canDestroy && !guest.isRunning && (
@@ -503,6 +539,9 @@ function LifecycleSection({ guest, connection, isVm, onClose }: { guest: Proxmox
           }}
           onCancel={() => setDestroyOpen(false)}
         />
+      )}
+      {cloneOpen && (
+        <LxcCloneModal guest={guest} connection={connection} onClose={() => setCloneOpen(false)} />
       )}
       {confirmPower && (
         <LxcPowerConfirmDialog
@@ -1814,6 +1853,199 @@ function TaskRow({ connectionId, task, open, onToggle }: {
         </>
       )}
     </details>
+  )
+}
+
+// ── Snapshots tab (V8.0) ──────────────────────────────────────────────────────
+
+/**
+ * V8.0 — list / create / roll back / delete an LXC's snapshots. The tab only
+ * renders when the clone/snapshot feature is live for the host (the parent gates
+ * it). Rollback + delete go through {@link SnapshotConfirmDialog} (the second
+ * safety gate); the server re-checks the global switch + per-host opt-in regardless.
+ */
+function SnapshotsTab({ guest, connection }: { guest: ProxmoxGuest; connection: ProxmoxConnection }) {
+  const connectionId = connection.id
+  const query = useProxmoxSnapshots(connectionId, guest.vmId)
+  const createSnap = useCreateProxmoxSnapshot(connectionId, guest.vmId)
+  const rollback = useRollbackProxmoxSnapshot(connectionId, guest.vmId)
+  const del = useDeleteProxmoxSnapshot(connectionId, guest.vmId)
+
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [confirm, setConfirm] = useState<{ action: 'rollback' | 'delete'; snapshot: string } | null>(null)
+
+  const snapshots = query.data ?? []
+  // Mirror the server validator so the user gets a clean message before the call.
+  const nameValid = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(name.trim()) && name.trim().toLowerCase() !== 'current'
+
+  const take = () => {
+    setError(null)
+    createSnap.mutate(
+      { name: name.trim(), description: description.trim() || null },
+      {
+        onError: (e) => setError(getApiErrorMessage(e) ?? 'Failed to take the snapshot'),
+        onSuccess: () => { setName(''); setDescription('') },
+      },
+    )
+  }
+
+  const busy = createSnap.isPending
+
+  return (
+    <div className="container-modal-overview">
+      <section className="container-modal-section">
+        <h3 className="container-modal-section-title">Take a snapshot</h3>
+        <div className="container-modal-edit-grid">
+          <label className="service-modal-label">
+            Name
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. before-upgrade" />
+          </label>
+          <label className="service-modal-label">
+            Description <span className="service-modal-label-help">(optional)</span>
+            <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="optional note" />
+          </label>
+        </div>
+        <div className="container-modal-actions mt-2">
+          <Button type="button" size="sm" disabled={busy || !nameValid} onClick={take}>
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+            {busy ? 'Snapshotting…' : 'Take snapshot'}
+          </Button>
+        </div>
+        {name.trim() !== '' && !nameValid && (
+          <p className="container-modal-empty">Name must start with a letter and use only letters, digits, '-' or '_'.</p>
+        )}
+        {error && (
+          <p className="container-modal-error">
+            <AlertCircle className="h-3.5 w-3.5 inline" /> {error}
+          </p>
+        )}
+      </section>
+
+      <section className="container-modal-section">
+        <h3 className="container-modal-section-title">Snapshots</h3>
+        {query.isLoading && <p className="container-modal-empty">Loading snapshots from Proxmox…</p>}
+        {query.error && (
+          <p className="container-modal-error">
+            <AlertCircle className="h-3.5 w-3.5 inline" /> {getApiErrorMessage(query.error) ?? 'Failed to read snapshots'}
+          </p>
+        )}
+        {!query.isLoading && !query.error && snapshots.length === 0 && (
+          <p className="container-modal-empty">No snapshots yet. Take one before a risky change so you can roll back.</p>
+        )}
+        {snapshots.map((s) => (
+          <SnapshotRow
+            key={s.name}
+            snapshot={s}
+            busy={rollback.isPending || del.isPending}
+            onRollback={() => setConfirm({ action: 'rollback', snapshot: s.name })}
+            onDelete={() => setConfirm({ action: 'delete', snapshot: s.name })}
+          />
+        ))}
+      </section>
+
+      {confirm && (
+        <SnapshotConfirmDialog
+          action={confirm.action}
+          vmId={guest.vmId}
+          name={guest.name}
+          snapshot={confirm.snapshot}
+          onConfirm={async () => {
+            if (confirm.action === 'rollback') await rollback.mutateAsync(confirm.snapshot)
+            else await del.mutateAsync(confirm.snapshot)
+            setConfirm(null)
+          }}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function SnapshotRow({ snapshot, busy, onRollback, onDelete }: {
+  snapshot: ProxmoxSnapshot
+  busy: boolean
+  onRollback: () => void
+  onDelete: () => void
+}) {
+  return (
+    <div className="container-modal-icon-row">
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="task-type-row">
+          <span style={{ fontFamily: 'var(--font-mono)' }}>{snapshot.name}</span>
+          {snapshot.vmstate && <span className="container-modal-code">RAM</span>}
+        </div>
+        <p className="container-modal-empty">
+          {formatTaskTime(snapshot.snapTime)}
+          {snapshot.description ? ` · ${snapshot.description}` : ''}
+          {snapshot.parent ? ` · from ${snapshot.parent}` : ''}
+        </p>
+      </div>
+      <div className="container-modal-actions">
+        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onRollback}>
+          <History className="h-3.5 w-3.5" /> Roll back
+        </Button>
+        <Button type="button" size="sm" variant="outline" className="ui-button-danger" disabled={busy} onClick={onDelete}>
+          <Trash2 className="h-3.5 w-3.5" /> Delete
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ── Audit tab (V8.0 — clone/snapshot history for this guest) ──────────────────
+
+function CloneAuditTab({ connectionId, vmId }: { connectionId: string; vmId: number }) {
+  const query = useProxmoxCloneAudit(connectionId, vmId)
+  const rows = query.data ?? []
+
+  if (query.isLoading) return <p className="container-modal-empty">Loading audit history…</p>
+  if (query.error) {
+    return (
+      <p className="container-modal-error">
+        <AlertCircle className="h-3.5 w-3.5 inline" /> {getApiErrorMessage(query.error) ?? 'Failed to read audit history'}
+      </p>
+    )
+  }
+  if (rows.length === 0) {
+    return <p className="container-modal-empty">No clone or snapshot actions recorded for this container yet.</p>
+  }
+
+  return (
+    <div className="container-modal-inspect">
+      {rows.map((r) => <CloneAuditRow key={r.id} row={r} />)}
+    </div>
+  )
+}
+
+const CLONE_ACTION_LABEL: Record<ProxmoxCloneAudit['action'], string> = {
+  clone: 'Clone',
+  snapshotCreate: 'Snapshot',
+  snapshotRollback: 'Rollback',
+  snapshotDelete: 'Delete snapshot',
+}
+
+function CloneAuditRow({ row }: { row: ProxmoxCloneAudit }) {
+  return (
+    <div className="container-modal-collapsible">
+      <div className="container-modal-collapsible-with-action">
+        <span className="task-type-row">
+          <span>{CLONE_ACTION_LABEL[row.action] ?? row.action}</span>
+          {row.target && <span className="container-modal-code">{row.target}</span>}
+          <span className={`task-status-inner ${row.success ? 'task-status-up' : 'task-status-down'}`}>
+            {row.success ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+            <span className={row.success ? 'text-green-600' : 'text-red-600'}>{row.success ? 'OK' : 'failed'}</span>
+          </span>
+        </span>
+        <span className="task-time-row">
+          <span className="task-start-time">{new Date(row.createdAtUtc).toLocaleString()}</span>
+        </span>
+      </div>
+      {!row.success && row.error && (
+        <p className="container-modal-error"><AlertCircle className="h-3.5 w-3.5 inline" /> {row.error}</p>
+      )}
+    </div>
   )
 }
 

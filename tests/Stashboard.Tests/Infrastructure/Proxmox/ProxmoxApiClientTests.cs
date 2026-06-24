@@ -666,6 +666,167 @@ public class ProxmoxApiClientTests
         Assert.Contains(templates, t => t.Volid == "local:vztmpl/debian-12.tar.zst");
     }
 
+    // ── V8.0 — clone & snapshot ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task CloneLxc_PostsExpectedFormBody_ThenPollsTaskToTerminal()
+    {
+        HttpMethod? method = null;
+        string? path = null;
+        string? body = null;
+        var statusPolls = 0;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+            {
+                statusPolls++;
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            }
+            method = req.Method;
+            path = req.RequestUri!.AbsolutePath;
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json("""{"data":"UPID:pve:0000:lxc-clone::root@pam:"}""");
+        });
+
+        await client.CloneLxcAsync(Profile(), sourceVmId: 105, new ProxmoxLxcClone(
+            NewVmId: 160, Hostname: "newct-clone", TargetStorage: "local-lvm", Full: true, SnapName: "before-upgrade"));
+
+        Assert.Equal(HttpMethod.Post, method);
+        Assert.Equal("/api2/json/nodes/pve/lxc/105/clone", path);
+        Assert.NotNull(body);
+        Assert.Contains("newid=160", body);
+        Assert.Contains("full=1", body);
+        Assert.Contains("hostname=newct-clone", body);
+        Assert.Contains("storage=local-lvm", body);
+        Assert.Contains("snapname=before-upgrade", body);
+        Assert.True(statusPolls >= 1);   // polled the task to a terminal state
+    }
+
+    [Fact]
+    public async Task CloneLxc_TaskFails_SurfacesExitStatus()
+    {
+        var client = BuildClient(req =>
+            req.RequestUri!.AbsolutePath.EndsWith("/status")
+                ? Json("""{"data":{"status":"stopped","exitstatus":"clone failed: no space left"}}""")
+                : Json("""{"data":"UPID:pve:0000:lxc-clone::root@pam:"}"""));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => client.CloneLxcAsync(
+            Profile(), 105, new ProxmoxLxcClone(160)));
+        Assert.Contains("no space left", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateSnapshot_PostsExpectedFormBody_ThenPollsTask()
+    {
+        string? path = null;
+        string? body = null;
+        var statusPolls = 0;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+            {
+                statusPolls++;
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            }
+            path = req.RequestUri!.AbsolutePath;
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json("""{"data":"UPID:pve:0000:vzsnapshot::root@pam:"}""");
+        });
+
+        await client.CreateSnapshotAsync(Profile(), 105, "before-upgrade", "pre");
+
+        Assert.Equal("/api2/json/nodes/pve/lxc/105/snapshot", path);
+        Assert.NotNull(body);
+        Assert.Contains("snapname=before-upgrade", body);
+        Assert.Contains("description=pre", body);
+        // The LXC snapshot endpoint has no vmstate option — it must never be sent.
+        Assert.DoesNotContain("vmstate", body);
+        Assert.True(statusPolls >= 1);
+    }
+
+    [Fact]
+    public async Task RollbackSnapshot_PostsToRollbackPath_ThenPollsTask()
+    {
+        HttpMethod? method = null;
+        string? path = null;
+        var statusPolls = 0;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+            {
+                statusPolls++;
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            }
+            method = req.Method;
+            path = req.RequestUri!.AbsolutePath;
+            return Json("""{"data":"UPID:pve:0000:vzrollback::root@pam:"}""");
+        });
+
+        await client.RollbackSnapshotAsync(Profile(), 105, "before-upgrade");
+
+        Assert.Equal(HttpMethod.Post, method);
+        Assert.Equal("/api2/json/nodes/pve/lxc/105/snapshot/before-upgrade/rollback", path);
+        Assert.True(statusPolls >= 1);
+    }
+
+    [Fact]
+    public async Task DeleteSnapshot_DeletesSnapshotPath_ThenPollsTask()
+    {
+        HttpMethod? method = null;
+        string? path = null;
+        var statusPolls = 0;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+            {
+                statusPolls++;
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            }
+            method = req.Method;
+            path = req.RequestUri!.AbsolutePath;
+            return Json("""{"data":"UPID:pve:0000:vzdelsnapshot::root@pam:"}""");
+        });
+
+        await client.DeleteSnapshotAsync(Profile(), 105, "before-upgrade");
+
+        Assert.Equal(HttpMethod.Delete, method);
+        Assert.Equal("/api2/json/nodes/pve/lxc/105/snapshot/before-upgrade", path);
+        Assert.True(statusPolls >= 1);
+    }
+
+    [Fact]
+    public async Task ListSnapshots_FiltersOutCurrentPseudoEntry_AndSortsNewestFirst()
+    {
+        var client = BuildClient(_ => Json("""
+            {"data":[
+              {"name":"current","digest":"abc"},
+              {"name":"snap-old","snaptime":1700000000,"description":"old"},
+              {"name":"snap-new","snaptime":1700009999,"vmstate":1,"parent":"snap-old"}
+            ]}
+            """));
+
+        var snapshots = await client.ListSnapshotsAsync(Profile(), 105);
+
+        Assert.Equal(2, snapshots.Count);
+        Assert.DoesNotContain(snapshots, s => s.Name == "current");
+        Assert.Equal("snap-new", snapshots[0].Name);   // newest first
+        Assert.True(snapshots[0].Vmstate);
+        Assert.Equal("snap-old", snapshots[0].Parent);
+    }
+
+    [Fact]
+    public async Task DeleteSnapshot_NonSuccess_SurfacesHostMessage()
+    {
+        var client = BuildClient(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StringContent("snapshot 'before-upgrade' does not exist"),
+        });
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => client.DeleteSnapshotAsync(
+            Profile(), 105, "before-upgrade"));
+        Assert.Contains("does not exist", ex.Message);
+    }
+
     // ── V6.5 — UpdateLxcConfigAsync ──────────────────────────────────────────
 
     [Fact]

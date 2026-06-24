@@ -120,6 +120,17 @@ public class ProxmoxConnectionEntity : AuditableEntity
     /// <c>VM.Allocate</c> on the host.</summary>
     public bool AllowCreate { get; set; }
 
+    /// <summary>V8.0 — per-host opt-in to <strong>cloning</strong> a guest and
+    /// taking / rolling back / deleting <strong>snapshots</strong> (<c>POST
+    /// …/lxc/{vmid}/clone</c> and the <c>…/snapshot</c> endpoints). Off by default;
+    /// the server also requires the global <c>Stashboard:AllowProxmoxClone</c>
+    /// switch, and a rollback / delete additionally needs an explicit double
+    /// confirmation in the UI. Mirrors <see cref="AllowCreate"/> — cloning and
+    /// snapshot rollback write real state on the host, so it is gated like the other
+    /// lifecycle write actions. Needs the API token to hold <c>VM.Allocate</c> /
+    /// <c>VM.Snapshot</c> on the host.</summary>
+    public bool AllowClone { get; set; }
+
     public bool Enabled { get; set; } = true;
 
     /// <summary>V6.8.2 — how often (seconds) the node modal's live telemetry tabs

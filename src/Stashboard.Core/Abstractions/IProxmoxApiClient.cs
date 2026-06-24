@@ -161,6 +161,44 @@ public sealed record ProxmoxLxcCreate(
 /// as <see cref="ProxmoxLxcCreate.OsTemplate"/>.</summary>
 public sealed record ProxmoxTemplate(string Volid, string Storage, long? Size);
 
+/// <summary>
+/// V8.0 — the minimum-viable spec for <strong>cloning</strong> an existing LXC via
+/// <c>POST /nodes/{node}/lxc/{vmid}/clone</c>. Mirrors the create spec's posture:
+/// everything the clone form collects, decoupled from the on-wire form shape (the
+/// client builds that). <see cref="NewVmId"/> is the destination guest id;
+/// validation reuses the create vmid rules.
+/// </summary>
+/// <param name="NewVmId">Destination container id (100..999999999).</param>
+/// <param name="Hostname">Hostname for the clone; <c>null</c> ⇒ Proxmox derives one.</param>
+/// <param name="TargetStorage">Storage the clone's disks land on (a <em>full</em>
+/// clone copies the volumes); <c>null</c> ⇒ keep the source's storage.</param>
+/// <param name="Full">A full (independent copy) vs a linked (CoW, references the
+/// source) clone. A linked clone needs the source to be a template or to have a
+/// snapshot; Proxmox stays authoritative.</param>
+/// <param name="SnapName">Clone from this source snapshot rather than the current
+/// state; <c>null</c> ⇒ the live state.</param>
+/// <param name="Description">Optional note set on the clone.</param>
+public sealed record ProxmoxLxcClone(
+    int NewVmId,
+    string? Hostname = null,
+    string? TargetStorage = null,
+    bool Full = false,
+    string? SnapName = null,
+    string? Description = null);
+
+/// <summary>V8.0 — one LXC snapshot from
+/// <c>GET /nodes/{node}/lxc/{vmid}/snapshot</c>. Proxmox always includes a
+/// synthetic <c>current</c> pseudo-entry for the live state; the client filters it
+/// out so this list is purely real snapshots. <see cref="SnapTime"/> is a unix
+/// second (<c>null</c> for the rare entry that lacks one); <see cref="Vmstate"/> is
+/// <c>true</c> when the snapshot captured the running memory state.</summary>
+public sealed record ProxmoxSnapshot(
+    string Name,
+    string? Description,
+    long? SnapTime,
+    string? Parent,
+    bool Vmstate);
+
 /// <summary>V6.2 — read model merging an LXC's static config
 /// (<c>GET …/lxc/{vmid}/config</c>) with its live status
 /// (<c>GET …/lxc/{vmid}/status/current</c>). Byte fields are normalised to
@@ -484,6 +522,48 @@ public interface IProxmoxApiClient
     /// for the create form's template dropdown.</summary>
     Task<IReadOnlyList<ProxmoxTemplate>> ListTemplatesAsync(
         ProxmoxConnectionProfile profile, CancellationToken cancellationToken = default);
+
+    /// <summary>V8.0 — clones an existing LXC via
+    /// <c>POST /nodes/{node}/lxc/{vmid}/clone</c>, then polls the returned task
+    /// UPID to a terminal state so the caller reports real success/failure (Proxmox
+    /// clones asynchronously). A host rejection — the initial POST or a
+    /// non-<c>OK</c> task exit — surfaces the host's own message as an
+    /// <see cref="HttpRequestException"/> so the controller can relay it verbatim
+    /// (e.g. a linked clone of a source without a snapshot). Needs the API token to
+    /// hold <c>VM.Allocate</c> on the host.</summary>
+    Task CloneLxcAsync(
+        ProxmoxConnectionProfile profile, int sourceVmId, ProxmoxLxcClone spec, CancellationToken cancellationToken = default);
+
+    /// <summary>V8.0 — lists an LXC's snapshots
+    /// (<c>GET /nodes/{node}/lxc/{vmid}/snapshot</c>), newest first. The synthetic
+    /// <c>current</c> pseudo-entry Proxmox always returns is filtered out so the
+    /// result is purely real snapshots.</summary>
+    Task<IReadOnlyList<ProxmoxSnapshot>> ListSnapshotsAsync(
+        ProxmoxConnectionProfile profile, int vmId, CancellationToken cancellationToken = default);
+
+    /// <summary>V8.0 — takes a snapshot of an LXC
+    /// (<c>POST /nodes/{node}/lxc/{vmid}/snapshot</c>) and polls the task to a
+    /// terminal state. (Unlike a QEMU VM snapshot, an LXC snapshot has no
+    /// running-memory option — the endpoint's schema rejects <c>vmstate</c>.) The
+    /// host's message is surfaced verbatim on a rejection.</summary>
+    Task CreateSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, string? description,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>V8.0 — rolls an LXC back to a snapshot
+    /// (<c>POST /nodes/{node}/lxc/{vmid}/snapshot/{name}/rollback</c>) and polls the
+    /// task. This <em>discards</em> any state newer than the snapshot — the
+    /// controller double-confirms before calling it. The host's message is surfaced
+    /// verbatim on a rejection.</summary>
+    Task RollbackSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default);
+
+    /// <summary>V8.0 — deletes one LXC snapshot
+    /// (<c>DELETE /nodes/{node}/lxc/{vmid}/snapshot/{name}</c>) and polls the
+    /// returned task to a terminal state. The host's message is surfaced verbatim on
+    /// a rejection.</summary>
+    Task DeleteSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default);
 
     /// <summary>V6.5 / V6.9 — writes the editable subset of an LXC's config via
     /// <c>PUT …/lxc/{vmid}/config</c>. Only the non-null scalar fields and the

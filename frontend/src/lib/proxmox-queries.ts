@@ -7,10 +7,14 @@ import type {
   ProxmoxConnectionPingResponse,
   ProxmoxConnectionUpsert,
   ProxmoxDiskSelfTest,
+  ProxmoxCloneAudit,
   ProxmoxLxcAction,
+  ProxmoxLxcClone,
   ProxmoxLxcConfigUpdate,
   ProxmoxLxcCreate,
   ProxmoxLxcDetail,
+  ProxmoxSnapshot,
+  ProxmoxSnapshotCreate,
   ProxmoxLxcRrdPoint,
   ProxmoxLxcStatus,
   ProxmoxNextId,
@@ -76,6 +80,9 @@ export const proxmoxQk = {
   // V6.13.1 — create form.
   nextId: (id: string) => ['proxmox', 'connections', id, 'lxc', 'nextid'] as const,
   templates: (id: string) => ['proxmox', 'connections', id, 'lxc', 'templates'] as const,
+  // V8.0 — snapshots + clone/snapshot audit (modal tabs).
+  snapshots: (id: string, vmId: number) => ['proxmox', 'connections', id, 'lxc', vmId, 'snapshots'] as const,
+  cloneAudit: (id: string, vmId: number) => ['proxmox', 'connections', id, 'lxc', vmId, 'clone-audit'] as const,
   lxcRrd: (id: string, vmId: number, tf: string, kind: ProxmoxGuestKind = 'lxc') =>
     ['proxmox', 'connections', id, kind, vmId, 'rrddata', tf] as const,
   lxcTasks: (id: string, vmId: number, kind: ProxmoxGuestKind = 'lxc') =>
@@ -462,6 +469,86 @@ export const useCreateProxmoxLxc = (connectionId: string) => {
     },
   })
 }
+
+/** V8.0 — clone an existing LXC into a new one. Gated server-side (global switch +
+ *  per-host opt-in). On success the host is re-scanned server-side and the refreshed
+ *  host returned, so the cloned card appears immediately. */
+export const useCloneProxmoxLxc = (connectionId: string, sourceVmId: number) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (spec: ProxmoxLxcClone) =>
+      (await api.post<ProxmoxConnection>(
+        `/api/proxmox/connections/${connectionId}/lxc/${sourceVmId}/clone`, spec)).data,
+    onSuccess: (updated) => {
+      qc.setQueryData<ProxmoxConnection[]>(proxmoxQk.connections, (prev) =>
+        prev ? prev.map((c) => (c.id === updated.id ? updated : c)) : prev)
+      void qc.invalidateQueries({ queryKey: proxmoxQk.cloneAudit(connectionId, sourceVmId) })
+    },
+  })
+}
+
+/** V8.0 — an LXC's snapshots for the Snapshots tab. */
+export const useProxmoxSnapshots = (connectionId: string, vmId: number, enabled = true) =>
+  useQuery({
+    queryKey: proxmoxQk.snapshots(connectionId, vmId),
+    queryFn: async (): Promise<ProxmoxSnapshot[]> =>
+      (await api.get<ProxmoxSnapshot[]>(
+        `/api/proxmox/connections/${connectionId}/lxc/${vmId}/snapshots`)).data,
+    enabled,
+    staleTime: 10_000,
+  })
+
+/** V8.0 — take a snapshot; refreshes the snapshot list + the guest's audit. */
+export const useCreateProxmoxSnapshot = (connectionId: string, vmId: number) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (spec: ProxmoxSnapshotCreate) =>
+      api.post(`/api/proxmox/connections/${connectionId}/lxc/${vmId}/snapshots`, spec),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: proxmoxQk.snapshots(connectionId, vmId) })
+      void qc.invalidateQueries({ queryKey: proxmoxQk.cloneAudit(connectionId, vmId) })
+    },
+  })
+}
+
+/** V8.0 — roll an LXC back to a snapshot. Discards newer state; the UI
+ *  double-confirms. Refreshes the snapshot list + audit + host (running state). */
+export const useRollbackProxmoxSnapshot = (connectionId: string, vmId: number) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (name: string) =>
+      api.post(`/api/proxmox/connections/${connectionId}/lxc/${vmId}/snapshots/${encodeURIComponent(name)}/rollback`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: proxmoxQk.snapshots(connectionId, vmId) })
+      void qc.invalidateQueries({ queryKey: proxmoxQk.cloneAudit(connectionId, vmId) })
+      void qc.invalidateQueries({ queryKey: proxmoxQk.connections })
+    },
+  })
+}
+
+/** V8.0 — delete a snapshot. The UI double-confirms. Refreshes the list + audit. */
+export const useDeleteProxmoxSnapshot = (connectionId: string, vmId: number) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (name: string) =>
+      api.delete(`/api/proxmox/connections/${connectionId}/lxc/${vmId}/snapshots/${encodeURIComponent(name)}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: proxmoxQk.snapshots(connectionId, vmId) })
+      void qc.invalidateQueries({ queryKey: proxmoxQk.cloneAudit(connectionId, vmId) })
+    },
+  })
+}
+
+/** V8.0 — the clone/snapshot audit rows for one guest (modal Audit tab). */
+export const useProxmoxCloneAudit = (connectionId: string, vmId: number, enabled = true) =>
+  useQuery({
+    queryKey: proxmoxQk.cloneAudit(connectionId, vmId),
+    queryFn: async (): Promise<ProxmoxCloneAudit[]> =>
+      (await api.get<ProxmoxCloneAudit[]>(
+        `/api/proxmox/connections/${connectionId}/lxc/${vmId}/clone-audit`)).data,
+    enabled,
+    staleTime: 10_000,
+  })
 
 /** V6.5 — edit an LXC's parameters; refreshes the Config tab + host list. */
 export const useUpdateProxmoxLxcConfig = (connectionId: string, vmId: number) => {

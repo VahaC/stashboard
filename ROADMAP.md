@@ -10,9 +10,9 @@
 > shipped V5.x phase detail (V5.0–V5.9) was archived to [`HISTORY.md`](./HISTORY.md) §14,
 > the V6.x Proxmox parity & LXC/VM phase detail (V6.0–V6.15.1) to [`HISTORY.md`](./HISTORY.md) §16,
 > and the V7.x visual Compose editor track (V7.0–V7.9) to [`HISTORY.md`](./HISTORY.md) §17,
-> once those phases all shipped; only V8.0+ remains in this file.
+> once those phases all shipped; only V8.1+ remains in this file.
 >
-> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2) · ✅ V5.4 (Compose project grouping & bulk update, image 5.4.0) · ✅ V5.5 (image cleanup / prune, image 5.5.0) · ✅ V5.6 (health-check tuning page, image 5.6.0) · ✅ V5.7 (container exec, image 5.7.0) · ✅ V5.8 (session audit viewer, image 5.8.0) · ✅ V5.9 (Docker instances page redesign, image 5.9.0) · ✅ V6.0 (Proxmox LXC update monitoring, image 6.0.0) · ✅ V6.1 (Proxmox LXC detail modal + Docker-style cards, image 6.1.0) · ✅ V6.2 (LXC Config tab, image 6.2.0) · ✅ V6.3 (LXC Stats + Tasks tabs, image 6.3.0) · ✅ V6.4 (LXC lifecycle actions + real-time stats, image 6.4.0) · ✅ V6.5 (edit LXC parameters, image 6.5.0) · ✅ V6.6 (browser LXC console / Console tab, image 6.6.0) · ✅ V6.7 (per-LXC update monitoring toggle, image 6.7.0) · ✅ V6.7.1 (Proxmox one-click "Update now", image 6.7.1) · ✅ V6.8 (PVE node health card + node modal, image 6.8.0) · ✅ V6.8.1 (PVE node alerting, image 6.8.1) · ✅ V6.8.2 (PVE node deep telemetry / SSH collectors, image 6.8.2) · ✅ V6.9.0 (edit LXC network interfaces & mount points, image 6.9.0) · ✅ V6.10 (Proxmox page Docker-parity redesign, image 6.10.0) · ✅ V6.11 (bulk LXC monitoring & update operations + audit, image 6.11.0) · ✅ V6.12 (LXC live logs / Logs tab, image 6.12.0) · ✅ V6.13 (destroy / remove LXC, image 6.13.0) · ✅ V6.13.1 (create LXC, image 6.13.1) · ✅ V6.14 (VM / QEMU support, image 6.14.0) · ✅ V6.15 (Proxmox connections in backup/restore, image 6.15.0) · ✅ V7.0 (visual Compose viewer, image 7.0.0) · ✅ V7.1 (edit basic service fields, image 7.1.0) · ✅ V7.1.1 (Compose as a per-project modal, image 7.1.1) · ✅ V7.2 (resource constraints UI, image 7.2.0) · ✅ V7.2.1 (PBS disk/SMART fixes, image 7.2.1) · ✅ V7.3 (top-level resources, image 7.3.0) · ✅ V7.4 (create a new service, image 7.4.0) · ✅ V7.4.1 (create a whole project, image 7.4.1) · ✅ V7.5 (service templates, image 7.5.0) · ✅ V7.6 (diff / dry-run / apply, image 7.6.0) · ✅ V7.7 (dependency graph + linter, image 7.7.0) · ✅ V7.8 (container card icons, image 7.8.0) · ✅ V7.9 (link Proxmox guests to services + Docker↔Proxmox cross-link, image 7.9.0). Shipped V5.x phase detail now lives in [`HISTORY.md`](./HISTORY.md) §14, the V6.x Proxmox parity & LXC/VM phase detail in [`HISTORY.md`](./HISTORY.md) §16, and the V7.x visual Compose editor track in [`HISTORY.md`](./HISTORY.md) §17; V1–V4 historical detail is also in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
+> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2) · ✅ V5.4 (Compose project grouping & bulk update, image 5.4.0) · ✅ V5.5 (image cleanup / prune, image 5.5.0) · ✅ V5.6 (health-check tuning page, image 5.6.0) · ✅ V5.7 (container exec, image 5.7.0) · ✅ V5.8 (session audit viewer, image 5.8.0) · ✅ V5.9 (Docker instances page redesign, image 5.9.0) · ✅ V6.0 (Proxmox LXC update monitoring, image 6.0.0) · ✅ V6.1 (Proxmox LXC detail modal + Docker-style cards, image 6.1.0) · ✅ V6.2 (LXC Config tab, image 6.2.0) · ✅ V6.3 (LXC Stats + Tasks tabs, image 6.3.0) · ✅ V6.4 (LXC lifecycle actions + real-time stats, image 6.4.0) · ✅ V6.5 (edit LXC parameters, image 6.5.0) · ✅ V6.6 (browser LXC console / Console tab, image 6.6.0) · ✅ V6.7 (per-LXC update monitoring toggle, image 6.7.0) · ✅ V6.7.1 (Proxmox one-click "Update now", image 6.7.1) · ✅ V6.8 (PVE node health card + node modal, image 6.8.0) · ✅ V6.8.1 (PVE node alerting, image 6.8.1) · ✅ V6.8.2 (PVE node deep telemetry / SSH collectors, image 6.8.2) · ✅ V6.9.0 (edit LXC network interfaces & mount points, image 6.9.0) · ✅ V6.10 (Proxmox page Docker-parity redesign, image 6.10.0) · ✅ V6.11 (bulk LXC monitoring & update operations + audit, image 6.11.0) · ✅ V6.12 (LXC live logs / Logs tab, image 6.12.0) · ✅ V6.13 (destroy / remove LXC, image 6.13.0) · ✅ V6.13.1 (create LXC, image 6.13.1) · ✅ V6.14 (VM / QEMU support, image 6.14.0) · ✅ V6.15 (Proxmox connections in backup/restore, image 6.15.0) · ✅ V7.0 (visual Compose viewer, image 7.0.0) · ✅ V7.1 (edit basic service fields, image 7.1.0) · ✅ V7.1.1 (Compose as a per-project modal, image 7.1.1) · ✅ V7.2 (resource constraints UI, image 7.2.0) · ✅ V7.2.1 (PBS disk/SMART fixes, image 7.2.1) · ✅ V7.3 (top-level resources, image 7.3.0) · ✅ V7.4 (create a new service, image 7.4.0) · ✅ V7.4.1 (create a whole project, image 7.4.1) · ✅ V7.5 (service templates, image 7.5.0) · ✅ V7.6 (diff / dry-run / apply, image 7.6.0) · ✅ V7.7 (dependency graph + linter, image 7.7.0) · ✅ V7.8 (container card icons, image 7.8.0) · ✅ V7.9 (link Proxmox guests to services + Docker↔Proxmox cross-link, image 7.9.0) · ✅ V8.0 (clone & snapshot LXC, image 8.0.0). Shipped V5.x phase detail now lives in [`HISTORY.md`](./HISTORY.md) §14, the V6.x Proxmox parity & LXC/VM phase detail in [`HISTORY.md`](./HISTORY.md) §16, and the V7.x visual Compose editor track in [`HISTORY.md`](./HISTORY.md) §17; V1–V4 historical detail is also in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
 
 ## 14. Post-V4 backlog (V5+) — deferred Docker features
 
@@ -48,51 +48,26 @@
 > the `Check now` re-scan for discovery, and a per-action audit entity surfaced on
 > the Audit page — so each is a smaller, well-trodden phase rather than new ground.
 
-### Phase V8.0 — Clone & snapshot LXC
+### Phase V8.0 — Clone & snapshot LXC ✅ Shipped (8.0.0)
 
-**Complexity:** Medium
-**Value:** V6.13.1 creates a container from a *template*. The other two everyday
-"new container" paths in the Proxmox UI are **clone** (duplicate an existing
-guest) and **snapshot** (point-in-time state you can roll back to). Surfacing them
-means a user can stamp out a copy of a known-good container or take/restore a
-snapshot before a risky change — without dropping to the Proxmox web UI.
-
-**Scope:**
-
-- **Snapshots** on the LXC modal (a new **Snapshots** tab or a section in
-  Config): list (`GET /nodes/{node}/lxc/{vmid}/snapshot`), **create**
-  (`POST …/snapshot`, name + optional description + `vmstate` for a running
-  guest), **rollback** (`POST …/snapshot/{name}/rollback`, double-confirm — it
-  discards newer state), and **delete** (`DELETE …/snapshot/{name}`). Each is a
-  task UPID → reuse `PollTaskAsync` for real success/failure.
-- **Clone** wired to `POST /nodes/{node}/lxc/{vmid}/clone` via a new
-  `IProxmoxApiClient.CloneLxcAsync`, reachable from a guest's action row → a
-  `LxcCloneModal` that reuses the `LxcCreateModal` styling: new `vmid` (default
-  from `/cluster/nextid`), hostname, target **storage**, **full vs linked** clone,
-  and (when the source has snapshots) an optional **source snapshot**. Validation
-  mirrors create (vmid range + not already on the host).
-- **Discovery:** on success trigger the host **Check now** scan so the new/cloned
-  guest appears; snapshots refresh their own list.
-- **Gating + audit:** same shape as create/destroy — a master switch
-  (`Stashboard:AllowProxmoxClone`, **Settings → Clone/snapshot LXC**) + per-host
-  opt-in (`ProxmoxConnection.AllowClone`), both off by default; rollback/delete
-  also require the per-guest double-confirm. Every clone / snapshot / rollback /
-  delete that reaches the host writes a `ProxmoxCloneAuditEntity` row (who / when /
-  host / node / vmid / action / target / success / error) on a new Audit tab.
-
-**Out of scope:** cross-node / cross-cluster clone migration; scheduled
-snapshots; snapshot trees beyond a flat list.
-
-**Tests:** gate failures return deterministic 403 before any API call; clone vmid
-collision is rejected; `CloneLxcAsync` POSTs the expected body to `…/clone`;
-snapshot create/rollback/delete hit the right endpoints and poll the task; a
-rollback is double-confirmed; each action writes an audit row; a Proxmox rejection
-surfaces as a 502 with the host's message.
-
-**Acceptance bar:** with the flag + per-host opt-in enabled, a user can clone a
-container (full or linked, optionally from a snapshot) and take / roll back /
-delete snapshots entirely from the Stashboard UI, the result appears after the
-auto-scan, and every action is audited.
+**Shipped in 8.0.0.** A guest's **Lifecycle** action row gains a **Clone** button
+(→ `LxcCloneModal`, reusing the `LxcCreateModal` styling: new `vmid` defaulted from
+`/cluster/nextid`, hostname, target storage, full vs linked clone, and an optional
+source snapshot when the guest has any) and the LXC modal gains a **Snapshots** tab
+(list / create / rollback / delete) plus an **Audit** tab.
+Clone and the three snapshot writes each go through `IProxmoxApiClient`
+(`CloneLxcAsync`, `ListSnapshotsAsync`, `CreateSnapshotAsync`,
+`RollbackSnapshotAsync`, `DeleteSnapshotAsync`) and poll the task UPID via the
+existing `PollTaskAsync`. Double-gated exactly like create — the
+`Stashboard:AllowProxmoxClone` master switch (**Settings → Clone/snapshot LXC**) +
+the per-host `ProxmoxConnection.AllowClone` opt-in, both off by default, with
+deterministic 403s before any API call; a clone vmid collision is a 409; a rollback
+/ delete double-confirms in the UI; and every action that reaches the host writes a
+`ProxmoxCloneAuditEntity` row (who / when / host / node / vmid / action / target /
+success / error) surfaced on the per-guest Audit tab. On a successful clone the host
+is re-scanned so the new card appears; a host rejection surfaces verbatim as a 502.
+Out of scope (deferred): cross-node clone migration, scheduled snapshots, and
+snapshot trees beyond a flat list. See the [CHANGELOG](./CHANGELOG.md).
 
 ---
 
@@ -145,10 +120,200 @@ the result appears after the auto-scan, and the action is audited.
 
 ---
 
-## V9 — Core dashboard & monitoring depth
+### Phase V8.2 — Clone & snapshot VM (QEMU)
+
+**Complexity:** Medium
+**Value:** The VM analogue of V8.0 — extend **clone** and **snapshots** from LXC
+containers to QEMU/KVM virtual machines, so the same "stamp out a copy of a
+known-good guest" and "snapshot before a risky change" workflows work for VMs
+without dropping to the Proxmox web UI. Most of the machinery already exists: the
+`kind` (`lxc`/`qemu`) duality shipped in V6.14 (status / config / stats / tasks /
+destroy), and the V8.0 gating, audit entity, settings switch, modals, and
+double-confirm dialogs are all guest-kind-agnostic and reused as-is.
+
+**Scope:**
+
+- **API client** — make the five V8.0 methods kind-aware (a shared private helper +
+  thin `lxc`/`qemu` wrappers, mirroring `GetGuestStatusAsync` / `DestroyGuestAsync`):
+  `…/qemu/{vmid}/clone` and `…/qemu/{vmid}/snapshot[/{name}[/rollback]]`. Snapshots
+  are a pure path-segment swap; clone differs in two parameters — VMs use **`name`**
+  (not `hostname`) and accept an optional disk **`format`** (raw / qcow2 / vmdk) on a
+  full clone. Each is a task UPID → reuse `PollTaskAsync`.
+- **`vmstate` returns for VMs.** Unlike an LXC snapshot (whose endpoint rejects it),
+  a **QEMU snapshot supports `vmstate`** — saving the running RAM state. Re-introduce
+  the "Include running memory state (RAM)" toggle, **kind-gated to `qemu`** only.
+- **Controller** — shared clone/snapshot handlers taking a `qemu` flag with
+  `/qemu/...` routes, mirroring the existing `DestroyLxc` / `DestroyQemu` split. No
+  new gate, no new audit table — `ProxmoxCloneAuditEntity` already records the source
+  `VmId` / action / target irrespective of guest kind.
+- **Frontend** — thread `kind` through the six V8.0 hooks; drop the `!isVm` guards so
+  the **Snapshots** + **Audit** tabs and the **Clone** button appear for VMs; reuse
+  `LxcCloneModal` / `SnapshotConfirmDialog` with VM wording (`name` vs `hostname`,
+  "VM" vs "container") and the kind-gated `vmstate` checkbox.
+- **Running-guest clone guard** — keep the V8.0 client-side guard, kind-aware: a full
+  clone of a running guest needs a source snapshot (Proxmox stays authoritative and a
+  host rejection surfaces verbatim as a 502).
+
+**Out of scope:** cross-node clone migration; scheduled snapshots; snapshot trees
+beyond a flat list (same exclusions as V8.0).
+
+**Tests:** the QEMU clone POSTs `name`/`format` (not `hostname`) to `…/qemu/.../clone`;
+a QEMU snapshot create sends `vmstate` when requested (and the LXC path still never
+does); snapshot create/rollback/delete hit the `qemu` endpoints and poll the task;
+gate failures return deterministic 403 before any API call; each action writes an
+audit row; a Proxmox rejection surfaces as a 502 with the host's message.
+
+**Acceptance bar:** with the flag + per-host opt-in enabled, a user can clone a VM
+and take / roll back / delete VM snapshots (with the optional RAM state) entirely
+from the Stashboard UI, the result appears after the auto-scan, and every action is
+audited — reusing the exact V8.0 surfaces, not a parallel system.
+
+---
+
+### Phase V8.3 — Restore VM from backup (vzdump)
+
+**Complexity:** Medium–High
+**Value:** The VM analogue of V8.1 — re-create a QEMU/KVM virtual machine from an
+existing `vzdump` backup archive (the Proxmox **Restore** button for VMs). Together
+with V8.1 (LXC restore) it covers the disaster-recovery leg for both guest kinds, so
+every "make a guest" path in the Proxmox UI — create, clone, restore — is mirrored
+for VMs as well as containers. Reuses V8.1's restore gating, audit entity, settings
+switch, overwrite-confirm dialog, and backup-discovery plumbing.
+
+**Scope:**
+
+- **Backup discovery (VM):** extend `ListBackupsAsync` to be kind-aware — for VMs,
+  filter the backup-capable storages' content to **`vzdump-qemu-*`** volumes (vs
+  `vzdump-lxc-*` for V8.1) — surfaced in the restore modal's dropdown with the
+  backup's vmid / timestamp / size.
+- **Restore (VM)** wired to `POST /nodes/{node}/qemu` with **`archive=<backup volid>`**
+  (the QEMU restore shape — `archive` rather than the LXC `ostemplate=…` + `restore=1`),
+  a `Force` option for restoring **over** an existing vmid, target `vmid` (default
+  next-free, or the archive's original), and target **storage**. Task UPID →
+  `PollTaskAsync`.
+- **Overwrite guard:** restoring over an existing vmid (`force=1`) replaces that VM —
+  gate it behind the **stopped-guest** check + an explicit double-confirm naming the
+  target, reusing the V6.13 destroy-dialog / V8.1 restore-confirm pattern.
+- **Discovery + gating + audit:** `Check now` re-scan on success; the **same**
+  `Stashboard:AllowProxmoxRestore` master switch (**Settings → Restore guest**) +
+  per-host `ProxmoxConnection.AllowRestore` from V8.1, both off by default; a
+  `ProxmoxRestoreAudit` row (who / when / host / node / vmid / backup volid /
+  overwrote? / success / error) on the restore Audit surface — the entity records the
+  vmid / archive irrespective of guest kind, so no new table.
+
+**Out of scope:** restoring from **Proxmox Backup Server** datastores (`pbs:` volumes
+need PBS auth/namespaces — a later phase); bandwidth/`--bwlimit` tuning; live-restore
+(same exclusions as V8.1).
+
+**Tests:** `ListBackupsAsync` for `qemu` reads only `vzdump-qemu-*` volumes; the VM
+restore POSTs `archive=` (+ `force=1` only when overwriting) to `…/qemu` and polls the
+task; gate failures return deterministic 403 before any API call; an overwrite is
+double-confirmed and refused for a running target; each attempt writes an audit row; a
+Proxmox rejection surfaces as a 502 with the host's message.
+
+**Acceptance bar:** with the flag + per-host opt-in enabled, a user can restore a VM
+from a `vzdump` archive — to a new vmid or (with an explicit double-confirm) over an
+existing stopped one — entirely from the Stashboard UI, the result appears after the
+auto-scan, and the action is audited.
+
+---
+
+## V9 — Home Assistant integration via MQTT
+
+>Stashboard already collects everything a
+> homelab dashboard in Home Assistant would want — per-container running state
+> across Docker hosts **and** Proxmox guests, Docker image-update availability, and
+> per-service health-check status — but that data lives only behind Stashboard's own
+> auth. Publishing it to an MQTT broker via **Home Assistant MQTT Discovery** lets HA
+> auto-create the matching entities with zero manual YAML, turning Stashboard into a
+> data source for HA dashboards, automations, and the notification channels the user
+> already runs there. This phase is **publish-only** (read): HA observes, it does not
+> control — control (start/stop/restart from HA via command topics) is explicitly
+> deferred so the first cut adds no externally-driven action surface.
+
+### Phase V9.0 — MQTT publisher + HA Discovery (read-only)
+
+**Complexity:** Medium
+**Value:** Surfaces three already-collected signals into Home Assistant as
+auto-discovered entities, so a user can build HA dashboards/automations over their
+whole estate (e.g. "notify when a container goes down", "alert when a Docker update
+appears") without Stashboard re-implementing notification breadth itself. Complements
+V10.0 (Apprise) rather than competing with it — MQTT exposes *state* to HA; Apprise
+fans *events* out to chat services.
+
+**Scope:**
+
+- **App-wide MQTT config** on the **Notifications** (or a new **Integrations**)
+  settings page, mirroring the editable-SMTP / Apprise model: broker host, port,
+  TLS toggle, username + password, a client id, a configurable **discovery prefix**
+  (default `homeassistant`), and a configurable **entity prefix** (default
+  `stashboard`) applied to every published sensor — stored DB-backed, the password
+  **encrypted at rest** and never returned (presence flag only). Changes apply
+  without a restart.
+  A master **"MQTT / Home Assistant integration"** switch, off by default.
+- **A background publisher** (`MqttPublisherService`, an `IHostedService` holding one
+  long-lived broker connection) that publishes **retained** HA Discovery config
+  topics (`<prefix>/<component>/<node>/<object>/config`) with a stable `unique_id`,
+  grouping each host's entities under one HA **device**, and retained **state**
+  topics the entities point at. **Every published entity is prefixed with the
+  configured entity prefix** (default `stashboard`) — the discovery node id, the
+  `object_id`/`name`, and the `unique_id` all start with `<prefix>_`
+  (e.g. `binary_sensor.stashboard_jellyfin_running`) so the entities are trivial to
+  spot, group, and filter in Home Assistant and never collide with other MQTT
+  producers. Changing the prefix re-publishes discovery under the new ids and clears
+  the old retained topics. Three entity families for the MVP:
+  1. **Container state** — a `binary_sensor` (running / not-running) per Docker
+     container across hosts **and** per Proxmox LXC/VM guest, sourced from the
+     existing instance/guest state already shown on the Docker and Proxmox pages.
+  2. **Image-update available** — a `binary_sensor` per Docker container, sourced from
+     the existing `DockerUpdateChecker` / `DockerUpdateStatus`.
+  3. **Service health** — a `binary_sensor` (online / offline) per `WebResource`
+     health check, sourced from `ServiceHealthChecker`'s `currentStatus`.
+- **Event-driven + periodic publishing:** states are republished when the underlying
+  checker/health loop detects a change, plus a periodic full refresh; because state
+  topics are retained, HA gets the last value immediately on (re)connect.
+- **Availability / LWT:** a single Stashboard availability topic registered as the
+  MQTT **Last Will**, referenced by every discovered entity, so all entities flip to
+  `unavailable` (not stale-last-value) when Stashboard stops or the connection drops.
+- **Lifecycle cleanup:** when a container/guest/service disappears, its retained
+  discovery + state topics are cleared so HA removes the entity rather than leaving an
+  orphan.
+- **Backup/restore:** the MQTT config (password encrypted) is added to
+  `BackupService` export/import and its round-trip test in the same change
+  (Definition-of-Done §10.3).
+
+**Out of scope:** **control / command topics** (start/stop/restart a container or
+guest from HA) — deferred to a follow-up phase because it introduces an
+externally-driven action surface needing its own gating/auth/ACL story; CPU/RAM/disk
+**telemetry** sensors (state + update + health only for the MVP); per-entity
+selection of *which* containers/services publish (V9.0 publishes all the user's
+monitored entities); running an MQTT broker (the user points Stashboard at their
+existing Mosquitto).
+
+**Tests:** a discovery config message is published (retained) with the expected
+`unique_id`, device grouping, `state_topic`, and `availability_topic`; every
+published entity's node id / `object_id` / `unique_id` starts with the configured
+entity prefix (defaulting to `stashboard_`), and changing the prefix re-publishes
+discovery and clears the old retained topics; a state topic
+is republished on a status transition and not spammed on an unchanged tick beyond the
+refresh cadence; the LWT/availability topic is registered and entities reference it; a
+removed container/service clears its retained discovery + state topics; the broker
+password is encrypted at rest and the API returns a presence flag only; the
+publisher reconnects after a broker drop; the backup round-trip preserves the MQTT
+config.
+
+**Acceptance bar:** with a broker configured and the switch on, Home Assistant
+auto-discovers one device per host exposing a `binary_sensor` for each container's
+running state, each Docker container's update-available, and each monitored service's
+online/offline status — values update within one check cycle, all entities go
+`unavailable` when Stashboard stops, and no manual HA YAML is required.
+
+---
+
+## V10 — Core dashboard & monitoring depth
 
 > The V5–V8 line drove Stashboard deep into infrastructure management (Docker
-> manager + Compose editor + Proxmox provisioning). V9 turns back to the product's
+> manager + Compose editor + Proxmox provisioning). V10 turns back to the product's
 > original promise — *"one place for every service"* — and closes the gaps that
 > separate Stashboard from a real monitoring + dashboard tool: notification
 > breadth, uptime history, a public status page, and the login-security surface
@@ -158,7 +323,7 @@ the result appears after the auto-scan, and the action is audited.
 
 ---
 
-### Phase V9.0 — Notification channels beyond email/Telegram
+### Phase V10.0 — Notification channels beyond email/Telegram
 
 **Complexity:** Medium
 **Value:** Today every notification (service offline, Docker update available,
@@ -195,7 +360,7 @@ of them at once and keeps Stashboard out of the per-provider-API treadmill.
 
 **Out of scope:** a built-in Apprise runtime (users point at their own Apprise
 instance or the public stateless endpoint); per-notification routing rules
-(e.g. "criticals to Discord, info to ntfy") — V9.0 fans every notification out to
+(e.g. "criticals to Discord, info to ntfy") — V10.0 fans every notification out to
 all configured channels, same as email+Telegram do today.
 
 **Tests:** the Apprise sender posts the expected payload to the configured URL;
@@ -212,7 +377,7 @@ existing email/Telegram delivery.
 
 ---
 
-### Phase V9.1 — Uptime history & analytics
+### Phase V10.1 — Uptime history & analytics
 
 **Complexity:** Medium
 **Value:** The health-check loop records only the *current* status per URL
@@ -220,7 +385,7 @@ existing email/Telegram delivery.
 retained time-series, so the product can't answer "what's my uptime this week?" or
 "when did this flap?" — the questions monitoring is for. This phase adds a bounded
 history so the Healthcheck tab becomes a real monitor and unblocks the public
-status page (V9.2).
+status page (V10.2).
 
 **Scope:**
 
@@ -243,7 +408,7 @@ status page (V9.2).
 
 **Out of scope:** SLA reports / exports (CSV/PDF); alerting *thresholds* on uptime
 % (offline alerting already lives in the V5.6 failure-threshold logic); long-term
-downsampling/rollup tables — a single bounded window is enough for V9.1.
+downsampling/rollup tables — a single bounded window is enough for V10.1.
 
 **Tests:** an event row is written on a status transition and not on an unchanged
 sampled tick beyond the configured cadence; uptime % is computed correctly across a
@@ -257,14 +422,14 @@ derived from retained events that prune at the configured window.
 
 ---
 
-### Phase V9.2 — Public status page
+### Phase V10.2 — Public status page
 
 **Complexity:** Medium
 **Value:** A shareable, read-only status page is the headline feature of the
 monitoring tools Stashboard's audience already knows (Uptime Kuma). It turns
 Stashboard from a private admin view into something a homelabber can hand to family
 or teammates — "is the service up?" without an account. Builds directly on the
-V9.1 history.
+V10.1 history.
 
 **Scope:**
 
@@ -273,7 +438,7 @@ V9.1 history.
   title, optional description, and a public **slug**.
 - A **public, unauthenticated** read endpoint (`GET /api/status/{slug}`) and a
   matching public SPA route that renders each selected service's current status and
-  its V9.1 uptime % + recent-history bar — **owner data only ever exposed through an
+  its V10.1 uptime % + recent-history bar — **owner data only ever exposed through an
   explicitly published page**, never the raw service list. The endpoint returns only
   display fields (name, custom display label, status, uptime %, history sparkline) —
   **never** URLs, credentials, notes, categories, tags, Docker/Proxmox internals.
@@ -290,7 +455,7 @@ V9.1 history.
 
 **Out of scope:** custom domains / white-labelling; subscriber email/RSS digests on
 the public page; incident write-ups / scheduled-maintenance banners authored by the
-owner (a possible later phase) — V9.2 renders live status + history only.
+owner (a possible later phase) — V10.2 renders live status + history only.
 
 **Tests:** the public endpoint returns only published pages and only the
 whitelisted display fields (a test asserts URLs/credentials/notes never appear in
@@ -305,7 +470,7 @@ view, and no way to enumerate unpublished pages.
 
 ---
 
-### Phase V9.3 — Two-factor authentication (TOTP)
+### Phase V10.3 — Two-factor authentication (TOTP)
 
 **Complexity:** Medium
 **Value:** Stashboard stores credentials (AES-256-GCM at rest), can open an
@@ -353,7 +518,7 @@ leaving the server in plaintext.
 
 ---
 
-### Phase V9.4 — API tokens (personal access tokens)
+### Phase V10.4 — API tokens (personal access tokens)
 
 **Complexity:** Medium
 **Value:** Every API call today is authenticated with a short-lived JWT obtained
@@ -400,13 +565,13 @@ immediate effect — without it ever granting host-shell/exec access.
 
 ---
 
-### Phase V9.5 — OIDC / SSO login (optional)
+### Phase V10.5 — OIDC / SSO login (optional)
 
 **Complexity:** Medium–High
 **Value:** Authentik / Authelia / Keycloak are increasingly the front door of a
 homelab, and users running one want Stashboard behind it rather than maintaining a
 separate password. This is the heaviest account-surface phase and is explicitly
-**optional / lower-priority** than V9.3–V9.4 — sequence it last in the security
+**optional / lower-priority** than V10.3–V10.4 — sequence it last in the security
 group.
 
 **Scope:**
@@ -420,7 +585,7 @@ group.
   first OIDC login can **provision** a new account (behind a "allow OIDC
   registration" toggle) or require a pre-existing one. A linked account can still use
   its password unless the owner disables local login.
-- **Coexists with local auth + 2FA:** OIDC is additive; local login (and V9.3 TOTP)
+- **Coexists with local auth + 2FA:** OIDC is additive; local login (and V10.3 TOTP)
   keep working when OIDC is off or for non-OIDC accounts. The resulting session is the
   same `AuthResponse` (access + refresh) the rest of the app already uses, so nothing
   downstream changes.
@@ -442,7 +607,7 @@ first login, and local password + 2FA login continue to work unchanged.
 
 ---
 
-### Phase V9.6 — PWA, web push & card ordering
+### Phase V10.6 — PWA, web push & card ordering
 
 **Complexity:** Medium
 **Value:** The dashboard is already responsive and phone-tested, but it isn't an
@@ -456,7 +621,7 @@ the way they think about their services rather than alphabetically.
 - **PWA**: web app manifest + service worker (installable, app-icon, standalone
   display, offline shell for the login/dashboard chrome). No offline data sync —
   the shell loads, data fetches when online.
-- **Web push** as another V9.0-style notification channel: the browser subscribes
+- **Web push** as another V10.0-style notification channel: the browser subscribes
   (VAPID keys auto-generated + persisted like the existing encryption/JWT secrets),
   subscriptions stored per user/device, and the same status/update/alert
   notifications can fan out to push. Reuses the per-channel toggle + throttle model.
@@ -484,7 +649,7 @@ persists across devices.
 
 ---
 
-### Phase V9.7 — Command palette & global search
+### Phase V10.7 — Command palette & global search
 
 **Complexity:** Low–Medium
 **Value:** The product now spans many pages and entity types (services, Docker
@@ -503,13 +668,13 @@ is purely additive.
   dashboard already has for service modals; extend the same pattern to the Docker
   container modal and Proxmox guest modal).
 - **Backed by existing list endpoints** where possible (services, instances,
-  guests are already fetched/cached client-side) so V9.7 needs **no new backend
+  guests are already fetched/cached client-side) so V10.7 needs **no new backend
   surface** in the common case; add a lightweight combined search endpoint only if
   client-side filtering proves insufficient at scale.
 
 **Out of scope:** server-side full-text search infrastructure; searching inside logs
 / audit history; command *actions* that mutate (start/stop a container from the
-palette) — V9.7 is navigation/search only, mutations stay on their guarded surfaces.
+palette) — V10.7 is navigation/search only, mutations stay on their guarded surfaces.
 
 **Tests:** the palette opens on the shortcut; a query matches services / containers /
 guests / nav actions and ranks sensibly; selecting a result navigates to the correct

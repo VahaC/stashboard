@@ -777,6 +777,9 @@ export interface StashboardFeatures {
   /** V6.13.1 — global master switch for creating an LXC. A host's own
    *  `allowCreate` opt-in is also required. */
   allowProxmoxCreate: boolean
+  /** V8.0 — global master switch for cloning a guest + snapshots. A host's own
+   *  `allowClone` opt-in is also required, and a rollback / delete double-confirms. */
+  allowProxmoxClone: boolean
 }
 
 /** V5.3 — app-wide host-terminal master switch, managed from Settings → Host terminal. */
@@ -806,6 +809,11 @@ export interface ProxmoxDestroySettings {
 
 /** V6.13.1 — app-wide create-LXC master switch, managed from Settings → Create LXC. */
 export interface ProxmoxCreateSettings {
+  enabled: boolean
+}
+
+/** V8.0 — app-wide clone/snapshot master switch, managed from Settings → Clone/snapshot LXC. */
+export interface ProxmoxCloneSettings {
   enabled: boolean
 }
 
@@ -1381,7 +1389,7 @@ export interface ProxmoxLxcStatus {
 }
 
 /** V6.4 — LXC lifecycle actions. */
-export type ProxmoxLxcAction = 'start' | 'stop' | 'shutdown' | 'reboot'
+export type ProxmoxLxcAction = 'start' | 'stop' | 'shutdown' | 'reboot' | 'clone'
 
 // ── V6.8 — PVE node card ─────────────────────────────────────────────────────
 
@@ -1769,6 +1777,56 @@ export interface ProxmoxLxcCreate {
   addToHa: boolean
 }
 
+/** V8.0 — clone-one-LXC payload (`POST …/lxc/{vmid}/clone`). Validation mirrors
+ *  create (vmid range + not already on the host); `full` picks a full (independent)
+ *  vs a linked (CoW) clone; `snapName` clones from a source snapshot. */
+export interface ProxmoxLxcClone {
+  newVmId: number
+  hostname?: string | null
+  /** Storage the clone's disks land on (full clone copies the volumes). */
+  targetStorage?: string | null
+  full: boolean
+  /** Clone from this source snapshot rather than the live state. */
+  snapName?: string | null
+  description?: string | null
+}
+
+/** V8.0 — one LXC snapshot for the modal's Snapshots tab. `snapTime` is a unix
+ *  second; `vmstate` is true when the snapshot captured the running memory state. */
+export interface ProxmoxSnapshot {
+  name: string
+  description: string | null
+  snapTime: number | null
+  parent: string | null
+  vmstate: boolean
+}
+
+/** V8.0 — take-a-snapshot payload (`POST …/lxc/{vmid}/snapshot`). An LXC snapshot
+ *  has no running-memory option (unlike a QEMU VM snapshot). */
+export interface ProxmoxSnapshotCreate {
+  name: string
+  description?: string | null
+}
+
+/** V8.0 — which clone/snapshot action an audit row records (serialized by the API's
+ *  global enum converter as the lower-camel name). */
+export type ProxmoxCloneAction = 'clone' | 'snapshotCreate' | 'snapshotRollback' | 'snapshotDelete'
+
+/** V8.0 — one clone/snapshot audit row for the modal's Audit tab. */
+export interface ProxmoxCloneAudit {
+  id: string
+  proxmoxConnectionId: string | null
+  connectionName: string | null
+  nodeName: string | null
+  vmId: number
+  action: ProxmoxCloneAction
+  /** New vmid (+ hostname) for a clone, or the snapshot name for a snapshot action. */
+  target: string | null
+  success: boolean
+  error: string | null
+  createdAtUtc: string
+}
+
 /** A configured Proxmox host with its discovered guests inline. Never carries
  *  decrypted secrets — only presence flags. */
 /** V6.8.3 — which Proxmox product a host points at (PVE vs Proxmox Backup
@@ -1803,6 +1861,10 @@ export interface ProxmoxConnection {
   /** V6.13.1 — per-host opt-in to creating an LXC. The server also requires the
    *  global `allowProxmoxCreate` switch. */
   allowCreate: boolean
+  /** V8.0 — per-host opt-in to cloning a guest + snapshots. The server also
+   *  requires the global `allowProxmoxClone` switch; a rollback / delete
+   *  double-confirms. */
+  allowClone: boolean
   enabled: boolean
   updateNotificationsEnabled: boolean
   telegramNotificationsEnabled: boolean
@@ -1846,6 +1908,8 @@ export interface ProxmoxConnectionUpsert {
   allowDestroy: boolean
   /** V6.13.1 — opt this host in to creating an LXC. */
   allowCreate: boolean
+  /** V8.0 — opt this host in to cloning a guest + snapshots. */
+  allowClone: boolean
   enabled: boolean
   updateNotificationsEnabled: boolean
   telegramNotificationsEnabled: boolean

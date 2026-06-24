@@ -52,6 +52,7 @@ public sealed class ProxmoxConnectionMapper(IEncryptionService encryption) : IPr
             entity.AllowUpdates,
             entity.AllowDestroy,
             entity.AllowCreate,
+            entity.AllowClone,
             entity.Enabled,
             entity.UpdateNotificationsEnabled,
             entity.TelegramNotificationsEnabled,
@@ -109,6 +110,7 @@ public sealed class ProxmoxConnectionMapper(IEncryptionService encryption) : IPr
         entity.AllowUpdates = request.AllowUpdates;
         entity.AllowDestroy = request.AllowDestroy;
         entity.AllowCreate = request.AllowCreate;
+        entity.AllowClone = request.AllowClone;
 
         entity.Enabled = request.Enabled;
         // Telemetry poll interval: clamp a supplied value to 5..300s; null resets

@@ -38,6 +38,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
     private readonly Mock<IProxmoxUpdateApplySettingsService> _updateSettingsMock = new();
     private readonly Mock<IProxmoxDestroySettingsService> _destroySettingsMock = new();
     private readonly Mock<IProxmoxCreateSettingsService> _createSettingsMock = new();
+    private readonly Mock<IProxmoxCloneSettingsService> _cloneSettingsMock = new();
     private readonly Mock<Stashboard.Api.Services.Proxmox.IProxmoxNodeAlertService> _alertServiceMock = new();
     private readonly Mock<IDockerWebhookTokenGenerator> _webhookTokenGeneratorMock = new();
     private readonly Mock<IContainerIconResolver> _iconResolverMock = new();
@@ -1324,6 +1325,288 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         Assert.Contains("does not support container directories", row.Error);
     }
 
+    // ── V8.0 — clone & snapshot ────────────────────────────────────────────────
+
+    private static ProxmoxLxcCloneRequest CloneReq(int newVmId = 160) =>
+        new(newVmId, Hostname: "newct-clone", Full: true);
+
+    private void EnableClone() =>
+        _cloneSettingsMock.Setup(s => s.IsEnabledAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+    [Fact]
+    public async Task CloneLxc_GlobalDisabled_Returns403_WithoutTouchingHost()
+    {
+        _cloneSettingsMock.Setup(s => s.IsEnabledAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CloneLxc(conn.Id, 105, CloneReq(), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        _apiMock.Verify(a => a.CloneLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<ProxmoxLxcClone>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(await _db.ProxmoxCloneAudits.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task CloneLxc_PerHostDisabled_Returns403_WithoutTouchingHost()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: false);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CloneLxc(conn.Id, 105, CloneReq(), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        _apiMock.Verify(a => a.CloneLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<ProxmoxLxcClone>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CloneLxc_ForeignHost_ReturnsNotFound()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_otherUserId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CloneLxc(conn.Id, 105, CloneReq(), CancellationToken.None);
+
+        Assert.IsType<NotFoundResult>(result);
+    }
+
+    [Fact]
+    public async Task CloneLxc_NewVmidAlreadyExists_Returns409_WithoutTouchingHost()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        await SeedGuestAsync(conn.Id, vmId: 160, pendingUpdates: null, monitoringEnabled: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CloneLxc(conn.Id, 105, CloneReq(newVmId: 160), CancellationToken.None);
+
+        Assert.IsType<ConflictObjectResult>(result);
+        _apiMock.Verify(a => a.CloneLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<ProxmoxLxcClone>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(await _db.ProxmoxCloneAudits.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task CloneLxc_MalformedVmid_Returns400_WithoutTouchingHost()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CloneLxc(conn.Id, 105, CloneReq(newVmId: 42), CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        _apiMock.Verify(a => a.CloneLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<ProxmoxLxcClone>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CloneLxc_AllGatesPass_PostsExpectedSpec_ScansAndAudits()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CloneLxc(conn.Id, 105, CloneReq(newVmId: 160), CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        _apiMock.Verify(a => a.CloneLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), 105,
+            It.Is<ProxmoxLxcClone>(s => s.NewVmId == 160 && s.Hostname == "newct-clone" && s.Full),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _scanMock.Verify(s => s.CheckConnectionAsync(
+            It.Is<ProxmoxConnectionEntity>(c => c.Id == conn.Id), It.IsAny<CancellationToken>()), Times.Once);
+
+        var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal(ProxmoxCloneAction.Clone, row.Action);
+        Assert.Equal(105, row.VmId);
+        Assert.Contains("160", row.Target);
+        Assert.True(row.Success);
+        Assert.Equal(_userId, row.InitiatedByUserId);
+    }
+
+    [Fact]
+    public async Task CloneLxc_HostRejects_Returns502_AndAuditsFailure()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        _apiMock.Setup(a => a.CloneLxcAsync(
+                It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<ProxmoxLxcClone>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Proxmox returned 500: linked clone requires a snapshot"));
+        var ctrl = BuildController();
+
+        var result = await ctrl.CloneLxc(conn.Id, 105, CloneReq(newVmId: 160), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(502, obj.StatusCode);
+        _scanMock.Verify(s => s.CheckConnectionAsync(
+            It.IsAny<ProxmoxConnectionEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.False(row.Success);
+        Assert.Contains("requires a snapshot", row.Error);
+    }
+
+    [Fact]
+    public async Task CreateSnapshot_GlobalDisabled_Returns403_WithoutTouchingHost()
+    {
+        _cloneSettingsMock.Setup(s => s.IsEnabledAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CreateSnapshot(conn.Id, 105, new ProxmoxSnapshotCreateRequest("snap1"), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        _apiMock.Verify(a => a.CreateSnapshotAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateSnapshot_InvalidName_Returns400()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CreateSnapshot(conn.Id, 105, new ProxmoxSnapshotCreateRequest("1bad name"), CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        _apiMock.Verify(a => a.CreateSnapshotAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateSnapshot_AllGatesPass_HitsEndpoint_AndAudits()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CreateSnapshot(conn.Id, 105,
+            new ProxmoxSnapshotCreateRequest("before-upgrade", Description: "pre"), CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+        _apiMock.Verify(a => a.CreateSnapshotAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), 105, "before-upgrade", "pre", It.IsAny<CancellationToken>()), Times.Once);
+
+        var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal(ProxmoxCloneAction.SnapshotCreate, row.Action);
+        Assert.Equal("before-upgrade", row.Target);
+        Assert.True(row.Success);
+    }
+
+    [Fact]
+    public async Task RollbackSnapshot_AllGatesPass_HitsEndpoint_AndAudits()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RollbackSnapshot(conn.Id, 105, "before-upgrade", CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+        _apiMock.Verify(a => a.RollbackSnapshotAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), 105, "before-upgrade", It.IsAny<CancellationToken>()), Times.Once);
+
+        var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal(ProxmoxCloneAction.SnapshotRollback, row.Action);
+    }
+
+    [Fact]
+    public async Task RollbackSnapshot_PerHostDisabled_Returns403_WithoutTouchingHost()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: false);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RollbackSnapshot(conn.Id, 105, "before-upgrade", CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        _apiMock.Verify(a => a.RollbackSnapshotAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteSnapshot_AllGatesPass_HitsEndpoint_AndAudits()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.DeleteSnapshot(conn.Id, 105, "before-upgrade", CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+        _apiMock.Verify(a => a.DeleteSnapshotAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), 105, "before-upgrade", It.IsAny<CancellationToken>()), Times.Once);
+
+        var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal(ProxmoxCloneAction.SnapshotDelete, row.Action);
+    }
+
+    [Fact]
+    public async Task DeleteSnapshot_HostRejects_Returns502_AndAuditsFailure()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        _apiMock.Setup(a => a.DeleteSnapshotAsync(
+                It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Proxmox returned 500: snapshot has dependent snapshots"));
+        var ctrl = BuildController();
+
+        var result = await ctrl.DeleteSnapshot(conn.Id, 105, "before-upgrade", CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(502, obj.StatusCode);
+        var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.False(row.Success);
+        Assert.Contains("dependent snapshots", row.Error);
+    }
+
+    [Fact]
+    public async Task ListSnapshots_OwnedHost_ReturnsHostSnapshots()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        _apiMock.Setup(a => a.ListSnapshotsAsync(It.IsAny<ProxmoxConnectionProfile>(), 105, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProxmoxSnapshot> { new("snap1", "note", 1700000000, null, true) });
+        var ctrl = BuildController();
+
+        var result = await ctrl.ListSnapshots(conn.Id, 105, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var list = Assert.IsAssignableFrom<IReadOnlyList<ProxmoxSnapshotResponse>>(ok.Value);
+        Assert.Single(list);
+        Assert.Equal("snap1", list[0].Name);
+    }
+
+    [Fact]
+    public async Task GetCloneAudit_OwnedHost_ReturnsGuestScopedRows_NewestFirst()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        _db.ProxmoxCloneAudits.AddRange(
+            new ProxmoxCloneAuditEntity { Id = Guid.NewGuid(), InitiatedByUserId = _userId, ProxmoxConnectionId = conn.Id, VmId = 105, Action = ProxmoxCloneAction.SnapshotCreate, Target = "old", Success = true, CreatedAtUtc = DateTime.UtcNow.AddMinutes(-5), CreatedUtc = DateTime.UtcNow },
+            new ProxmoxCloneAuditEntity { Id = Guid.NewGuid(), InitiatedByUserId = _userId, ProxmoxConnectionId = conn.Id, VmId = 105, Action = ProxmoxCloneAction.Clone, Target = "new", Success = true, CreatedAtUtc = DateTime.UtcNow, CreatedUtc = DateTime.UtcNow },
+            // A different guest's row must not leak in.
+            new ProxmoxCloneAuditEntity { Id = Guid.NewGuid(), InitiatedByUserId = _userId, ProxmoxConnectionId = conn.Id, VmId = 999, Action = ProxmoxCloneAction.Clone, Target = "other", Success = true, CreatedAtUtc = DateTime.UtcNow, CreatedUtc = DateTime.UtcNow });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+        var ctrl = BuildController();
+
+        var result = await ctrl.GetCloneAudit(conn.Id, 105, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var list = Assert.IsAssignableFrom<IReadOnlyList<ProxmoxCloneAuditResponse>>(ok.Value);
+        Assert.Equal(2, list.Count);
+        Assert.Equal(ProxmoxCloneAction.Clone, list[0].Action);   // newest first
+    }
+
     // ── V6.8 — node card read endpoints ────────────────────────────────────────
 
     [Fact]
@@ -1604,6 +1887,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
             _updateSettingsMock.Object,
             _destroySettingsMock.Object,
             _createSettingsMock.Object,
+            _cloneSettingsMock.Object,
             _alertServiceMock.Object,
             _webhookTokenGeneratorMock.Object,
             _iconResolverMock.Object,
@@ -1639,7 +1923,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
 
     private async Task<ProxmoxConnectionEntity> SeedConnectionAsync(
         Guid userId, bool allowUpdates = false, bool withSsh = false, bool allowDestroy = false,
-        bool allowCreate = false)
+        bool allowCreate = false, bool allowClone = false)
     {
         var conn = new ProxmoxConnectionEntity
         {
@@ -1653,6 +1937,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
             AllowUpdates = allowUpdates,
             AllowDestroy = allowDestroy,
             AllowCreate = allowCreate,
+            AllowClone = allowClone,
             SshHost = withSsh ? "pve.lan" : null,
             SshUsername = withSsh ? "root" : null,
             SshPrivateKeyEncrypted = withSsh ? "enc:PEM" : null,
@@ -1715,6 +2000,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         await _db.ProxmoxMonitoringAudits.ExecuteDeleteAsync();
         await _db.ProxmoxDestroyAudits.ExecuteDeleteAsync();
         await _db.ProxmoxCreateAudits.ExecuteDeleteAsync();
+        await _db.ProxmoxCloneAudits.ExecuteDeleteAsync();
         await _db.ProxmoxGuestIcons.ExecuteDeleteAsync();
         await _db.ProxmoxGuests.ExecuteDeleteAsync();
         await _db.ProxmoxConnections.ExecuteDeleteAsync();

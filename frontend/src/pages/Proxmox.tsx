@@ -5,6 +5,7 @@ import {
   AlertCircle,
   Bell,
   BellOff,
+  Camera,
   Cpu,
   Download,
   FileText,
@@ -22,7 +23,6 @@ import {
   ScrollText,
   Search,
   Settings,
-  Square,
   SquareChevronRight,
   Thermometer,
   Trash2,
@@ -43,6 +43,7 @@ import { StateBadge } from '@/components/shared/StateBadge'
 import { ProxmoxConnectionModal } from '@/components/ProxmoxConnectionModal'
 import { LxcModal, type LxcModalTab } from '@/components/proxmox/LxcModal'
 import { LxcCreateModal } from '@/components/proxmox/LxcCreateModal'
+import { LxcCloneModal } from '@/components/proxmox/LxcCloneModal'
 import { LxcPowerConfirmDialog } from '@/components/proxmox/LxcPowerConfirmDialog'
 import { NodeModal, type NodeModalTab } from '@/components/proxmox/NodeModal'
 import { ProxmoxUpdateDialog } from '@/components/proxmox/ProxmoxUpdateDialog'
@@ -221,6 +222,7 @@ function GuestCard({ guest, iconDataUri = null, onOpen, onAction, busy = false }
           {diag('overview', 'Overview', Info)}
           {diag('config', 'Config', Settings)}
           {diag('tasks', 'Tasks', FileText)}
+          {diag('snapshots', 'Snapshots', Camera)}
           {/* Logs / Watch / Console are SSH/apt/pct-backed — LXC only. */}
           {!vm && diag('logs', 'Logs', ScrollText)}
           {diag('stats', 'Stats', Activity)}
@@ -262,6 +264,7 @@ function GuestCard({ guest, iconDataUri = null, onOpen, onAction, busy = false }
           <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('overview') }}><Info className="h-3.5 w-3.5" /> Overview</button>
           <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('config') }}><Settings className="h-3.5 w-3.5" /> Config</button>
           <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('tasks') }}><FileText className="h-3.5 w-3.5" /> Tasks</button>
+          {!vm && <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('snapshots') }}><Camera className="h-3.5 w-3.5" /> Snapshots</button>}
           {!vm && <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('logs') }}><ScrollText className="h-3.5 w-3.5" /> Logs</button>}
           <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('stats') }}><Activity className="h-3.5 w-3.5" /> Stats</button>
           {!vm && <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen?.('watch') }}><Bell className="h-3.5 w-3.5" /> Watch</button>}
@@ -271,11 +274,13 @@ function GuestCard({ guest, iconDataUri = null, onOpen, onAction, busy = false }
             <>
               <button className="cgroup-menu-item" disabled={busy || !onAction} onClick={() => { setMenuPos(null); setConfirmPower('shutdown') }}><Power className="h-3.5 w-3.5" /> Shutdown</button>
               <button className="cgroup-menu-item" disabled={busy || !onAction} onClick={() => { setMenuPos(null); onAction?.('reboot') }}><RefreshCw className="h-3.5 w-3.5" /> Reboot</button>
-              <button className="cgroup-menu-item cgroup-menu-item--danger" disabled={busy || !onAction} onClick={() => { setMenuPos(null); setConfirmPower('stop') }}><Square className="h-3.5 w-3.5" /> Stop</button>
+              {/* <button className="cgroup-menu-item cgroup-menu-item--danger" disabled={busy || !onAction} onClick={() => { setMenuPos(null); setConfirmPower('stop') }}><Square className="h-3.5 w-3.5" /> Stop</button> */}
             </>
           ) : (
             <button className="cgroup-menu-item" disabled={busy || !onAction} onClick={() => { setMenuPos(null); onAction?.('start') }}><Play className="h-3.5 w-3.5" /> Start</button>
-          )}
+          )}          
+          {/* <div className="cgroup-menu-sep" />
+          <button className="cgroup-menu-item" disabled={busy || !onAction} onClick={() => { setMenuPos(null); onAction?.('clone') }}><Copy className="h-3.5 w-3.5" /> Clone</button> */}
         </FloatingMenu>
       )}
     </EntityCard>
@@ -512,6 +517,7 @@ function ConnectionBlock({
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false)
   // V6.13.1 — New LXC.
   const [createOpen, setCreateOpen] = useState(false)
+  const [cloneGuest, setCloneGuest] = useState<ProxmoxGuest | null>(null)
 
   const totalPending = connection.guests.reduce((sum, g) => sum + (g.pendingUpdates ?? 0), 0)
 
@@ -657,7 +663,10 @@ function ConnectionBlock({
                       guest={g}
                       iconDataUri={guestIcons.data?.[String(g.vmId)] ?? null}
                       onOpen={(tab) => setOpen({ guest: g, tab: tab ?? 'overview' })}
-                      onAction={(action) => act.mutate({ vmId: g.vmId, action })}
+                      onAction={(action) => {
+                        if (action === 'clone') { setCloneGuest(g); return }
+                        act.mutate({ vmId: g.vmId, action })
+                      }}
                       busy={act.isPending && act.variables?.vmId === g.vmId}
                     />
                   )
@@ -707,6 +716,10 @@ function ConnectionBlock({
 
       {createOpen && (
         <LxcCreateModal connection={connection} onClose={() => setCreateOpen(false)} />
+      )}
+
+      {cloneGuest && (
+        <LxcCloneModal connection={connection} guest={cloneGuest} onClose={() => setCloneGuest(null)} />
       )}
 
       {/* V6.11 — confirm before flipping monitoring for every LXC on the host. */}

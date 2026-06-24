@@ -334,4 +334,9 @@ public sealed record StashboardFeaturesResponse(
     /// <summary>V6.13.1 — global master switch for creating an LXC. The UI uses it
     /// to decide whether the New LXC affordance can go live (a host's own
     /// <c>AllowCreate</c> opt-in is also required).</summary>
-    bool AllowProxmoxCreate);
+    bool AllowProxmoxCreate,
+    /// <summary>V8.0 — global master switch for cloning a guest + snapshots. The UI
+    /// uses it to decide whether the Clone affordance + Snapshots tab can go live (a
+    /// host's own <c>AllowClone</c> opt-in is also required, and a rollback / delete
+    /// double-confirms).</summary>
+    bool AllowProxmoxClone);

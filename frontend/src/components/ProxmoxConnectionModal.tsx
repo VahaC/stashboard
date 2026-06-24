@@ -73,6 +73,7 @@ export function ProxmoxConnectionModal({
   const [allowUpdates, setAllowUpdates] = useState(connection?.allowUpdates ?? false)
   const [allowDestroy, setAllowDestroy] = useState(connection?.allowDestroy ?? false)
   const [allowCreate, setAllowCreate] = useState(connection?.allowCreate ?? false)
+  const [allowClone, setAllowClone] = useState(connection?.allowClone ?? false)
   const [enabled, setEnabled] = useState(connection?.enabled ?? true)
   const [emailNotify, setEmailNotify] = useState(connection?.updateNotificationsEnabled ?? true)
   const [telegramNotify, setTelegramNotify] = useState(connection?.telegramNotificationsEnabled ?? false)
@@ -111,6 +112,7 @@ export function ProxmoxConnectionModal({
     allowUpdates,
     allowDestroy,
     allowCreate,
+    allowClone,
     enabled,
     updateNotificationsEnabled: emailNotify,
     telegramNotificationsEnabled: telegramNotify,
@@ -411,6 +413,15 @@ export function ProxmoxConnectionModal({
                   Adds a <strong>New LXC</strong> button to this host's header that provisions a container from a template
                   (<code>POST …/lxc</code>). Requires the server-wide switch at <strong>Settings → Create LXC</strong>. Off by
                   default; every create is audited.
+                </p>
+                <label className="service-modal-checkbox-label service-modal-label mt-2">
+                  <input type="checkbox" checked={allowClone} onChange={(e) => setAllowClone(e.target.checked)} /> Allow clone/snapshot
+                </label>
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                  Adds a <strong>Clone</strong> button + a <strong>Snapshots</strong> tab to a container — duplicate a guest
+                  (<code>POST …/lxc/&lt;vmid&gt;/clone</code>) and take / roll back / delete snapshots. Requires the server-wide
+                  switch at <strong>Settings → Clone/snapshot LXC</strong>; rollback / delete double-confirm. Off by default;
+                  every action is audited.
                 </p>
               </>
             )}

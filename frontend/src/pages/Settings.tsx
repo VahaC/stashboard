@@ -1,6 +1,6 @@
 import { useState, type JSX } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { Bell, TerminalSquare, SquareChevronRight, Server, RefreshCw, HardDrive, Activity, Database, UserCog, Menu, X, Trash2, Plus } from 'lucide-react'
+import { Bell, TerminalSquare, SquareChevronRight, Server, RefreshCw, HardDrive, Activity, Database, UserCog, Menu, X, Trash2, Plus, Copy } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import '@/styles/settings-page.css'
 
@@ -14,6 +14,7 @@ const settingsNavItems = [
   { to: '/settings/proxmox-console', label: 'LXC console', group: 'Proxmox', icon: Server },
   { to: '/settings/proxmox-updates', label: 'Proxmox updates', group: 'Proxmox', icon: RefreshCw },
   { to: '/settings/proxmox-create', label: 'Create LXC', group: 'Proxmox', icon: Plus },
+  { to: '/settings/proxmox-clone', label: 'Clone/snapshot LXC', group: 'Proxmox', icon: Copy },
   { to: '/settings/proxmox-destroy', label: 'Destroy LXC', group: 'Proxmox', icon: Trash2 },
   { to: '/settings/health-checks', label: 'Health checks', group: 'Services', icon: Activity },
 ]
