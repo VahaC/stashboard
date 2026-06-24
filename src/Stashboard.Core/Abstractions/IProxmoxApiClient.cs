@@ -193,8 +193,10 @@ public sealed record ProxmoxBackup(
 /// client builds that). <see cref="NewVmId"/> is the destination guest id;
 /// validation reuses the create vmid rules.
 /// </summary>
-/// <param name="NewVmId">Destination container id (100..999999999).</param>
-/// <param name="Hostname">Hostname for the clone; <c>null</c> ⇒ Proxmox derives one.</param>
+/// <param name="NewVmId">Destination guest id (100..999999999).</param>
+/// <param name="Hostname">The new guest's name; for an LXC this is sent as
+/// <c>hostname=</c>, for a QEMU VM as <c>name=</c> (V8.2). <c>null</c> ⇒ Proxmox
+/// derives one.</param>
 /// <param name="TargetStorage">Storage the clone's disks land on (a <em>full</em>
 /// clone copies the volumes); <c>null</c> ⇒ keep the source's storage.</param>
 /// <param name="Full">A full (independent copy) vs a linked (CoW, references the
@@ -203,13 +205,17 @@ public sealed record ProxmoxBackup(
 /// <param name="SnapName">Clone from this source snapshot rather than the current
 /// state; <c>null</c> ⇒ the live state.</param>
 /// <param name="Description">Optional note set on the clone.</param>
+/// <param name="Format">V8.2 — QEMU-only optional target disk format on a full
+/// clone (<c>raw</c> / <c>qcow2</c> / <c>vmdk</c>); <c>null</c> ⇒ keep the source's
+/// format. Ignored for an LXC clone (the LXC endpoint has no <c>format</c>).</param>
 public sealed record ProxmoxLxcClone(
     int NewVmId,
     string? Hostname = null,
     string? TargetStorage = null,
     bool Full = false,
     string? SnapName = null,
-    string? Description = null);
+    string? Description = null,
+    string? Format = null);
 
 /// <summary>V8.0 — one LXC snapshot from
 /// <c>GET /nodes/{node}/lxc/{vmid}/snapshot</c>. Proxmox always includes a
@@ -568,20 +574,43 @@ public interface IProxmoxApiClient
     Task CloneLxcAsync(
         ProxmoxConnectionProfile profile, int sourceVmId, ProxmoxLxcClone spec, CancellationToken cancellationToken = default);
 
+    /// <summary>V8.2 — clones a QEMU VM via
+    /// <c>POST /nodes/{node}/qemu/{vmid}/clone</c>. The VM analogue of
+    /// <see cref="CloneLxcAsync"/>: the new name rides in <c>name=</c> (not
+    /// <c>hostname=</c>) and a full clone accepts an optional disk
+    /// <c>format=</c>.</summary>
+    Task CloneQemuAsync(
+        ProxmoxConnectionProfile profile, int sourceVmId, ProxmoxLxcClone spec, CancellationToken cancellationToken = default);
+
     /// <summary>V8.0 — lists an LXC's snapshots
     /// (<c>GET /nodes/{node}/lxc/{vmid}/snapshot</c>), newest first. The synthetic
     /// <c>current</c> pseudo-entry Proxmox always returns is filtered out so the
     /// result is purely real snapshots.</summary>
-    Task<IReadOnlyList<ProxmoxSnapshot>> ListSnapshotsAsync(
+    Task<IReadOnlyList<ProxmoxSnapshot>> ListLxcSnapshotsAsync(
+        ProxmoxConnectionProfile profile, int vmId, CancellationToken cancellationToken = default);
+
+    /// <summary>V8.2 — lists a QEMU VM's snapshots
+    /// (<c>GET /nodes/{node}/qemu/{vmid}/snapshot</c>). A pure path-segment swap of
+    /// <see cref="ListLxcSnapshotsAsync"/>; a VM snapshot may carry <c>vmstate</c>
+    /// (the saved RAM state).</summary>
+    Task<IReadOnlyList<ProxmoxSnapshot>> ListQemuSnapshotsAsync(
         ProxmoxConnectionProfile profile, int vmId, CancellationToken cancellationToken = default);
 
     /// <summary>V8.0 — takes a snapshot of an LXC
     /// (<c>POST /nodes/{node}/lxc/{vmid}/snapshot</c>) and polls the task to a
     /// terminal state. (Unlike a QEMU VM snapshot, an LXC snapshot has no
-    /// running-memory option — the endpoint's schema rejects <c>vmstate</c>.) The
-    /// host's message is surfaced verbatim on a rejection.</summary>
-    Task CreateSnapshotAsync(
+    /// running-memory option — the endpoint's schema rejects <c>vmstate</c>, so it
+    /// is never sent.) The host's message is surfaced verbatim on a rejection.</summary>
+    Task CreateLxcSnapshotAsync(
         ProxmoxConnectionProfile profile, int vmId, string name, string? description,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>V8.2 — takes a snapshot of a QEMU VM
+    /// (<c>POST /nodes/{node}/qemu/{vmid}/snapshot</c>) and polls the task. Unlike an
+    /// LXC snapshot, a running VM can additionally save its memory state when
+    /// <paramref name="vmstate"/> is <c>true</c> (<c>vmstate=1</c>).</summary>
+    Task CreateQemuSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, string? description, bool vmstate,
         CancellationToken cancellationToken = default);
 
     /// <summary>V8.0 — rolls an LXC back to a snapshot
@@ -589,14 +618,26 @@ public interface IProxmoxApiClient
     /// task. This <em>discards</em> any state newer than the snapshot — the
     /// controller double-confirms before calling it. The host's message is surfaced
     /// verbatim on a rejection.</summary>
-    Task RollbackSnapshotAsync(
+    Task RollbackLxcSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default);
+
+    /// <summary>V8.2 — rolls a QEMU VM back to a snapshot
+    /// (<c>POST /nodes/{node}/qemu/{vmid}/snapshot/{name}/rollback</c>). A
+    /// path-segment swap of <see cref="RollbackLxcSnapshotAsync"/>.</summary>
+    Task RollbackQemuSnapshotAsync(
         ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default);
 
     /// <summary>V8.0 — deletes one LXC snapshot
     /// (<c>DELETE /nodes/{node}/lxc/{vmid}/snapshot/{name}</c>) and polls the
     /// returned task to a terminal state. The host's message is surfaced verbatim on
     /// a rejection.</summary>
-    Task DeleteSnapshotAsync(
+    Task DeleteLxcSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default);
+
+    /// <summary>V8.2 — deletes one QEMU VM snapshot
+    /// (<c>DELETE /nodes/{node}/qemu/{vmid}/snapshot/{name}</c>). A path-segment swap
+    /// of <see cref="DeleteLxcSnapshotAsync"/>.</summary>
+    Task DeleteQemuSnapshotAsync(
         ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default);
 
     /// <summary>V6.5 / V6.9 — writes the editable subset of an LXC's config via

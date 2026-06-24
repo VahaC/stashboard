@@ -1637,7 +1637,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
 
         var obj = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
-        _apiMock.Verify(a => a.CreateSnapshotAsync(
+        _apiMock.Verify(a => a.CreateLxcSnapshotAsync(
             It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -1651,7 +1651,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         var result = await ctrl.CreateSnapshot(conn.Id, 105, new ProxmoxSnapshotCreateRequest("1bad name"), CancellationToken.None);
 
         Assert.IsType<BadRequestObjectResult>(result);
-        _apiMock.Verify(a => a.CreateSnapshotAsync(
+        _apiMock.Verify(a => a.CreateLxcSnapshotAsync(
             It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -1666,7 +1666,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
             new ProxmoxSnapshotCreateRequest("before-upgrade", Description: "pre"), CancellationToken.None);
 
         Assert.IsType<NoContentResult>(result);
-        _apiMock.Verify(a => a.CreateSnapshotAsync(
+        _apiMock.Verify(a => a.CreateLxcSnapshotAsync(
             It.IsAny<ProxmoxConnectionProfile>(), 105, "before-upgrade", "pre", It.IsAny<CancellationToken>()), Times.Once);
 
         var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
@@ -1685,7 +1685,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         var result = await ctrl.RollbackSnapshot(conn.Id, 105, "before-upgrade", CancellationToken.None);
 
         Assert.IsType<NoContentResult>(result);
-        _apiMock.Verify(a => a.RollbackSnapshotAsync(
+        _apiMock.Verify(a => a.RollbackLxcSnapshotAsync(
             It.IsAny<ProxmoxConnectionProfile>(), 105, "before-upgrade", It.IsAny<CancellationToken>()), Times.Once);
 
         var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
@@ -1703,7 +1703,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
 
         var obj = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
-        _apiMock.Verify(a => a.RollbackSnapshotAsync(
+        _apiMock.Verify(a => a.RollbackLxcSnapshotAsync(
             It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -1717,7 +1717,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         var result = await ctrl.DeleteSnapshot(conn.Id, 105, "before-upgrade", CancellationToken.None);
 
         Assert.IsType<NoContentResult>(result);
-        _apiMock.Verify(a => a.DeleteSnapshotAsync(
+        _apiMock.Verify(a => a.DeleteLxcSnapshotAsync(
             It.IsAny<ProxmoxConnectionProfile>(), 105, "before-upgrade", It.IsAny<CancellationToken>()), Times.Once);
 
         var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
@@ -1729,7 +1729,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
     {
         EnableClone();
         var conn = await SeedConnectionAsync(_userId, allowClone: true);
-        _apiMock.Setup(a => a.DeleteSnapshotAsync(
+        _apiMock.Setup(a => a.DeleteLxcSnapshotAsync(
                 It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Proxmox returned 500: snapshot has dependent snapshots"));
         var ctrl = BuildController();
@@ -1747,7 +1747,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
     public async Task ListSnapshots_OwnedHost_ReturnsHostSnapshots()
     {
         var conn = await SeedConnectionAsync(_userId);
-        _apiMock.Setup(a => a.ListSnapshotsAsync(It.IsAny<ProxmoxConnectionProfile>(), 105, It.IsAny<CancellationToken>()))
+        _apiMock.Setup(a => a.ListLxcSnapshotsAsync(It.IsAny<ProxmoxConnectionProfile>(), 105, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<ProxmoxSnapshot> { new("snap1", "note", 1700000000, null, true) });
         var ctrl = BuildController();
 
@@ -1778,6 +1778,139 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         var list = Assert.IsAssignableFrom<IReadOnlyList<ProxmoxCloneAuditResponse>>(ok.Value);
         Assert.Equal(2, list.Count);
         Assert.Equal(ProxmoxCloneAction.Clone, list[0].Action);   // newest first
+    }
+
+    // ── V8.2 — clone & snapshot QEMU VMs (same gates, routed to qemu endpoints) ──
+
+    [Fact]
+    public async Task CloneQemu_GlobalDisabled_Returns403_WithoutTouchingHost()
+    {
+        _cloneSettingsMock.Setup(s => s.IsEnabledAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CloneQemu(conn.Id, 200, new ProxmoxLxcCloneRequest(260, Hostname: "newvm-clone", Full: true), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        _apiMock.Verify(a => a.CloneQemuAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<ProxmoxLxcClone>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(await _db.ProxmoxCloneAudits.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task CloneQemu_AllGatesPass_PostsNameAndFormat_RoutesToQemu_ScansAndAudits()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CloneQemu(conn.Id, 200,
+            new ProxmoxLxcCloneRequest(260, Hostname: "newvm-clone", Full: true, Format: "qcow2"), CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        _apiMock.Verify(a => a.CloneQemuAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), 200,
+            It.Is<ProxmoxLxcClone>(s => s.NewVmId == 260 && s.Hostname == "newvm-clone" && s.Full && s.Format == "qcow2"),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _apiMock.Verify(a => a.CloneLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<ProxmoxLxcClone>(), It.IsAny<CancellationToken>()), Times.Never);
+        _scanMock.Verify(s => s.CheckConnectionAsync(
+            It.Is<ProxmoxConnectionEntity>(c => c.Id == conn.Id), It.IsAny<CancellationToken>()), Times.Once);
+
+        var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal(ProxmoxCloneAction.Clone, row.Action);
+        Assert.Equal(200, row.VmId);
+        Assert.Contains("VM 260", row.Target);
+        Assert.True(row.Success);
+    }
+
+    [Fact]
+    public async Task CloneQemu_HostRejects_Returns502_AndAuditsFailure()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        _apiMock.Setup(a => a.CloneQemuAsync(
+                It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<ProxmoxLxcClone>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Proxmox returned 500: clone failed: cannot clone running VM"));
+        var ctrl = BuildController();
+
+        var result = await ctrl.CloneQemu(conn.Id, 200, new ProxmoxLxcCloneRequest(260, Hostname: "newvm-clone", Full: true), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(502, obj.StatusCode);
+        var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.False(row.Success);
+        Assert.Contains("cannot clone running VM", row.Error);
+    }
+
+    [Fact]
+    public async Task CreateQemuSnapshot_WithVmstate_PassesVmstate_RoutesToQemu_AndAudits()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.CreateQemuSnapshot(conn.Id, 200,
+            new ProxmoxSnapshotCreateRequest("before-upgrade", Description: "pre", Vmstate: true), CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+        _apiMock.Verify(a => a.CreateQemuSnapshotAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), 200, "before-upgrade", "pre", true, It.IsAny<CancellationToken>()), Times.Once);
+        _apiMock.Verify(a => a.CreateLxcSnapshotAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal(ProxmoxCloneAction.SnapshotCreate, row.Action);
+        Assert.True(row.Success);
+    }
+
+    [Fact]
+    public async Task RollbackQemuSnapshot_AllGatesPass_HitsQemuEndpoint_AndAudits()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RollbackQemuSnapshot(conn.Id, 200, "before-upgrade", CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+        _apiMock.Verify(a => a.RollbackQemuSnapshotAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), 200, "before-upgrade", It.IsAny<CancellationToken>()), Times.Once);
+        var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal(ProxmoxCloneAction.SnapshotRollback, row.Action);
+    }
+
+    [Fact]
+    public async Task DeleteQemuSnapshot_AllGatesPass_HitsQemuEndpoint_AndAudits()
+    {
+        EnableClone();
+        var conn = await SeedConnectionAsync(_userId, allowClone: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.DeleteQemuSnapshot(conn.Id, 200, "before-upgrade", CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(result);
+        _apiMock.Verify(a => a.DeleteQemuSnapshotAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), 200, "before-upgrade", It.IsAny<CancellationToken>()), Times.Once);
+        var row = await _db.ProxmoxCloneAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal(ProxmoxCloneAction.SnapshotDelete, row.Action);
+    }
+
+    [Fact]
+    public async Task ListQemuSnapshots_OwnedHost_RoutesToQemu()
+    {
+        var conn = await SeedConnectionAsync(_userId);
+        _apiMock.Setup(a => a.ListQemuSnapshotsAsync(It.IsAny<ProxmoxConnectionProfile>(), 200, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProxmoxSnapshot> { new("snap1", null, 1700000000, null, true) });
+        var ctrl = BuildController();
+
+        var result = await ctrl.ListQemuSnapshots(conn.Id, 200, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var list = Assert.IsAssignableFrom<IReadOnlyList<ProxmoxSnapshotResponse>>(ok.Value);
+        Assert.Single(list);
+        Assert.True(list[0].Vmstate);
     }
 
     // ── V6.8 — node card read endpoints ────────────────────────────────────────

@@ -21,6 +21,11 @@ public static class ProxmoxLxcCloneValidator
     private static readonly Regex SnapshotName = new(
         "^[A-Za-z][A-Za-z0-9_-]{0,39}$", RegexOptions.Compiled);
 
+    /// <summary>V8.2 — the disk formats Proxmox accepts for a QEMU full clone. Only
+    /// meaningful for a VM; an LXC clone ignores <see cref="ProxmoxLxcClone.Format"/>.</summary>
+    private static readonly HashSet<string> CloneFormats =
+        new(StringComparer.OrdinalIgnoreCase) { "raw", "qcow2", "vmdk" };
+
     /// <summary>Returns one human-readable message per problem; empty ⇒ valid. The
     /// controller additionally rejects a destination vmid already present in the
     /// host's guest list (which needs the DB).</summary>
@@ -33,6 +38,9 @@ public static class ProxmoxLxcCloneValidator
 
         if (spec.SnapName is { } snap && !IsValidSnapshotName(snap))
             errors.Add("Source snapshot name is invalid.");
+
+        if (spec.Format is { Length: > 0 } fmt && !CloneFormats.Contains(fmt))
+            errors.Add("Disk format must be one of raw, qcow2 or vmdk.");
 
         return errors;
     }

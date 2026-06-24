@@ -16,6 +16,8 @@ export interface SnapshotConfirmDialogProps {
   action: 'rollback' | 'delete'
   vmId: number
   name: string
+  /** V8.2 — a QEMU VM (vs an LXC container); drives the wording (VM/CT). */
+  isVm?: boolean
   snapshot: string
   onConfirm: () => Promise<void>
   onCancel: () => void
@@ -30,11 +32,13 @@ export interface SnapshotConfirmDialogProps {
  * and per-host opt-in are the first; the server re-checks both).
  */
 export function SnapshotConfirmDialog({
-  action, vmId, name, snapshot, onConfirm, onCancel,
+  action, vmId, name, isVm = false, snapshot, onConfirm, onCancel,
 }: SnapshotConfirmDialogProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const isRollback = action === 'rollback'
+  const noun = isVm ? 'VM' : 'CT'
+  const guestWord = isVm ? 'VM' : 'container'
 
   const handleConfirm = async () => {
     setBusy(true)
@@ -59,21 +63,21 @@ export function SnapshotConfirmDialog({
         <DialogHeader>
           <DialogTitle>{isRollback ? 'Roll back to snapshot?' : 'Delete snapshot?'}</DialogTitle>
           <DialogDescription className="sr-only">
-            Confirm {action} of snapshot {snapshot} on CT {vmId} {name}
+            Confirm {action} of snapshot {snapshot} on {noun} {vmId} {name}
           </DialogDescription>
         </DialogHeader>
 
         <dl className="remove-confirm-summary">
-          <dt>Container</dt>
-          <dd>CT {vmId} · {name}</dd>
+          <dt>{guestWord === 'VM' ? 'VM' : 'Container'}</dt>
+          <dd>{noun} {vmId} · {name}</dd>
           <dt>Snapshot</dt>
           <dd>{snapshot}</dd>
         </dl>
 
         <p className="remove-confirm-warning">
           {isRollback
-            ? 'Rolling back reverts the container to this snapshot and discards any state newer than it. This cannot be undone.'
-            : 'This permanently removes the snapshot. The container itself is unaffected, but the restore point is gone for good.'}
+            ? `Rolling back reverts the ${guestWord} to this snapshot and discards any state newer than it. This cannot be undone.`
+            : `This permanently removes the snapshot. The ${guestWord} itself is unaffected, but the restore point is gone for good.`}
         </p>
 
         {error && (

@@ -150,15 +150,17 @@ export function LxcModal({ guest, connection, initialTab = 'overview', onClose }
   const isVm = isProxmoxQemu(guest.guestType)
   const kind: ProxmoxGuestKind = isVm ? 'qemu' : 'lxc'
   const features = useFeatures()
-  // V8.0 — the Snapshots + Audit tabs only exist for an LXC when the clone/snapshot
-  // feature is live (global switch + per-host opt-in). The server re-checks both.
-  const canClone = !isVm && (features.data?.allowProxmoxClone ?? false) && connection.allowClone
+  // V8.0 / V8.2 — the Snapshots + Audit tabs only exist when the clone/snapshot
+  // feature is live (global switch + per-host opt-in); V8.2 extends them to VMs. The
+  // server re-checks both.
+  const canClone = (features.data?.allowProxmoxClone ?? false) && connection.allowClone
   const tabs = useMemo(
     () => TABS.filter((t) => {
-      // VM tabs: only the ones that generalise to a QEMU guest.
-      if (isVm) return t.id === 'overview' || t.id === 'config' || t.id === 'tasks' || t.id === 'stats'
-      // LXC: hide the clone/snapshot tabs unless the feature is enabled for the host.
+      // The clone/snapshot tabs (LXC + VM) are gated on the feature being enabled.
       if (t.id === 'snapshots' || t.id === 'audit') return canClone
+      // VM tabs: the read-only ones that generalise to a QEMU guest (the SSH/apt/pct
+      // tabs — Watch, Logs, Console — stay LXC-only).
+      if (isVm) return t.id === 'overview' || t.id === 'config' || t.id === 'tasks' || t.id === 'stats'
       return true
     }),
     [isVm, canClone],
@@ -219,8 +221,8 @@ export function LxcModal({ guest, connection, initialTab = 'overview', onClose }
           {tab === 'config' && <ConfigTab connectionId={connection.id} vmId={guest.vmId} kind={kind} readOnly={isVm} />}
           {tab === 'stats' && <StatsTab connectionId={connection.id} vmId={guest.vmId} kind={kind} />}
           {tab === 'tasks' && <TasksTab connectionId={connection.id} vmId={guest.vmId} kind={kind} />}
-          {tab === 'snapshots' && <SnapshotsTab guest={guest} connection={connection} />}
-          {tab === 'audit' && <CloneAuditTab connectionId={connection.id} vmId={guest.vmId} />}
+          {tab === 'snapshots' && <SnapshotsTab guest={guest} connection={connection} isVm={isVm} kind={kind} />}
+          {tab === 'audit' && <CloneAuditTab connectionId={connection.id} vmId={guest.vmId} kind={kind} isVm={isVm} />}
           {tab === 'watch' && <WatchTab guest={guest} connection={connection} />}
           {/* SSH-backed tabs: kept mounted once opened (see seenLogs/seenConsole)
               so the session survives switching tabs; hidden when not active. */}
@@ -457,10 +459,11 @@ function LifecycleSection({ guest, connection, isVm, onClose }: { guest: Proxmox
   // first), so the button is hidden while running; the server re-checks all of
   // this regardless. V6.14 — works for both LXC containers and QEMU VMs.
   const canDestroy = (features.data?.allowProxmoxDestroy ?? false) && connection.allowDestroy
-  // V8.0 — the Clone affordance is LXC-only and gated like create (global switch +
-  // per-host opt-in). A guest can be cloned running or stopped (Proxmox handles a
-  // running source), so the button shows in both states; the server re-checks both.
-  const canClone = !isVm && (features.data?.allowProxmoxClone ?? false) && connection.allowClone
+  // V8.0 / V8.2 — the Clone affordance is gated like create (global switch +
+  // per-host opt-in) and works for both LXC containers and QEMU VMs. A guest can be
+  // cloned running or stopped (Proxmox handles a running source), so the button shows
+  // in both states; the server re-checks both.
+  const canClone = (features.data?.allowProxmoxClone ?? false) && connection.allowClone
 
   const run = (a: ProxmoxLxcAction) => {
     setError(null)
@@ -541,7 +544,7 @@ function LifecycleSection({ guest, connection, isVm, onClose }: { guest: Proxmox
         />
       )}
       {cloneOpen && (
-        <LxcCloneModal guest={guest} connection={connection} onClose={() => setCloneOpen(false)} />
+        <LxcCloneModal guest={guest} connection={connection} isVm={isVm} onClose={() => setCloneOpen(false)} />
       )}
       {confirmPower && (
         <LxcPowerConfirmDialog
@@ -1864,15 +1867,18 @@ function TaskRow({ connectionId, task, open, onToggle }: {
  * it). Rollback + delete go through {@link SnapshotConfirmDialog} (the second
  * safety gate); the server re-checks the global switch + per-host opt-in regardless.
  */
-function SnapshotsTab({ guest, connection }: { guest: ProxmoxGuest; connection: ProxmoxConnection }) {
+function SnapshotsTab({ guest, connection, isVm, kind }: { guest: ProxmoxGuest; connection: ProxmoxConnection; isVm: boolean; kind: ProxmoxGuestKind }) {
   const connectionId = connection.id
-  const query = useProxmoxSnapshots(connectionId, guest.vmId)
-  const createSnap = useCreateProxmoxSnapshot(connectionId, guest.vmId)
-  const rollback = useRollbackProxmoxSnapshot(connectionId, guest.vmId)
-  const del = useDeleteProxmoxSnapshot(connectionId, guest.vmId)
+  const query = useProxmoxSnapshots(connectionId, guest.vmId, true, kind)
+  const createSnap = useCreateProxmoxSnapshot(connectionId, guest.vmId, kind)
+  const rollback = useRollbackProxmoxSnapshot(connectionId, guest.vmId, kind)
+  const del = useDeleteProxmoxSnapshot(connectionId, guest.vmId, kind)
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  // V8.2 — the running-memory (RAM) state is QEMU-only and only meaningful while the
+  // VM is running; default on for a running VM (the common "snapshot a live VM" case).
+  const [vmstate, setVmstate] = useState(isVm && guest.isRunning)
   const [error, setError] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<{ action: 'rollback' | 'delete'; snapshot: string } | null>(null)
 
@@ -1883,7 +1889,8 @@ function SnapshotsTab({ guest, connection }: { guest: ProxmoxGuest; connection: 
   const take = () => {
     setError(null)
     createSnap.mutate(
-      { name: name.trim(), description: description.trim() || null },
+      // vmstate only rides for a running VM; the server ignores it on the LXC route.
+      { name: name.trim(), description: description.trim() || null, vmstate: isVm && guest.isRunning && vmstate },
       {
         onError: (e) => setError(getApiErrorMessage(e) ?? 'Failed to take the snapshot'),
         onSuccess: () => { setName(''); setDescription('') },
@@ -1907,6 +1914,14 @@ function SnapshotsTab({ guest, connection }: { guest: ProxmoxGuest; connection: 
             <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="optional note" />
           </label>
         </div>
+        {/* V8.2 — the RAM-state toggle is QEMU-only and only applies while the VM is
+            running (a stopped VM has no memory to capture). */}
+        {isVm && guest.isRunning && (
+          <label className="service-modal-checkbox-label service-modal-label mt-2">
+            <input type="checkbox" checked={vmstate} onChange={(e) => setVmstate(e.target.checked)} /> Include running memory state (RAM)
+            <span className="service-modal-label-help">(captures the live RAM so a rollback resumes exactly where it left off — larger and slower)</span>
+          </label>
+        )}
         <div className="container-modal-actions mt-2">
           <Button type="button" size="sm" disabled={busy || !nameValid} onClick={take}>
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
@@ -1950,6 +1965,7 @@ function SnapshotsTab({ guest, connection }: { guest: ProxmoxGuest; connection: 
           action={confirm.action}
           vmId={guest.vmId}
           name={guest.name}
+          isVm={isVm}
           snapshot={confirm.snapshot}
           onConfirm={async () => {
             if (confirm.action === 'rollback') await rollback.mutateAsync(confirm.snapshot)
@@ -1996,8 +2012,8 @@ function SnapshotRow({ snapshot, busy, onRollback, onDelete }: {
 
 // ── Audit tab (V8.0 — clone/snapshot history for this guest) ──────────────────
 
-function CloneAuditTab({ connectionId, vmId }: { connectionId: string; vmId: number }) {
-  const query = useProxmoxCloneAudit(connectionId, vmId)
+function CloneAuditTab({ connectionId, vmId, kind, isVm }: { connectionId: string; vmId: number; kind: ProxmoxGuestKind; isVm: boolean }) {
+  const query = useProxmoxCloneAudit(connectionId, vmId, true, kind)
   const rows = query.data ?? []
 
   if (query.isLoading) return <p className="container-modal-empty">Loading audit history…</p>
@@ -2009,7 +2025,7 @@ function CloneAuditTab({ connectionId, vmId }: { connectionId: string; vmId: num
     )
   }
   if (rows.length === 0) {
-    return <p className="container-modal-empty">No clone or snapshot actions recorded for this container yet.</p>
+    return <p className="container-modal-empty">No clone or snapshot actions recorded for this {isVm ? 'VM' : 'container'} yet.</p>
   }
 
   return (

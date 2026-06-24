@@ -14,7 +14,7 @@ const settingsNavItems = [
   { to: '/settings/proxmox-console', label: 'LXC console', group: 'Proxmox', icon: Server },
   { to: '/settings/proxmox-updates', label: 'Proxmox updates', group: 'Proxmox', icon: RefreshCw },
   { to: '/settings/proxmox-create', label: 'Create LXC', group: 'Proxmox', icon: Plus },
-  { to: '/settings/proxmox-clone', label: 'Clone/snapshot LXC', group: 'Proxmox', icon: Copy },
+  { to: '/settings/proxmox-clone', label: 'Clone/snapshot', group: 'Proxmox', icon: Copy },
   { to: '/settings/proxmox-restore', label: 'Restore LXC', group: 'Proxmox', icon: ArchiveRestore },
   { to: '/settings/proxmox-destroy', label: 'Destroy LXC', group: 'Proxmox', icon: Trash2 },
   { to: '/settings/health-checks', label: 'Health checks', group: 'Services', icon: Activity },
