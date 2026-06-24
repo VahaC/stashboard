@@ -220,6 +220,34 @@ public class DockerAuditController(ApplicationDbContext db, IDockerWatchMapper w
         return Ok(rows.Select(MapProxmoxCreate).ToList());
     }
 
+    /// <summary>V8.1 — LXC restores (the <c>POST …/lxc</c> + <c>restore=1</c>
+    /// disaster-recovery path). Absolute route under <c>api/proxmox</c> since these
+    /// are scoped by Proxmox host; surfaced on the same Audit page. Owner-scoped via
+    /// the denormalised <c>InitiatedByUserId</c>; <c>?connectionId=</c> narrows to a
+    /// single host.</summary>
+    [HttpGet("/api/proxmox/restore/sessions")]
+    public async Task<ActionResult<IReadOnlyList<ProxmoxRestoreAuditResponse>>> GetProxmoxRestoreAudits(
+        [FromQuery] int skip = 0,
+        [FromQuery] int take = DefaultPageSize,
+        [FromQuery] Guid? connectionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var userId = User.GetUserId();
+        var (s, t) = Page(skip, take);
+
+        var query = db.ProxmoxRestoreAudits.AsNoTracking()
+            .Where(x => x.InitiatedByUserId == userId);
+        if (connectionId is { } cid)
+            query = query.Where(x => x.ProxmoxConnectionId == cid);
+
+        var rows = await query
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .Skip(s).Take(t)
+            .ToListAsync(cancellationToken);
+
+        return Ok(rows.Select(MapProxmoxRestore).ToList());
+    }
+
     [HttpGet("update-attempts")]
     public async Task<ActionResult<IReadOnlyList<DockerUpdateAttemptResponse>>> GetUpdateAttempts(
         [FromQuery] int skip = 0,
@@ -408,6 +436,18 @@ public class DockerAuditController(ApplicationDbContext db, IDockerWatchMapper w
         x.VmId,
         x.Hostname,
         x.Template,
+        x.Success,
+        x.Error,
+        x.CreatedAtUtc);
+
+    private static ProxmoxRestoreAuditResponse MapProxmoxRestore(ProxmoxRestoreAuditEntity x) => new(
+        x.Id,
+        x.ProxmoxConnectionId,
+        x.ConnectionName,
+        x.NodeName,
+        x.VmId,
+        x.BackupVolid,
+        x.Overwrote,
         x.Success,
         x.Error,
         x.CreatedAtUtc);

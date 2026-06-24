@@ -428,8 +428,19 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
     public async Task CreateLxcAsync(
         ProxmoxConnectionProfile profile, ProxmoxLxcCreate spec, CancellationToken cancellationToken = default)
     {
-        // Build the create form. Proxmox merges these into a fresh container; only
-        // the fields the form collected are sent.
+        var form = spec.Restore ? BuildRestoreForm(spec) : BuildCreateForm(spec);
+
+        // The POST returns a task UPID; poll it to a terminal state so the caller
+        // can report real success/failure (Proxmox provisions asynchronously).
+        var upid = await PostFormReadUpidAsync(profile, $"nodes/{profile.NodeName}/lxc", form, cancellationToken);
+        if (!string.IsNullOrEmpty(upid))
+            await PollTaskAsync(profile, upid, cancellationToken);
+    }
+
+    /// <summary>Builds the create-from-template form. Proxmox merges these into a
+    /// fresh container; only the fields the form collected are sent.</summary>
+    private static List<KeyValuePair<string, string>> BuildCreateForm(ProxmoxLxcCreate spec)
+    {
         var form = new List<KeyValuePair<string, string>>
         {
             new("vmid", spec.VmId.ToString()),
@@ -453,12 +464,37 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
         if (spec.Nesting) form.Add(new("features", "nesting=1"));
         if (!string.IsNullOrWhiteSpace(spec.Nameserver)) form.Add(new("nameserver", spec.Nameserver.Trim()));
         if (!string.IsNullOrWhiteSpace(spec.SearchDomain)) form.Add(new("searchdomain", spec.SearchDomain.Trim()));
+        return form;
+    }
 
-        // The POST returns a task UPID; poll it to a terminal state so the caller
-        // can report real success/failure (Proxmox provisions asynchronously).
-        var upid = await PostFormReadUpidAsync(profile, $"nodes/{profile.NodeName}/lxc", form, cancellationToken);
-        if (!string.IsNullOrEmpty(upid))
-            await PollTaskAsync(profile, upid, cancellationToken);
+    /// <summary>V8.1 — builds the restore-from-archive form. The archive volid rides
+    /// in <c>ostemplate</c> with <c>restore=1</c>; the rootfs sizes and most config
+    /// come from the backup, so we send <c>storage=</c> (the default-storage override,
+    /// only when set) rather than a <c>rootfs</c> spec, and skip the template-only
+    /// fields (password / SSH keys / net / DNS). <c>force=1</c> overwrites an existing
+    /// vmid (the controller has already confirmed the target is stopped).</summary>
+    private static List<KeyValuePair<string, string>> BuildRestoreForm(ProxmoxLxcCreate spec)
+    {
+        var form = new List<KeyValuePair<string, string>>
+        {
+            new("vmid", spec.VmId.ToString()),
+            new("ostemplate", spec.OsTemplate),
+            new("restore", "1"),
+            new("unprivileged", spec.Unprivileged ? "1" : "0"),
+            new("onboot", spec.Onboot ? "1" : "0"),
+            new("start", spec.Start ? "1" : "0"),
+        };
+        if (spec.Force) form.Add(new("force", "1"));
+        // The default storage for volumes the archive doesn't pin elsewhere; blank ⇒
+        // restore each volume onto the storage it was backed up from.
+        if (!string.IsNullOrWhiteSpace(spec.RootfsStorage)) form.Add(new("storage", spec.RootfsStorage.Trim()));
+        if (!string.IsNullOrWhiteSpace(spec.Hostname)) form.Add(new("hostname", spec.Hostname.Trim()));
+        if (!string.IsNullOrWhiteSpace(spec.Description)) form.Add(new("description", spec.Description.Trim()));
+        if (!string.IsNullOrWhiteSpace(spec.Tags)) form.Add(new("tags", spec.Tags.Trim()));
+        if (spec.Cores is { } cores) form.Add(new("cores", cores.ToString()));
+        if (spec.MemoryMib is { } mem) form.Add(new("memory", mem.ToString()));
+        if (spec.SwapMib is { } swap) form.Add(new("swap", swap.ToString()));
+        return form;
     }
 
     public async Task AddHaResourceAsync(
@@ -510,6 +546,56 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
             }
         }
         result.Sort((a, b) => string.CompareOrdinal(a.Volid, b.Volid));
+        return result;
+    }
+
+    public async Task<IReadOnlyList<ProxmoxBackup>> ListBackupsAsync(
+        ProxmoxConnectionProfile profile, CancellationToken cancellationToken = default)
+    {
+        // First find the storages that can hold backups (their content list
+        // advertises "backup"), then read each one's backup content. PBS datastores
+        // need their own auth/namespace surface (out of scope), so we skip pbs:.
+        var storages = await GetNodeStoragesAsync(profile, cancellationToken);
+        var backupStorages = storages
+            .Where(s => !string.Equals(s.Type, "pbs", StringComparison.OrdinalIgnoreCase))
+            .Where(s => s.Content?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Any(c => string.Equals(c, "backup", StringComparison.OrdinalIgnoreCase)) ?? false)
+            .Select(s => s.Storage);
+
+        var result = new List<ProxmoxBackup>();
+        foreach (var storage in backupStorages)
+        {
+            using var doc = await GetJsonAsync(
+                profile, $"nodes/{profile.NodeName}/storage/{Uri.EscapeDataString(storage)}/content?content=backup",
+                cancellationToken);
+            if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+                continue;
+            foreach (var item in data.EnumerateArray())
+            {
+                var volid = item.TryGetProperty("volid", out var v) ? ReadString(v) : null;
+                if (string.IsNullOrEmpty(volid)) continue;
+
+                // Only LXC archives are restorable here — a VM backup (vzdump-qemu-*)
+                // restores to a QEMU VM, which is a different endpoint. Proxmox tags
+                // the row with subtype="lxc"; fall back to the volid filename for older
+                // hosts that omit it.
+                var subtype = item.TryGetProperty("subtype", out var st) ? ReadString(st) : null;
+                var isLxc = string.Equals(subtype, "lxc", StringComparison.OrdinalIgnoreCase)
+                    || (subtype is null && volid.Contains("vzdump-lxc-", StringComparison.OrdinalIgnoreCase));
+                if (!isLxc) continue;
+
+                result.Add(new ProxmoxBackup(
+                    volid,
+                    storage,
+                    ReadLong(item, "vmid") is { } id ? (int)id : null,
+                    ReadLong(item, "ctime"),
+                    ReadLong(item, "size"),
+                    item.TryGetProperty("format", out var f) ? ReadString(f) : null,
+                    item.TryGetProperty("notes", out var n) ? ReadString(n) : null));
+            }
+        }
+        // Newest first (a null ctime — rare — sorts last).
+        result.Sort((a, b) => (b.CTime ?? long.MinValue).CompareTo(a.CTime ?? long.MinValue));
         return result;
     }
 

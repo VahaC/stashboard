@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import {
   Activity,
   AlertCircle,
+  ArchiveRestore,
   Bell,
   BellOff,
   Camera,
@@ -43,6 +44,7 @@ import { StateBadge } from '@/components/shared/StateBadge'
 import { ProxmoxConnectionModal } from '@/components/ProxmoxConnectionModal'
 import { LxcModal, type LxcModalTab } from '@/components/proxmox/LxcModal'
 import { LxcCreateModal } from '@/components/proxmox/LxcCreateModal'
+import { LxcRestoreModal } from '@/components/proxmox/LxcRestoreModal'
 import { LxcCloneModal } from '@/components/proxmox/LxcCloneModal'
 import { LxcPowerConfirmDialog } from '@/components/proxmox/LxcPowerConfirmDialog'
 import { NodeModal, type NodeModalTab } from '@/components/proxmox/NodeModal'
@@ -517,6 +519,8 @@ function ConnectionBlock({
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false)
   // V6.13.1 — New LXC.
   const [createOpen, setCreateOpen] = useState(false)
+  // V8.1 — Restore LXC from a backup archive.
+  const [restoreOpen, setRestoreOpen] = useState(false)
   const [cloneGuest, setCloneGuest] = useState<ProxmoxGuest | null>(null)
 
   const totalPending = connection.guests.reduce((sum, g) => sum + (g.pendingUpdates ?? 0), 0)
@@ -543,6 +547,10 @@ function ConnectionBlock({
   // V6.13.1 — the New LXC affordance needs the global switch + the per-host
   // opt-in (the server re-checks both regardless). Not for PBS (no guests).
   const canCreate = (features.data?.allowProxmoxCreate ?? false) && connection.allowCreate
+    && connection.serverType !== 'Pbs'
+  // V8.1 — the Restore LXC affordance needs the global switch + the per-host opt-in
+  // (the server re-checks both regardless). Not for PBS (no node-storage backups here).
+  const canRestore = (features.data?.allowProxmoxRestore ?? false) && connection.allowRestore
     && connection.serverType !== 'Pbs'
   const hasLxc = lxcGuests.length > 0
 
@@ -579,13 +587,16 @@ function ConnectionBlock({
           {connMenuPos && (
             <FloatingMenu pos={connMenuPos} onClose={() => setConnMenuPos(null)}>
               {canCreate && (
-                <>
-                  <button className="cgroup-menu-item" onClick={() => { setConnMenuPos(null); setCreateOpen(true) }}>
-                    <Plus className="h-3.5 w-3.5" /> New LXC
-                  </button>
-                  <div className="cgroup-menu-sep" />
-                </>
+                <button className="cgroup-menu-item" onClick={() => { setConnMenuPos(null); setCreateOpen(true) }}>
+                  <Plus className="h-3.5 w-3.5" /> New LXC
+                </button>
               )}
+              {canRestore && (
+                <button className="cgroup-menu-item" onClick={() => { setConnMenuPos(null); setRestoreOpen(true) }}>
+                  <ArchiveRestore className="h-3.5 w-3.5" /> Restore LXC
+                </button>
+              )}
+              {(canCreate || canRestore) && <div className="cgroup-menu-sep" />}
               {hasLxc && (
                 <>
                   <button
@@ -716,6 +727,10 @@ function ConnectionBlock({
 
       {createOpen && (
         <LxcCreateModal connection={connection} onClose={() => setCreateOpen(false)} />
+      )}
+
+      {restoreOpen && (
+        <LxcRestoreModal connection={connection} onClose={() => setRestoreOpen(false)} />
       )}
 
       {cloneGuest && (

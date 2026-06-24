@@ -153,13 +153,38 @@ public sealed record ProxmoxLxcCreate(
     /// <summary>After a successful create, register the container with the
     /// cluster's HA manager (<c>POST /cluster/ha/resources</c>). Best-effort —
     /// needs HA configured on the cluster.</summary>
-    bool AddToHa = false);
+    bool AddToHa = false,
+    /// <summary>V8.1 — restore from a backup archive instead of provisioning from
+    /// a template. When <c>true</c>, <see cref="OsTemplate"/> carries the backup
+    /// <em>volid</em> (<c>storage:backup/vzdump-lxc-…</c>) and the client emits
+    /// <c>restore=1</c>; the rootfs sizes and most config come from the archive, so
+    /// <see cref="RootfsStorage"/> becomes the optional default <em>storage</em>
+    /// override (Proxmox's <c>storage=</c>) and <see cref="RootfsSizeGib"/> is
+    /// ignored. The template-only fields (<see cref="Password"/> /
+    /// <see cref="SshPublicKeys"/> / <see cref="Net0"/> / DNS) do not apply.</summary>
+    bool Restore = false,
+    /// <summary>V8.1 — overwrite an existing container when restoring
+    /// (<c>force=1</c>). Only meaningful with <see cref="Restore"/>; the target must
+    /// be a stopped guest. Destructive — it replaces that container, so the UI
+    /// double-confirms and the controller re-checks the stopped-guest guard.</summary>
+    bool Force = false);
 
 /// <summary>V6.13.1 — one container template (a <c>vztmpl</c> volume) from
 /// <c>GET /nodes/{node}/storage/{storage}/content?content=vztmpl</c>, for the
 /// create form's template dropdown. <see cref="Volid"/> is the value passed back
 /// as <see cref="ProxmoxLxcCreate.OsTemplate"/>.</summary>
 public sealed record ProxmoxTemplate(string Volid, string Storage, long? Size);
+
+/// <summary>V8.1 — one restorable LXC backup archive (a <c>vzdump-lxc-*</c> volume)
+/// from <c>GET /nodes/{node}/storage/{storage}/content?content=backup</c>, for the
+/// restore form's archive dropdown. <see cref="Volid"/> is the value passed back as
+/// <see cref="ProxmoxLxcCreate.OsTemplate"/> with <see cref="ProxmoxLxcCreate.Restore"/>
+/// set. <see cref="VmId"/> is the guest id the archive was taken from (the restore
+/// form offers it as the "original vmid" default); <see cref="CTime"/> is the backup's
+/// creation unix second; <see cref="Format"/> is the archive format
+/// (<c>tar.zst</c> / <c>tar.gz</c> / <c>tar.lzo</c>).</summary>
+public sealed record ProxmoxBackup(
+    string Volid, string Storage, int? VmId, long? CTime, long? Size, string? Format, string? Notes);
 
 /// <summary>
 /// V8.0 — the minimum-viable spec for <strong>cloning</strong> an existing LXC via
@@ -521,6 +546,15 @@ public interface IProxmoxApiClient
     /// <c>vztmpl</c>, then <c>GET …/storage/{storage}/content?content=vztmpl</c>),
     /// for the create form's template dropdown.</summary>
     Task<IReadOnlyList<ProxmoxTemplate>> ListTemplatesAsync(
+        ProxmoxConnectionProfile profile, CancellationToken cancellationToken = default);
+
+    /// <summary>V8.1 — lists the restorable LXC backup archives across the node's
+    /// backup-capable storages (each storage whose content advertises <c>backup</c>,
+    /// then <c>GET …/storage/{storage}/content?content=backup</c>), filtered to
+    /// <c>vzdump-lxc-*</c> volumes, for the restore form's archive dropdown. Mirrors
+    /// <see cref="ListTemplatesAsync"/>. PBS datastores (<c>pbs:</c> volumes) are out
+    /// of scope and skipped.</summary>
+    Task<IReadOnlyList<ProxmoxBackup>> ListBackupsAsync(
         ProxmoxConnectionProfile profile, CancellationToken cancellationToken = default);
 
     /// <summary>V8.0 — clones an existing LXC via

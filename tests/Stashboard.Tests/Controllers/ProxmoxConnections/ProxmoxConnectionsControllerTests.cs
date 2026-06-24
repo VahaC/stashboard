@@ -39,6 +39,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
     private readonly Mock<IProxmoxDestroySettingsService> _destroySettingsMock = new();
     private readonly Mock<IProxmoxCreateSettingsService> _createSettingsMock = new();
     private readonly Mock<IProxmoxCloneSettingsService> _cloneSettingsMock = new();
+    private readonly Mock<IProxmoxRestoreSettingsService> _restoreSettingsMock = new();
     private readonly Mock<Stashboard.Api.Services.Proxmox.IProxmoxNodeAlertService> _alertServiceMock = new();
     private readonly Mock<IDockerWebhookTokenGenerator> _webhookTokenGeneratorMock = new();
     private readonly Mock<IContainerIconResolver> _iconResolverMock = new();
@@ -1325,6 +1326,178 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         Assert.Contains("does not support container directories", row.Error);
     }
 
+    // ── V8.1 — restore LXC from backup (double gate + overwrite guard + audit) ──
+
+    private static ProxmoxLxcRestoreRequest RestoreReq(int vmId = 150, bool force = false) =>
+        new(vmId, "local:backup/vzdump-lxc-101-2026_01_01-00_00_00.tar.zst", Storage: "local-lvm", Force: force);
+
+    private void EnableRestore() =>
+        _restoreSettingsMock.Setup(s => s.IsEnabledAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+    [Fact]
+    public async Task RestoreLxc_GlobalDisabled_Returns403_WithoutTouchingHost()
+    {
+        _restoreSettingsMock.Setup(s => s.IsEnabledAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RestoreLxc(conn.Id, RestoreReq(), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        _apiMock.Verify(a => a.CreateLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxLxcCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(await _db.ProxmoxRestoreAudits.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task RestoreLxc_PerHostDisabled_Returns403_WithoutTouchingHost()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: false);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RestoreLxc(conn.Id, RestoreReq(), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        _apiMock.Verify(a => a.CreateLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxLxcCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RestoreLxc_MalformedSpec_Returns400_WithoutTouchingHost()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        var ctrl = BuildController();
+
+        // A volume that isn't a vzdump-lxc archive is rejected by the validator.
+        var bad = new ProxmoxLxcRestoreRequest(150, "local:iso/debian.iso");
+
+        var result = await ctrl.RestoreLxc(conn.Id, bad, CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        _apiMock.Verify(a => a.CreateLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxLxcCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RestoreLxc_NewVmid_RestoresWithRestoreFlag_ScansAndAudits()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RestoreLxc(conn.Id, RestoreReq(vmId: 150), CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        // The restore goes through the create endpoint with Restore set and Force off.
+        _apiMock.Verify(a => a.CreateLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(),
+            It.Is<ProxmoxLxcCreate>(s => s.VmId == 150 && s.Restore && !s.Force
+                && s.OsTemplate == "local:backup/vzdump-lxc-101-2026_01_01-00_00_00.tar.zst"),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _scanMock.Verify(s => s.CheckConnectionAsync(
+            It.Is<ProxmoxConnectionEntity>(c => c.Id == conn.Id), It.IsAny<CancellationToken>()), Times.Once);
+
+        var row = await _db.ProxmoxRestoreAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal(150, row.VmId);
+        Assert.False(row.Overwrote);
+        Assert.True(row.Success);
+        Assert.Equal("local:backup/vzdump-lxc-101-2026_01_01-00_00_00.tar.zst", row.BackupVolid);
+        Assert.Equal(_userId, row.InitiatedByUserId);
+    }
+
+    [Fact]
+    public async Task RestoreLxc_VmidExists_WithoutForce_Returns409_WithoutTouchingHost()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        await SeedGuestAsync(conn.Id, vmId: 150, pendingUpdates: null, monitoringEnabled: true, isRunning: false);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RestoreLxc(conn.Id, RestoreReq(vmId: 150, force: false), CancellationToken.None);
+
+        Assert.IsType<ConflictObjectResult>(result);
+        _apiMock.Verify(a => a.CreateLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxLxcCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(await _db.ProxmoxRestoreAudits.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task RestoreLxc_Overwrite_RunningTarget_Returns409_WithoutTouchingHost()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        await SeedGuestAsync(conn.Id, vmId: 150, pendingUpdates: null, monitoringEnabled: true, isRunning: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RestoreLxc(conn.Id, RestoreReq(vmId: 150, force: true), CancellationToken.None);
+
+        Assert.IsType<ConflictObjectResult>(result);
+        _apiMock.Verify(a => a.CreateLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxLxcCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RestoreLxc_Overwrite_MissingTarget_Returns409_WithoutTouchingHost()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        var ctrl = BuildController();
+
+        // force=true but no such container exists ⇒ refuse (nothing to overwrite).
+        var result = await ctrl.RestoreLxc(conn.Id, RestoreReq(vmId: 150, force: true), CancellationToken.None);
+
+        Assert.IsType<ConflictObjectResult>(result);
+        _apiMock.Verify(a => a.CreateLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxLxcCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RestoreLxc_Overwrite_StoppedTarget_RestoresWithForce()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        await SeedGuestAsync(conn.Id, vmId: 150, pendingUpdates: null, monitoringEnabled: true, isRunning: false);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RestoreLxc(conn.Id, RestoreReq(vmId: 150, force: true), CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        _apiMock.Verify(a => a.CreateLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(),
+            It.Is<ProxmoxLxcCreate>(s => s.VmId == 150 && s.Restore && s.Force),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        var row = await _db.ProxmoxRestoreAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.True(row.Overwrote);
+        Assert.True(row.Success);
+    }
+
+    [Fact]
+    public async Task RestoreLxc_HostRejects_Returns502_AndAuditsFailure()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        _apiMock.Setup(a => a.CreateLxcAsync(
+                It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxLxcCreate>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Proxmox returned 500: unable to restore CT — archive corrupt"));
+        var ctrl = BuildController();
+
+        var result = await ctrl.RestoreLxc(conn.Id, RestoreReq(vmId: 150), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(502, obj.StatusCode);
+        _scanMock.Verify(s => s.CheckConnectionAsync(
+            It.IsAny<ProxmoxConnectionEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        var row = await _db.ProxmoxRestoreAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.False(row.Success);
+        Assert.Contains("archive corrupt", row.Error);
+    }
+
     // ── V8.0 — clone & snapshot ────────────────────────────────────────────────
 
     private static ProxmoxLxcCloneRequest CloneReq(int newVmId = 160) =>
@@ -1888,6 +2061,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
             _destroySettingsMock.Object,
             _createSettingsMock.Object,
             _cloneSettingsMock.Object,
+            _restoreSettingsMock.Object,
             _alertServiceMock.Object,
             _webhookTokenGeneratorMock.Object,
             _iconResolverMock.Object,
@@ -1923,7 +2097,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
 
     private async Task<ProxmoxConnectionEntity> SeedConnectionAsync(
         Guid userId, bool allowUpdates = false, bool withSsh = false, bool allowDestroy = false,
-        bool allowCreate = false, bool allowClone = false)
+        bool allowCreate = false, bool allowClone = false, bool allowRestore = false)
     {
         var conn = new ProxmoxConnectionEntity
         {
@@ -1938,6 +2112,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
             AllowDestroy = allowDestroy,
             AllowCreate = allowCreate,
             AllowClone = allowClone,
+            AllowRestore = allowRestore,
             SshHost = withSsh ? "pve.lan" : null,
             SshUsername = withSsh ? "root" : null,
             SshPrivateKeyEncrypted = withSsh ? "enc:PEM" : null,

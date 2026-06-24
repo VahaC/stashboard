@@ -26,6 +26,7 @@ const ProxmoxUpdatesSettings = lazy(() => import('./pages/settings/ProxmoxUpdate
 const ProxmoxDestroySettings = lazy(() => import('./pages/settings/ProxmoxDestroySettings').then((m) => ({ default: m.ProxmoxDestroySettings })))
 const ProxmoxCreateSettings = lazy(() => import('./pages/settings/ProxmoxCreateSettings').then((m) => ({ default: m.ProxmoxCreateSettings })))
 const ProxmoxCloneSettings = lazy(() => import('./pages/settings/ProxmoxCloneSettings').then((m) => ({ default: m.ProxmoxCloneSettings })))
+const ProxmoxRestoreSettings = lazy(() => import('./pages/settings/ProxmoxRestoreSettings').then((m) => ({ default: m.ProxmoxRestoreSettings })))
 const ImageCleanupSettings = lazy(() => import('./pages/settings/ImageCleanupSettings').then((m) => ({ default: m.ImageCleanupSettings })))
 const HealthCheckSettings = lazy(() => import('./pages/settings/HealthCheckSettings').then((m) => ({ default: m.HealthCheckSettings })))
 const AuditLog = lazy(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })))
@@ -84,6 +85,7 @@ export default function App() {
                   <Route path="proxmox-destroy" element={<ProxmoxDestroySettings />} />
                   <Route path="proxmox-create" element={<ProxmoxCreateSettings />} />
                   <Route path="proxmox-clone" element={<ProxmoxCloneSettings />} />
+                  <Route path="proxmox-restore" element={<ProxmoxRestoreSettings />} />
                   <Route path="image-cleanup" element={<ImageCleanupSettings />} />
                   <Route path="health-checks" element={<HealthCheckSettings />} />
                   <Route path="backup" element={<Backup />} />

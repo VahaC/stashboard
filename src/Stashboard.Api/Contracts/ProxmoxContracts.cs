@@ -36,6 +36,8 @@ public sealed record ProxmoxConnectionResponse(
     bool AllowCreate,
     /// <summary>V8.0 — per-host opt-in to cloning a guest + snapshots.</summary>
     bool AllowClone,
+    /// <summary>V8.1 — per-host opt-in to restoring an LXC from a backup archive.</summary>
+    bool AllowRestore,
     bool Enabled,
     bool UpdateNotificationsEnabled,
     bool TelegramNotificationsEnabled,
@@ -146,6 +148,55 @@ public sealed record ProxmoxCreateSettingsResponse(bool Enabled);
 
 /// <summary>V6.13.1 — update payload for the create-LXC master switch.</summary>
 public sealed record UpdateProxmoxCreateSettingsRequest(bool Enabled);
+
+/// <summary>
+/// V8.1 — app-wide restore-LXC master switch, managed from the Settings page. This is
+/// the global gate; a per-host opt-in (<c>AllowRestore</c>) is also required, and an
+/// overwrite restore additionally needs a stopped target + a UI double confirmation.
+/// </summary>
+public sealed record ProxmoxRestoreSettingsResponse(bool Enabled);
+
+/// <summary>V8.1 — update payload for the restore-LXC master switch.</summary>
+public sealed record UpdateProxmoxRestoreSettingsRequest(bool Enabled);
+
+/// <summary>
+/// V8.1 — restore one LXC from a vzdump backup archive (<c>POST /nodes/{node}/lxc</c>
+/// with <c>restore=1</c>). <see cref="BackupVolid"/> is the archive volume id (from
+/// <c>ListBackupsAsync</c>); it rides in the create endpoint's <c>ostemplate</c>.
+/// <see cref="VmId"/> is the target guest id (default next-free, or the archive's
+/// original). <see cref="Storage"/> is the optional default-storage override (blank ⇒
+/// restore each volume onto the storage it was backed up from). <see cref="Force"/>
+/// overwrites an existing — necessarily stopped — container; the controller re-checks
+/// the stopped-guest guard. The archive carries the rootfs sizes and the container's
+/// own config, so there is no password / template / size here.
+/// </summary>
+public sealed record ProxmoxLxcRestoreRequest(
+    [Range(100, 999_999_999)] int VmId,
+    [Required, MaxLength(512)] string BackupVolid,
+    [MaxLength(100)] string? Storage = null,
+    [MaxLength(255)] string? Hostname = null,
+    [Range(1, 8192)] int? Cores = null,
+    [Range(16, 4194304)] long? MemoryMib = null,
+    [Range(0, 4194304)] long? SwapMib = null,
+    bool Unprivileged = true,
+    bool Onboot = false,
+    bool Start = false,
+    bool Force = false);
+
+/// <summary>V8.1 — one LXC restore audit row for the central Audit page's
+/// <c>LXC restore</c> tab. <c>Overwrote</c> is <c>true</c> when the restore replaced
+/// an existing container (<c>force=1</c>).</summary>
+public sealed record ProxmoxRestoreAuditResponse(
+    Guid Id,
+    Guid? ProxmoxConnectionId,
+    string? ConnectionName,
+    string? NodeName,
+    int VmId,
+    string? BackupVolid,
+    bool Overwrote,
+    bool Success,
+    string? Error,
+    DateTime CreatedAtUtc);
 
 /// <summary>V6.13.1 — the next free guest id from <c>GET /cluster/nextid</c>, for
 /// the create form's vmid default.</summary>
@@ -267,6 +318,7 @@ public sealed record ProxmoxConnectionUpsertRequest(
     bool AllowDestroy = false,
     bool AllowCreate = false,
     bool AllowClone = false,
+    bool AllowRestore = false,
     bool Enabled = true,
     bool UpdateNotificationsEnabled = true,
     bool TelegramNotificationsEnabled = false,

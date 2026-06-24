@@ -203,6 +203,46 @@
   align-items: flex-end;
 }
 
+/* V8.1 — collapsible per-host permissions group (Options block). Keeps the modal
+ * compact: short labels + info-tooltips instead of a paragraph per checkbox. */
+.proxmox-perms {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.6rem;
+}
+.proxmox-perms-summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  list-style-position: inside;
+  user-select: none;
+}
+.proxmox-perms-count {
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+.proxmox-perms-note {
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+  margin: 0.4rem 0 0.5rem;
+}
+.proxmox-perm-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+.proxmox-perm-row .service-modal-checkbox-label {
+  margin-top: 0;
+}
+.proxmox-perm-info {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted-foreground);
+  cursor: help;
+}
+.proxmox-perm-info:hover { color: var(--foreground); }
+
 .proxmox-time { width: 120px; }
 
 .proxmox-select {
@@ -211,6 +251,12 @@
   border-radius: 0.4rem;
   padding: 0 0.5rem;
   background: var(--background);
+}
+
+.container-modal-edit-grid.lxc-create-rootfs-grid .proxmox-select {
+  margin-top: 0;
+  border: 1px solid var(--input);  
+  border-radius: var(--radius-md);
 }
 
 /* ── V6.x — shared EntityCard on the Proxmox grid ─────────────────────────

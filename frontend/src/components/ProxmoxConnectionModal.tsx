@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Info } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,6 +32,25 @@ import '@/styles/proxmox.css'
 
 const HOURLY_VALUES = [1, 2, 4, 6, 12, 24]
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+/** V8.1 — one per-host permission toggle inside the collapsible Permissions group:
+ *  a short checkbox label plus an info icon whose tooltip carries the full detail,
+ *  so the Options block no longer needs a paragraph under every checkbox. The icon
+ *  sits outside the <label> so hovering / clicking it doesn't toggle the box. */
+function PermRow({
+  checked, onChange, label, hint,
+}: { checked: boolean; onChange: (v: boolean) => void; label: string; hint: string }) {
+  return (
+    <div className="proxmox-perm-row">
+      <label className="service-modal-checkbox-label service-modal-label">
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} /> {label}
+      </label>
+      <span className="proxmox-perm-info" title={hint} tabIndex={0} role="note" aria-label={hint}>
+        <Info className="h-3.5 w-3.5" />
+      </span>
+    </div>
+  )
+}
 
 export function ProxmoxConnectionModal({
   open,
@@ -74,6 +93,7 @@ export function ProxmoxConnectionModal({
   const [allowDestroy, setAllowDestroy] = useState(connection?.allowDestroy ?? false)
   const [allowCreate, setAllowCreate] = useState(connection?.allowCreate ?? false)
   const [allowClone, setAllowClone] = useState(connection?.allowClone ?? false)
+  const [allowRestore, setAllowRestore] = useState(connection?.allowRestore ?? false)
   const [enabled, setEnabled] = useState(connection?.enabled ?? true)
   const [emailNotify, setEmailNotify] = useState(connection?.updateNotificationsEnabled ?? true)
   const [telegramNotify, setTelegramNotify] = useState(connection?.telegramNotificationsEnabled ?? false)
@@ -95,6 +115,14 @@ export function ProxmoxConnectionModal({
 
   const isPbs = serverType === 'Pbs'
 
+  // V8.1 — the per-host permission toggles are collapsed by default (they're set
+  // once at setup, not every edit); open the group when this host already has any
+  // permission on so an existing config isn't hidden.
+  const perms = [allowConsole, allowUpdates, ...(isPbs ? [] : [allowDestroy, allowCreate, allowClone, allowRestore])]
+  const permCount = perms.filter(Boolean).length
+  const permTotal = perms.length
+  const [permsOpen, setPermsOpen] = useState(permCount > 0)
+
   const buildUpsert = (): ProxmoxConnectionUpsert => ({
     name: name.trim(),
     apiBaseUrl: apiBaseUrl.trim(),
@@ -113,6 +141,7 @@ export function ProxmoxConnectionModal({
     allowDestroy,
     allowCreate,
     allowClone,
+    allowRestore,
     enabled,
     updateNotificationsEnabled: emailNotify,
     telegramNotificationsEnabled: telegramNotify,
@@ -370,61 +399,50 @@ export function ProxmoxConnectionModal({
 
           <h4 className="proxmox-form-section docker-section-field-full">Options</h4>
           <div className="service-modal-field docker-section-field-full">
-            <label className="service-modal-checkbox-label service-modal-label">
-              <input type="checkbox" checked={allowConsole} onChange={(e) => setAllowConsole(e.target.checked)} />
-              {isPbs ? ' Allow node console' : ' Allow LXC console'}
-            </label>
-            <p className="text-xs text-[var(--muted-foreground)] mt-1">
-              {isPbs ? (
+            {/* V8.1 — the per-host permissions collapse into one disclosure so the
+                Options block stays compact: short labels + an info tooltip carry the
+                detail, and the shared "off by default / Settings switch / audited"
+                rule is stated once instead of repeated per row. */}
+            <details
+              className="proxmox-perms"
+              open={permsOpen}
+              onToggle={(e) => setPermsOpen((e.currentTarget as HTMLDetailsElement).open)}
+            >
+              <summary className="proxmox-perms-summary">
+                Permissions <span className="proxmox-perms-count">· {permCount} of {permTotal} on</span>
+              </summary>
+              <p className="proxmox-perms-note">
+                Each is <strong>off by default</strong> and also needs its matching server-wide switch in <strong>Settings</strong>;
+                every action it enables is audited. The SSH-based ones (console, updates) also need the SSH credentials above.
+              </p>
+
+              <PermRow
+                checked={allowConsole}
+                onChange={setAllowConsole}
+                label={isPbs ? 'Allow node console' : 'Allow LXC console'}
+                hint={isPbs
+                  ? 'Opens a browser shell on the node itself (Console tab) over SSH. Needs the SSH credentials above + Settings → LXC console.'
+                  : 'Opens a browser shell inside a container (Console tab) by SSHing to the host and running pct exec. Needs the SSH credentials above + Settings → LXC console.'}
+              />
+              <PermRow
+                checked={allowUpdates}
+                onChange={setAllowUpdates}
+                label="Allow apply updates"
+                hint={`Adds one-click "Update now" that runs apt-get dist-upgrade ${isPbs ? 'on the node' : 'on the node and inside its LXCs'} over SSH. Needs the SSH credentials above + Settings → Proxmox updates.`}
+              />
+              {!isPbs && (
                 <>
-                  Opens a browser shell <em>on the node itself</em> from the node modal's <strong>Console</strong> tab over SSH.
+                  <PermRow checked={allowDestroy} onChange={setAllowDestroy} label="Allow destroy"
+                    hint="Adds a Destroy button to a stopped LXC's Lifecycle section (removes the container and its disk). Needs Settings → Destroy LXC + an explicit double confirmation." />
+                  <PermRow checked={allowCreate} onChange={setAllowCreate} label="Allow create"
+                    hint="Adds a New LXC button to this host's header that provisions a container from a template. Needs Settings → Create LXC." />
+                  <PermRow checked={allowClone} onChange={setAllowClone} label="Allow clone/snapshot"
+                    hint="Adds a Clone button + a Snapshots tab — duplicate a guest and take / roll back / delete snapshots. Needs Settings → Clone/snapshot LXC; rollback / delete double-confirm." />
+                  <PermRow checked={allowRestore} onChange={setAllowRestore} label="Allow restore"
+                    hint="Adds a Restore LXC button that re-creates a container from a vzdump backup archive. Needs Settings → Restore LXC; overwriting an existing container needs it stopped + double-confirm." />
                 </>
-              ) : (
-                <>
-                  Opens a browser shell <em>inside</em> a container from its <strong>Console</strong> tab, by SSHing to this host and
-                  running <code>pct exec &lt;vmid&gt; -- /bin/bash</code>.
-                </>
-              )}{' '}
-              Requires the SSH credentials above and the server-wide switch at <strong>Settings → LXC console</strong>. Off by
-              default; every session is audited.
-            </p>
-            <label className="service-modal-checkbox-label service-modal-label mt-2">
-              <input type="checkbox" checked={allowUpdates} onChange={(e) => setAllowUpdates(e.target.checked)} /> Allow apply updates
-            </label>
-            <p className="text-xs text-[var(--muted-foreground)] mt-1">
-              Adds a one-click <strong>Update now</strong> that <em>applies</em> pending updates by running
-              <code> apt-get dist-upgrade</code> {isPbs ? 'on the node' : 'on the node and inside its LXCs'} over SSH. Requires the SSH credentials
-              above and the server-wide switch at <strong>Settings → Proxmox updates</strong>. Off by default; every run is audited.
-            </p>
-            {!isPbs && (
-              <>
-                <label className="service-modal-checkbox-label service-modal-label mt-2">
-                  <input type="checkbox" checked={allowDestroy} onChange={(e) => setAllowDestroy(e.target.checked)} /> Allow destroy
-                </label>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  Adds a <strong>Destroy</strong> button to a <em>stopped</em> LXC's Lifecycle section that permanently removes the
-                  container and its disk (<code>DELETE …/lxc/&lt;vmid&gt;</code>). Requires the server-wide switch at
-                  {' '}<strong>Settings → Destroy LXC</strong> and an explicit double confirmation. Off by default; every destroy is audited.
-                </p>
-                <label className="service-modal-checkbox-label service-modal-label mt-2">
-                  <input type="checkbox" checked={allowCreate} onChange={(e) => setAllowCreate(e.target.checked)} /> Allow create
-                </label>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  Adds a <strong>New LXC</strong> button to this host's header that provisions a container from a template
-                  (<code>POST …/lxc</code>). Requires the server-wide switch at <strong>Settings → Create LXC</strong>. Off by
-                  default; every create is audited.
-                </p>
-                <label className="service-modal-checkbox-label service-modal-label mt-2">
-                  <input type="checkbox" checked={allowClone} onChange={(e) => setAllowClone(e.target.checked)} /> Allow clone/snapshot
-                </label>
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  Adds a <strong>Clone</strong> button + a <strong>Snapshots</strong> tab to a container — duplicate a guest
-                  (<code>POST …/lxc/&lt;vmid&gt;/clone</code>) and take / roll back / delete snapshots. Requires the server-wide
-                  switch at <strong>Settings → Clone/snapshot LXC</strong>; rollback / delete double-confirm. Off by default;
-                  every action is audited.
-                </p>
-              </>
-            )}
+              )}
+            </details>
             <label className="service-modal-checkbox-label service-modal-label mt-2">
               <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Enabled (scan on schedule)
             </label>

@@ -19,6 +19,8 @@ import type {
   ProxmoxLxcStatus,
   ProxmoxNextId,
   ProxmoxTemplate,
+  ProxmoxBackup,
+  ProxmoxLxcRestore,
   ProxmoxNodeAlert,
   ProxmoxNodeAlertSettings,
   ProxmoxNodeAlertSettingsUpdate,
@@ -80,6 +82,8 @@ export const proxmoxQk = {
   // V6.13.1 — create form.
   nextId: (id: string) => ['proxmox', 'connections', id, 'lxc', 'nextid'] as const,
   templates: (id: string) => ['proxmox', 'connections', id, 'lxc', 'templates'] as const,
+  // V8.1 — restore form's backup-archive dropdown.
+  backups: (id: string) => ['proxmox', 'connections', id, 'lxc', 'backups'] as const,
   // V8.0 — snapshots + clone/snapshot audit (modal tabs).
   snapshots: (id: string, vmId: number) => ['proxmox', 'connections', id, 'lxc', vmId, 'snapshots'] as const,
   cloneAudit: (id: string, vmId: number) => ['proxmox', 'connections', id, 'lxc', vmId, 'clone-audit'] as const,
@@ -463,6 +467,33 @@ export const useCreateProxmoxLxc = (connectionId: string) => {
   return useMutation({
     mutationFn: async (spec: ProxmoxLxcCreate) =>
       (await api.post<ProxmoxConnection>(`/api/proxmox/connections/${connectionId}/lxc`, spec)).data,
+    onSuccess: (updated) => {
+      qc.setQueryData<ProxmoxConnection[]>(proxmoxQk.connections, (prev) =>
+        prev ? prev.map((c) => (c.id === updated.id ? updated : c)) : prev)
+    },
+  })
+}
+
+/** V8.1 — restorable LXC backup archives across the node's backup-capable storages,
+ *  for the restore form's archive dropdown. */
+export const useProxmoxBackups = (connectionId: string, enabled = true) =>
+  useQuery({
+    queryKey: proxmoxQk.backups(connectionId),
+    queryFn: async (): Promise<ProxmoxBackup[]> =>
+      (await api.get<ProxmoxBackup[]>(`/api/proxmox/connections/${connectionId}/lxc/backups`)).data,
+    enabled,
+    staleTime: 30_000,
+  })
+
+/** V8.1 — restore a new LXC from a vzdump backup archive. Gated server-side (global
+ *  switch + per-host opt-in); an overwrite restore double-confirms. On success the
+ *  host is re-scanned server-side and the refreshed host returned, so the restored
+ *  card appears immediately. */
+export const useRestoreProxmoxLxc = (connectionId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (spec: ProxmoxLxcRestore) =>
+      (await api.post<ProxmoxConnection>(`/api/proxmox/connections/${connectionId}/lxc/restore`, spec)).data,
     onSuccess: (updated) => {
       qc.setQueryData<ProxmoxConnection[]>(proxmoxQk.connections, (prev) =>
         prev ? prev.map((c) => (c.id === updated.id ? updated : c)) : prev)

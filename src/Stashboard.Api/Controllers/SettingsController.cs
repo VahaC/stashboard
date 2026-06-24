@@ -31,6 +31,7 @@ public class SettingsController(
     IProxmoxDestroySettingsService proxmoxDestroy,
     IProxmoxCreateSettingsService proxmoxCreate,
     IProxmoxCloneSettingsService proxmoxClone,
+    IProxmoxRestoreSettingsService proxmoxRestore,
     IImagePruneSettingsService imagePrune,
     IHealthCheckSettingsService healthCheck) : ControllerBase
 {
@@ -122,6 +123,19 @@ public class SettingsController(
         [FromBody] UpdateProxmoxCloneSettingsRequest request, CancellationToken cancellationToken)
     {
         await proxmoxClone.UpdateAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V8.1 — the restore-LXC master switch (the global gate for V8.1).</summary>
+    [HttpGet("proxmox-restore")]
+    public async Task<ActionResult<ProxmoxRestoreSettingsResponse>> GetProxmoxRestore(CancellationToken cancellationToken)
+        => Ok(await proxmoxRestore.GetAsync(cancellationToken));
+
+    [HttpPut("proxmox-restore")]
+    public async Task<IActionResult> UpdateProxmoxRestore(
+        [FromBody] UpdateProxmoxRestoreSettingsRequest request, CancellationToken cancellationToken)
+    {
+        await proxmoxRestore.UpdateAsync(request, cancellationToken);
         return NoContent();
     }
 

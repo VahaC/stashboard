@@ -18,6 +18,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<ProxmoxDestroySettingsEntity> ProxmoxDestroySettings => Set<ProxmoxDestroySettingsEntity>();
     public DbSet<ProxmoxCreateSettingsEntity> ProxmoxCreateSettings => Set<ProxmoxCreateSettingsEntity>();
     public DbSet<ProxmoxCloneSettingsEntity> ProxmoxCloneSettings => Set<ProxmoxCloneSettingsEntity>();
+    public DbSet<ProxmoxRestoreSettingsEntity> ProxmoxRestoreSettings => Set<ProxmoxRestoreSettingsEntity>();
     public DbSet<HealthCheckSettingsEntity> HealthCheckSettings => Set<HealthCheckSettingsEntity>();
 
     public DbSet<WebResourceEntity> WebResources => Set<WebResourceEntity>();
@@ -45,6 +46,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<ProxmoxDestroyAuditEntity> ProxmoxDestroyAudits => Set<ProxmoxDestroyAuditEntity>();
     public DbSet<ProxmoxCreateAuditEntity> ProxmoxCreateAudits => Set<ProxmoxCreateAuditEntity>();
     public DbSet<ProxmoxCloneAuditEntity> ProxmoxCloneAudits => Set<ProxmoxCloneAuditEntity>();
+    public DbSet<ProxmoxRestoreAuditEntity> ProxmoxRestoreAudits => Set<ProxmoxRestoreAuditEntity>();
     public DbSet<ProxmoxNodeAlertSettingsEntity> ProxmoxNodeAlertSettings => Set<ProxmoxNodeAlertSettingsEntity>();
     public DbSet<ProxmoxNodeAlertStateEntity> ProxmoxNodeAlertStates => Set<ProxmoxNodeAlertStateEntity>();
 
@@ -81,6 +83,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         // V8.0 — single-row, app-wide clone/snapshot master switch (see ProxmoxCloneSettingsEntity.SingletonId).
         builder.Entity<ProxmoxCloneSettingsEntity>();
+
+        // V8.1 — single-row, app-wide restore-LXC master switch (see ProxmoxRestoreSettingsEntity.SingletonId).
+        builder.Entity<ProxmoxRestoreSettingsEntity>();
 
         // V5.5 — single-row, app-wide image-prune settings (see ImagePruneSettingsEntity.SingletonId).
         builder.Entity<ImagePruneSettingsEntity>();
@@ -576,6 +581,27 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .HasForeignKey(s => s.ProxmoxConnectionId)
                 .OnDelete(DeleteBehavior.SetNull);
             // Owner cascade — deleting a user removes their clone/snapshot history.
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.InitiatedByUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ProxmoxRestoreAuditEntity>(e =>
+        {
+            // V8.1 — audit log for LXC restores. Same shape and conventions as the
+            // V6.13.1 create audit table: per-user history and per-host history
+            // (newest first applied at query time).
+            e.HasIndex(s => new { s.InitiatedByUserId, s.CreatedAtUtc });
+            e.HasIndex(s => new { s.ProxmoxConnectionId, s.CreatedAtUtc });
+            // Keep the audit row when the host is deleted — the host details are
+            // denormalised onto the row precisely so the history survives. SetNull
+            // mirrors the create / destroy / clone-audit convention.
+            e.HasOne<ProxmoxConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.ProxmoxConnectionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            // Owner cascade — deleting a user removes their restore history.
             e.HasOne<UserEntity>()
                 .WithMany()
                 .HasForeignKey(s => s.InitiatedByUserId)

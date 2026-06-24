@@ -199,6 +199,8 @@ public class Program
         builder.Services.AddScoped<Services.Proxmox.IProxmoxCreateSettingsService, Services.Proxmox.ProxmoxCreateSettingsService>();
         // V8.0 — DB-backed master switch for clone/snapshot.
         builder.Services.AddScoped<Services.Proxmox.IProxmoxCloneSettingsService, Services.Proxmox.ProxmoxCloneSettingsService>();
+        // V8.1 — DB-backed master switch for restore-LXC.
+        builder.Services.AddScoped<Services.Proxmox.IProxmoxRestoreSettingsService, Services.Proxmox.ProxmoxRestoreSettingsService>();
         // V6.6 — browser LXC console: an interactive shell *inside* an LXC,
         // reached by SSHing to the Proxmox host and running `pct exec`. Reuses
         // the V5.3 SSH PTY connector (IHostShellConnector) + the shared

@@ -110,4 +110,17 @@ public sealed class StashboardOptions
     /// (<c>ProxmoxConnection.AllowClone</c>) before it can run.
     /// </summary>
     public bool AllowProxmoxClone { get; set; } = false;
+
+    /// <summary>
+    /// V8.1 — <strong>first-run seed</strong> for the restore-LXC master switch.
+    /// The live value is DB-backed and managed from the Settings page
+    /// (<c>ProxmoxRestoreSettingsEntity</c> / <c>/api/settings/proxmox-restore</c>);
+    /// this config flag only seeds the row the first time it's read, so an operator
+    /// who set it on first run keeps that value until they change it in the UI.
+    /// Default <c>false</c> — restoring re-creates a container from a vzdump archive
+    /// and can overwrite an existing one, so it also requires a per-host opt-in
+    /// (<c>ProxmoxConnection.AllowRestore</c>) before it can run, and an overwrite
+    /// additionally needs a stopped target + a UI double confirmation.
+    /// </summary>
+    public bool AllowProxmoxRestore { get; set; } = false;
 }

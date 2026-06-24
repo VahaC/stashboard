@@ -339,4 +339,9 @@ public sealed record StashboardFeaturesResponse(
     /// uses it to decide whether the Clone affordance + Snapshots tab can go live (a
     /// host's own <c>AllowClone</c> opt-in is also required, and a rollback / delete
     /// double-confirms).</summary>
-    bool AllowProxmoxClone);
+    bool AllowProxmoxClone,
+    /// <summary>V8.1 — global master switch for restoring an LXC from a backup
+    /// archive. The UI uses it to decide whether the Restore LXC affordance can go
+    /// live (a host's own <c>AllowRestore</c> opt-in is also required, and an
+    /// overwrite restore needs a stopped target + double-confirm).</summary>
+    bool AllowProxmoxRestore);

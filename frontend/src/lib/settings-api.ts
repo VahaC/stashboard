@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { ContainerExecSettings, HealthCheckSettings, HostShellSettings, ImagePruneSettings, ProxmoxCloneSettings, ProxmoxConsoleSettings, ProxmoxCreateSettings, ProxmoxDestroySettings, ProxmoxUpdateApplySettings } from './types'
+import type { ContainerExecSettings, HealthCheckSettings, HostShellSettings, ImagePruneSettings, ProxmoxCloneSettings, ProxmoxConsoleSettings, ProxmoxCreateSettings, ProxmoxDestroySettings, ProxmoxRestoreSettings, ProxmoxUpdateApplySettings } from './types'
 
 /** V5.3 — app-wide operational settings managed from the Settings page. */
 export const settingsApi = {
@@ -37,6 +37,11 @@ export const settingsApi = {
     api.get<ProxmoxCloneSettings>('/api/settings/proxmox-clone').then((r) => r.data),
   updateProxmoxCloneSettings: (settings: ProxmoxCloneSettings) =>
     api.put('/api/settings/proxmox-clone', settings),
+  /** V8.1 — global restore-LXC toggle. */
+  getProxmoxRestoreSettings: () =>
+    api.get<ProxmoxRestoreSettings>('/api/settings/proxmox-restore').then((r) => r.data),
+  updateProxmoxRestoreSettings: (settings: ProxmoxRestoreSettings) =>
+    api.put('/api/settings/proxmox-restore', settings),
   /** V5.5 — global image-prune toggle + schedule interval. */
   getImagePruneSettings: () =>
     api.get<ImagePruneSettings>('/api/settings/image-prune').then((r) => r.data),

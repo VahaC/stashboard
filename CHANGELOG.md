@@ -5,6 +5,44 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [8.1.0] — 2026-06-20
+
+### Added
+- **Restore an LXC from a backup (V8.1).** A Proxmox host's header menu gains a
+  **Restore LXC** button that opens an `LxcRestoreModal` (reusing the
+  `LxcCreateModal` styling) to re-create a container from a `vzdump` archive. A new
+  `IProxmoxApiClient.ListBackupsAsync` lists the restorable `vzdump-lxc-*` archives
+  across the node's **backup-capable** storages — the storages whose content
+  advertises `backup`, then `GET …/storage/{storage}/content?content=backup` filtered
+  to LXC archives (PBS datastores are out of scope and skipped) — surfaced in a
+  dropdown with each backup's guest id / timestamp / size.
+- **Restore reuses the create path (V8.1).** `CreateLxcAsync` branches on a new
+  `Restore` flag to `POST /nodes/{node}/lxc` with `ostemplate=<backup volid>` +
+  `restore=1`, emitting the default `storage` override rather than a `rootfs` spec
+  (the archive carries the rootfs sizes) and skipping the template-only fields
+  (password / SSH keys / net / DNS). The target `vmid` defaults to the next-free id
+  (with a one-click **Use original** for the archive's own id), and the
+  **unprivileged / start** toggles are honoured. The returned task UPID is polled via
+  the existing `PollTaskAsync`, so success/failure is real rather than "accepted".
+- **Overwrite guard (V8.1).** Restoring **over** an existing vmid (`force=1`) is
+  destructive — it replaces that container — so it is gated behind the
+  **stopped-guest** check and an explicit double-confirm naming the target (reusing
+  the V6.13 destroy-dialog pattern). A new-vmid restore over an existing id is a clean
+  `409`; an overwrite of a running (or missing) target is refused before any host call.
+- **Gating, audit + Audit tab (V8.1).** Restore is double-gated exactly like create —
+  the `Stashboard:AllowProxmoxRestore` master switch (**Settings → Restore LXC**) plus
+  the per-host `ProxmoxConnection.AllowRestore` opt-in, both off by default, with
+  deterministic `403`s returned **before** any Proxmox call. A successful restore
+  re-scans the host so the card appears immediately. Every attempt that reaches the
+  host writes a `ProxmoxRestoreAuditEntity` row (who / when / host / node / vmid /
+  backup volid / overwrote? / success / error), surfaced on the Audit page's new
+  **LXC restore** tab; a host rejection surfaces verbatim as a `502`.
+
+### Notes
+- Out of scope (deferred): restoring from **Proxmox Backup Server** datastores
+  (`pbs:` volumes need PBS auth/namespaces), bandwidth/`--bwlimit` tuning, and
+  live-restore.
+
 ## [8.0.0] — 2026-06-19
 
 ### Added

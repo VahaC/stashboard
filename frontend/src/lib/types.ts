@@ -780,6 +780,10 @@ export interface StashboardFeatures {
   /** V8.0 — global master switch for cloning a guest + snapshots. A host's own
    *  `allowClone` opt-in is also required, and a rollback / delete double-confirms. */
   allowProxmoxClone: boolean
+  /** V8.1 — global master switch for restoring an LXC from a backup archive. A
+   *  host's own `allowRestore` opt-in is also required, and an overwrite restore
+   *  needs a stopped target + double-confirm. */
+  allowProxmoxRestore: boolean
 }
 
 /** V5.3 — app-wide host-terminal master switch, managed from Settings → Host terminal. */
@@ -814,6 +818,11 @@ export interface ProxmoxCreateSettings {
 
 /** V8.0 — app-wide clone/snapshot master switch, managed from Settings → Clone/snapshot LXC. */
 export interface ProxmoxCloneSettings {
+  enabled: boolean
+}
+
+/** V8.1 — app-wide restore-LXC master switch, managed from Settings → Restore LXC. */
+export interface ProxmoxRestoreSettings {
   enabled: boolean
 }
 
@@ -1747,6 +1756,40 @@ export interface ProxmoxNextId {
   vmId: number
 }
 
+/** V8.1 — one restorable LXC backup archive (a `vzdump-lxc-*` volume) for the
+ *  restore form's archive dropdown. `volid` is passed back as
+ *  `ProxmoxLxcRestore.backupVolid`; `vmId` is the guest the archive was taken from
+ *  (offered as the "original vmid" default); `cTime` is the backup's creation unix
+ *  second. */
+export interface ProxmoxBackup {
+  volid: string
+  storage: string
+  vmId: number | null
+  cTime: number | null
+  size: number | null
+  format: string | null
+  notes: string | null
+}
+
+/** V8.1 — restore-one-LXC-from-a-backup payload (`POST …/lxc/restore`). The archive
+ *  carries the rootfs sizes and the container's own config, so there is no password /
+ *  template / size here. `storage` is the optional default-storage override (blank ⇒
+ *  restore each volume onto the storage it was backed up from). `force` overwrites an
+ *  existing — necessarily stopped — container; the UI double-confirms. */
+export interface ProxmoxLxcRestore {
+  vmId: number
+  backupVolid: string
+  storage?: string | null
+  hostname?: string | null
+  cores?: number | null
+  memoryMib?: number | null
+  swapMib?: number | null
+  unprivileged: boolean
+  onboot: boolean
+  start: boolean
+  force: boolean
+}
+
 /** V6.13.1 — create-one-LXC-from-a-template payload (`POST …/lxc`). `net0` reuses
  *  the V6.9 structured network model so the create and edit forms format an
  *  interface identically. `password` / `sshPublicKeys` are write-only. */
@@ -1865,6 +1908,10 @@ export interface ProxmoxConnection {
    *  requires the global `allowProxmoxClone` switch; a rollback / delete
    *  double-confirms. */
   allowClone: boolean
+  /** V8.1 — per-host opt-in to restoring an LXC from a backup archive. The server
+   *  also requires the global `allowProxmoxRestore` switch; an overwrite restore
+   *  double-confirms. */
+  allowRestore: boolean
   enabled: boolean
   updateNotificationsEnabled: boolean
   telegramNotificationsEnabled: boolean
@@ -1910,6 +1957,8 @@ export interface ProxmoxConnectionUpsert {
   allowCreate: boolean
   /** V8.0 — opt this host in to cloning a guest + snapshots. */
   allowClone: boolean
+  /** V8.1 — opt this host in to restoring an LXC from a backup archive. */
+  allowRestore: boolean
   enabled: boolean
   updateNotificationsEnabled: boolean
   telegramNotificationsEnabled: boolean

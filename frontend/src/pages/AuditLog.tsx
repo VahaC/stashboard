@@ -14,6 +14,7 @@ import {
   type ExecSession,
   type HostShellSession,
   type ProxmoxCreateAudit,
+  type ProxmoxRestoreAudit,
   type ProxmoxDestroyAudit,
   type ProxmoxMonitoringAudit,
   type ProxmoxUpdateSession,
@@ -30,7 +31,7 @@ import '@/styles/audit.css'
  * already have a read path elsewhere and are folded in here for convenience.
  */
 
-type TabKey = 'host' | 'exec' | 'console' | 'pmupdates' | 'pmmonitoring' | 'pmcreate' | 'pmdestroy' | 'compose' | 'updates' | 'prune'
+type TabKey = 'host' | 'exec' | 'console' | 'pmupdates' | 'pmmonitoring' | 'pmcreate' | 'pmrestore' | 'pmdestroy' | 'compose' | 'updates' | 'prune'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'host', label: 'Host terminal' },
@@ -39,6 +40,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'pmupdates', label: 'Proxmox updates' },
   { key: 'pmmonitoring', label: 'LXC monitoring' },
   { key: 'pmcreate', label: 'LXC create' },
+  { key: 'pmrestore', label: 'LXC restore' },
   { key: 'pmdestroy', label: 'LXC destroy' },
   { key: 'compose', label: 'Compose changes' },
   { key: 'updates', label: 'Update attempts' },
@@ -356,6 +358,42 @@ function ProxmoxCreateTable({ connectionId }: { connectionId: string | null }) {
   )
 }
 
+function ProxmoxRestoreTable({ connectionId }: { connectionId: string | null }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['audit', 'pmrestore', connectionId ?? 'all'],
+    queryFn: () => auditApi.getProxmoxRestoreAudits({ connectionId }),
+  })
+  if (isLoading) return <StateMessage>Loading…</StateMessage>
+  if (isError) return <StateMessage>Failed to load LXC restores.</StateMessage>
+  if (!data || data.length === 0) return <StateMessage>No LXC restores recorded yet.</StateMessage>
+  return (
+    <div className="audit-table-wrap">
+      <table className="audit-table">
+        <thead>
+          <tr>
+            <th>Host / node</th><th>Container</th><th>Backup</th><th>Mode</th><th>Result</th><th>When</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((r: ProxmoxRestoreAudit) => (
+            <tr key={r.id}>
+              <td>
+                {r.connectionName ?? '(deleted)'}
+                <div className="audit-sub">{r.nodeName ?? ''}</div>
+              </td>
+              <td>CT {r.vmId}</td>
+              <td><code>{r.backupVolid ?? '—'}</code></td>
+              <td>{r.overwrote ? 'Overwrite' : 'New'}</td>
+              <td>{r.success ? 'Restored' : 'Failed'}<ErrorLine error={r.error} /></td>
+              <td>{formatTimestamp(r.createdAtUtc)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function ComposeChangesTable({ connectionId }: { connectionId: string | null }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['audit', 'compose', connectionId ?? 'all'],
@@ -520,6 +558,7 @@ export function AuditLog() {
             {activeTab === 'pmupdates' && <ProxmoxUpdatesTable connectionId={connectionId} />}
             {activeTab === 'pmmonitoring' && <ProxmoxMonitoringTable connectionId={connectionId} />}
             {activeTab === 'pmcreate' && <ProxmoxCreateTable connectionId={connectionId} />}
+            {activeTab === 'pmrestore' && <ProxmoxRestoreTable connectionId={connectionId} />}
             {activeTab === 'pmdestroy' && <ProxmoxDestroyTable connectionId={connectionId} />}
             {activeTab === 'compose' && <ComposeChangesTable connectionId={connectionId} />}
             {activeTab === 'updates' && <UpdatesTable connectionId={connectionId} />}

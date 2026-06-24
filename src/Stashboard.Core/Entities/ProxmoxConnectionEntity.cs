@@ -131,6 +131,16 @@ public class ProxmoxConnectionEntity : AuditableEntity
     /// <c>VM.Snapshot</c> on the host.</summary>
     public bool AllowClone { get; set; }
 
+    /// <summary>V8.1 — per-host opt-in to <strong>restoring</strong> an LXC from a
+    /// vzdump backup archive (<c>POST /nodes/{node}/lxc</c> with <c>restore=1</c>).
+    /// Off by default; the server also requires the global
+    /// <c>Stashboard:AllowProxmoxRestore</c> switch, and an overwrite restore
+    /// additionally needs a stopped target + an explicit double confirmation in the
+    /// UI. Mirrors <see cref="AllowCreate"/> — a restore re-creates a container (and
+    /// can replace an existing one), so it is gated like the other lifecycle write
+    /// actions. Needs the API token to hold <c>VM.Allocate</c> on the host.</summary>
+    public bool AllowRestore { get; set; }
+
     public bool Enabled { get; set; } = true;
 
     /// <summary>V6.8.2 — how often (seconds) the node modal's live telemetry tabs
