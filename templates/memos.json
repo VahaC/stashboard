@@ -1,0 +1,50 @@
+{
+  "id": "memos",
+  "name": "Memos",
+  "description": "A privacy-first, lightweight note-taking service.",
+  "category": "Files & productivity",
+  "icon": "memos",
+  "projectName": "memos",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./memos",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "5230",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "memos",
+      "image": "ghcr.io/usememos/memos:stable",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:5230"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/var/opt/memos"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://www.usememos.com/"
+}

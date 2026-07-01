@@ -1,0 +1,159 @@
+{
+  "id": "bookstack",
+  "name": "BookStack",
+  "description": "Simple, self-hosted platform for organizing and storing documentation.",
+  "category": "Files & productivity",
+  "icon": "bookstack",
+  "projectName": "bookstack",
+  "variables": [
+    {
+      "key": "APP_URL",
+      "label": "App URL",
+      "type": "text",
+      "hint": null,
+      "default": "http://localhost:6875",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./bookstack/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./bookstack/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "6875",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "bookstack",
+      "image": "lscr.io/linuxserver/bookstack:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:80"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        },
+        {
+          "name": "APP_URL",
+          "value": "${APP_URL}"
+        },
+        {
+          "name": "DB_HOST",
+          "value": "db"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "3306"
+        },
+        {
+          "name": "DB_USERNAME",
+          "value": "bookstack"
+        },
+        {
+          "name": "DB_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "DB_DATABASE",
+          "value": "bookstackapp"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "lscr.io/linuxserver/mariadb:latest",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/config"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        },
+        {
+          "name": "MYSQL_ROOT_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "MYSQL_DATABASE",
+          "value": "bookstackapp"
+        },
+        {
+          "name": "MYSQL_USER",
+          "value": "bookstack"
+        },
+        {
+          "name": "MYSQL_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Two services start together. Set APP_URL to how you’ll reach it; default login admin@admin.com / password.",
+  "documentation": "https://www.bookstackapp.com/"
+}

@@ -1,0 +1,65 @@
+{
+  "id": "homarr",
+  "name": "Homarr",
+  "description": "Sleek, customizable dashboard to manage all your apps and services.",
+  "category": "Monitoring & dashboards",
+  "icon": "homarr",
+  "projectName": "homarr",
+  "variables": [
+    {
+      "key": "SECRET_ENCRYPTION_KEY",
+      "label": "Encryption key (64 hex chars)",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./homarr",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "7575",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "homarr",
+      "image": "ghcr.io/homarr-labs/homarr:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:7575"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/appdata",
+        "/var/run/docker.sock:/var/run/docker.sock:ro"
+      ],
+      "environment": [
+        {
+          "name": "SECRET_ENCRYPTION_KEY",
+          "value": "${SECRET_ENCRYPTION_KEY}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "The encryption key must be a 64-character hex string — generate one with: openssl rand -hex 32.",
+  "documentation": "https://homarr.dev/"
+}

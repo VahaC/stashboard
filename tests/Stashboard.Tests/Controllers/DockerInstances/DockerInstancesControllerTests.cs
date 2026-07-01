@@ -362,7 +362,7 @@ public class DockerInstancesControllerTests : IAsyncLifetime
             });
 
         var ctrl = BuildController(allowRemoval: false);
-        var result = await ctrl.Remove(conn.Id, "wp", force: false, CancellationToken.None);
+        var result = await ctrl.Remove(conn.Id, "wp", force: false, deleteProjectFolder: false, cancellationToken: CancellationToken.None);
 
         var obj = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
@@ -387,7 +387,7 @@ public class DockerInstancesControllerTests : IAsyncLifetime
             .ReturnsAsync(new DockerContainerActionResult(DockerHostStatus.Ok, "abc123", null));
 
         var ctrl = BuildController(allowRemoval: false);
-        var result = await ctrl.Remove(conn.Id, "db", force: false, CancellationToken.None);
+        var result = await ctrl.Remove(conn.Id, "db", force: false, deleteProjectFolder: false, cancellationToken: CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var response = Assert.IsType<DockerContainerActionResponse>(ok.Value);
@@ -413,7 +413,7 @@ public class DockerInstancesControllerTests : IAsyncLifetime
             .ReturnsAsync(new DockerContainerActionResult(DockerHostStatus.Ok, "def456", null));
 
         var ctrl = BuildController(allowRemoval: false);
-        var result = await ctrl.Remove(conn.Id, "app", force: false, CancellationToken.None);
+        var result = await ctrl.Remove(conn.Id, "app", force: false, deleteProjectFolder: false, cancellationToken: CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var response = Assert.IsType<DockerContainerActionResponse>(ok.Value);
@@ -429,11 +429,120 @@ public class DockerInstancesControllerTests : IAsyncLifetime
             .ReturnsAsync(new DockerContainerActionResult(DockerHostStatus.Ok, "deadbeef", null));
 
         var ctrl = BuildController(allowRemoval: true);
-        var result = await ctrl.Remove(conn.Id, "redis", force: false, CancellationToken.None);
+        var result = await ctrl.Remove(conn.Id, "redis", force: false, deleteProjectFolder: false, cancellationToken: CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var response = Assert.IsType<DockerContainerActionResponse>(ok.Value);
         Assert.Equal(DockerContainerActionType.Remove, response.Attempt.ActionType);
+    }
+
+    // ── V8.2 — deleteProjectFolder ───────────────────────────────────────────
+
+    [Fact]
+    public async Task Remove_DeleteProjectFolder_RejectsNonSshHost()
+    {
+        var conn = await SeedConnectionAsync(_userId, hostType: DockerHostType.LocalSocket);
+        _hostClientMock
+            .Setup(h => h.ListContainerDetailsAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<DockerContainerDetail>
+            {
+                MakeDetail(id: "abc", name: "web", image: "nginx:1", state: "running",
+                    composeProject: "myproject",
+                    labels: new Dictionary<string, string> { ["com.docker.compose.project.working_dir"] = "/srv/myproject" }),
+            });
+
+        var ctrl = BuildController(allowRemoval: true);
+        var result = await ctrl.Remove(conn.Id, "web", force: true, deleteProjectFolder: true, cancellationToken: CancellationToken.None);
+
+        var obj = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status400BadRequest, obj.StatusCode);
+        _hostClientMock.Verify(h => h.RemoveContainerAsync(
+            It.IsAny<DockerHostTransport>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _hostClientMock.Verify(h => h.DeleteHostDirectoryAsync(
+            It.IsAny<DockerHostTransport>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Remove_DeleteProjectFolder_RejectsContainerWithoutComposeProject()
+    {
+        var conn = await SeedConnectionAsync(_userId, hostType: DockerHostType.Ssh);
+        _hostClientMock
+            .Setup(h => h.ListContainerDetailsAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<DockerContainerDetail>
+            {
+                MakeDetail(id: "abc", name: "standalone", image: "nginx:1", state: "running"),
+            });
+
+        var ctrl = BuildController(allowRemoval: true);
+        var result = await ctrl.Remove(conn.Id, "standalone", force: true, deleteProjectFolder: true, cancellationToken: CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        _hostClientMock.Verify(h => h.DeleteHostDirectoryAsync(
+            It.IsAny<DockerHostTransport>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Remove_DeleteProjectFolder_DeletesFolder_OnSshHost_AfterContainerRemoved()
+    {
+        var conn = await SeedConnectionAsync(_userId, hostType: DockerHostType.Ssh);
+        _hostClientMock
+            .Setup(h => h.ListContainerDetailsAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<DockerContainerDetail>
+            {
+                MakeDetail(id: "abc", name: "web", image: "nginx:1", state: "running",
+                    composeProject: "myproject",
+                    labels: new Dictionary<string, string> { ["com.docker.compose.project.working_dir"] = "/srv/myproject" }),
+            });
+        _hostClientMock
+            .Setup(h => h.RemoveContainerAsync(It.IsAny<DockerHostTransport>(), "web", true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DockerContainerActionResult(DockerHostStatus.Ok, "abc", null));
+        _hostClientMock
+            .Setup(h => h.DeleteHostDirectoryAsync(It.IsAny<DockerHostTransport>(), "/srv/myproject", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DockerContainerActionResult(DockerHostStatus.Ok, null, null));
+
+        var ctrl = BuildController(allowRemoval: true);
+        var result = await ctrl.Remove(conn.Id, "web", force: true, deleteProjectFolder: true, cancellationToken: CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var response = Assert.IsType<DockerContainerActionResponse>(ok.Value);
+        Assert.True(response.ProjectFolderDeleted);
+        Assert.Null(response.ProjectFolderError);
+        _hostClientMock.Verify(h => h.DeleteHostDirectoryAsync(
+            It.IsAny<DockerHostTransport>(), "/srv/myproject", It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Remove_DeleteProjectFolder_ReportsFailure_ButContainerStaysRemoved()
+    {
+        var conn = await SeedConnectionAsync(_userId, hostType: DockerHostType.Ssh);
+        _hostClientMock
+            .Setup(h => h.ListContainerDetailsAsync(It.IsAny<DockerHostTransport>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<DockerContainerDetail>
+            {
+                MakeDetail(id: "abc", name: "web", image: "nginx:1", state: "running",
+                    composeProject: "myproject",
+                    labels: new Dictionary<string, string> { ["com.docker.compose.project.working_dir"] = "/srv/myproject" }),
+            });
+        _hostClientMock
+            .Setup(h => h.RemoveContainerAsync(It.IsAny<DockerHostTransport>(), "web", true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DockerContainerActionResult(DockerHostStatus.Ok, "abc", null));
+        _hostClientMock
+            .Setup(h => h.DeleteHostDirectoryAsync(It.IsAny<DockerHostTransport>(), "/srv/myproject", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DockerContainerActionResult(DockerHostStatus.ActionFailed, null, "permission denied"));
+
+        var ctrl = BuildController(allowRemoval: true);
+        var result = await ctrl.Remove(conn.Id, "web", force: true, deleteProjectFolder: true, cancellationToken: CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var response = Assert.IsType<DockerContainerActionResponse>(ok.Value);
+        Assert.Equal(DockerContainerActionType.Remove, response.Attempt.ActionType);
+        Assert.Equal(DockerUpdateAttemptStatus.Success, response.Attempt.Status);
+        Assert.False(response.ProjectFolderDeleted);
+        Assert.Equal("permission denied", response.ProjectFolderError);
     }
 
     [Fact]
@@ -1268,14 +1377,15 @@ public class DockerInstancesControllerTests : IAsyncLifetime
         return controller;
     }
 
-    private async Task<DockerConnectionEntity> SeedConnectionAsync(Guid userId)
+    private async Task<DockerConnectionEntity> SeedConnectionAsync(
+        Guid userId, DockerHostType hostType = DockerHostType.LocalSocket)
     {
         var conn = new DockerConnectionEntity
         {
             Id = Guid.NewGuid(),
             UserId = userId,
             Name = $"conn-{Guid.NewGuid():N}",
-            HostType = DockerHostType.LocalSocket,
+            HostType = hostType,
             CreatedUtc = DateTime.UtcNow,
             UpdatedUtc = DateTime.UtcNow,
         };

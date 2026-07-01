@@ -4,6 +4,7 @@ import {
   buildCreateRequest,
   defaultVariableValues,
   generateSecret,
+  joinProjectDir,
   missingRequiredVariables,
   substitute,
   templateIconUrl,
@@ -75,6 +76,15 @@ describe('service-templates helpers', () => {
     expect(generateSecret()).not.toBe(generateSecret())
   })
 
+  it('nests the project under its own folder in the parent directory', () => {
+    expect(joinProjectDir('/opt/stacks', 'immich')).toBe('/opt/stacks/immich')
+    // Trailing slashes on the parent collapse to a single separator.
+    expect(joinProjectDir('/opt/stacks/', 'immich')).toBe('/opt/stacks/immich')
+    expect(joinProjectDir('/opt/stacks///', 'immich')).toBe('/opt/stacks/immich')
+    // A blank project name leaves the parent untouched (UI keeps actions disabled).
+    expect(joinProjectDir('/opt/stacks', '')).toBe('/opt/stacks')
+  })
+
   it('resolves the whole project request across multiple services', () => {
     const req = buildCreateRequest(
       template,
@@ -82,7 +92,8 @@ describe('service-templates helpers', () => {
       { projectName: 'wp', directory: '/opt/wp', fileName: null, createDirectory: true, run: true },
     )
     expect(req.projectName).toBe('wp')
-    expect(req.directory).toBe('/opt/wp')
+    // The entered directory is the parent; the project lands in its own subfolder.
+    expect(req.directory).toBe('/opt/wp/wp')
     expect(req.services).toHaveLength(2)
     expect(req.services[0].environment[0].value).toBe('s3cret')
     expect(req.services[1].ports).toEqual(['9090:80'])

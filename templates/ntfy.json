@@ -1,0 +1,78 @@
+{
+  "id": "ntfy",
+  "name": "ntfy",
+  "description": "Simple HTTP-based pub-sub notification service (push to your phone).",
+  "category": "Communication",
+  "icon": "ntfy",
+  "projectName": "ntfy",
+  "variables": [
+    {
+      "key": "BASE_URL",
+      "label": "Base URL",
+      "type": "text",
+      "hint": null,
+      "default": "http://localhost:8080",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CACHE_PATH",
+      "label": "Cache directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./ntfy/cache",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./ntfy/etc",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "ntfy",
+      "image": "binwiederhier/ntfy:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:80"
+      ],
+      "volumes": [
+        "${CACHE_PATH}:/var/cache/ntfy",
+        "${CONFIG_PATH}:/etc/ntfy"
+      ],
+      "environment": [
+        {
+          "name": "NTFY_BASE_URL",
+          "value": "${BASE_URL}"
+        },
+        {
+          "name": "NTFY_CACHE_FILE",
+          "value": "/var/cache/ntfy/cache.db"
+        }
+      ],
+      "labels": [],
+      "command": "serve",
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://docs.ntfy.sh/"
+}

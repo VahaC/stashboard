@@ -1064,11 +1064,18 @@ const isProjectUpdateResponse = (value: unknown): value is DockerProjectUpdateRe
 export const useDockerContainerAction = (connectionId: string) => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (args: { containerName: string; action: 'start' | 'stop' | 'restart' | 'remove' }) => {
-      const { containerName, action } = args
+    mutationFn: async (args: {
+      containerName: string
+      action: 'start' | 'stop' | 'restart' | 'remove'
+      /** V8.2 — also delete the container's compose project folder on the host (SSH hosts only). */
+      deleteProjectFolder?: boolean
+    }) => {
+      const { containerName, action, deleteProjectFolder } = args
       const url = `/api/docker/connections/${connectionId}/instance/containers/${encodeURIComponent(containerName)}`
       if (action === 'remove') {
-        return (await api.delete<DockerContainerActionResponse>(url)).data
+        return (await api.delete<DockerContainerActionResponse>(url, {
+          params: deleteProjectFolder ? { deleteProjectFolder: true } : undefined,
+        })).data
       }
       return (await api.post<DockerContainerActionResponse>(`${url}/${action}`)).data
     },

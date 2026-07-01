@@ -1,0 +1,57 @@
+{
+  "id": "tailscale",
+  "name": "Tailscale",
+  "description": "Zero-config mesh VPN built on WireGuard.",
+  "category": "Networking & proxies",
+  "icon": "tailscale",
+  "projectName": "tailscale",
+  "variables": [
+    {
+      "key": "AUTHKEY",
+      "label": "Auth key",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "STATE_PATH",
+      "label": "State directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./tailscale",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "tailscale",
+      "image": "tailscale/tailscale:latest",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${STATE_PATH}:/var/lib/tailscale"
+      ],
+      "environment": [
+        {
+          "name": "TS_AUTHKEY",
+          "value": "${AUTHKEY}"
+        },
+        {
+          "name": "TS_STATE_DIR",
+          "value": "/var/lib/tailscale"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Generate an auth key in the Tailscale admin console and paste it above.",
+  "documentation": "https://tailscale.com/kb/1282/docker"
+}

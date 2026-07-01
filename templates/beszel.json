@@ -1,0 +1,50 @@
+{
+  "id": "beszel",
+  "name": "Beszel",
+  "description": "Lightweight server monitoring hub with historical data and alerts.",
+  "category": "Monitoring & dashboards",
+  "icon": "beszel",
+  "projectName": "beszel",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./beszel-data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8090",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "beszel",
+      "image": "henrygd/beszel:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8090"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/beszel_data"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://github.com/henrygd/beszel"
+}

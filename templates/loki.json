@@ -1,0 +1,50 @@
+{
+  "id": "loki",
+  "name": "Grafana Loki",
+  "description": "Horizontally scalable, highly available log aggregation system.",
+  "category": "Monitoring & dashboards",
+  "icon": "grafana-loki",
+  "projectName": "loki",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./loki",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "3100",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "loki",
+      "image": "grafana/loki:3.1.0",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:3100"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/loki"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": "-config.file=/etc/loki/local-config.yaml",
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://grafana.com/oss/loki/"
+}

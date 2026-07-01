@@ -1,0 +1,51 @@
+{
+  "id": "portainer",
+  "name": "Portainer",
+  "description": "Lightweight management UI for Docker environments.",
+  "category": "Monitoring & dashboards",
+  "icon": "portainer",
+  "projectName": "portainer",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./portainer-data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "HTTPS_PORT",
+      "label": "HTTPS UI port",
+      "type": "port",
+      "hint": null,
+      "default": "9443",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "portainer",
+      "image": "portainer/portainer-ce:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${HTTPS_PORT}:9443"
+      ],
+      "volumes": [
+        "/var/run/docker.sock:/var/run/docker.sock:ro",
+        "${DATA_PATH}:/data"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Set the admin password in the browser within a few minutes of first start.",
+  "documentation": "https://docs.portainer.io/"
+}

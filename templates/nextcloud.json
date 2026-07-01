@@ -1,0 +1,144 @@
+{
+  "id": "nextcloud",
+  "name": "Nextcloud + MariaDB",
+  "description": "Self-hosted file sync, share and collaboration suite, with its database.",
+  "category": "Files & productivity",
+  "icon": "nextcloud",
+  "projectName": "nextcloud",
+  "variables": [
+    {
+      "key": "ADMIN_USER",
+      "label": "Admin username",
+      "type": "text",
+      "hint": null,
+      "default": "admin",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "ADMIN_PASSWORD",
+      "label": "Admin password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Nextcloud data (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./nextcloud/data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./nextcloud/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "app",
+      "image": "nextcloud:apache",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:80"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/var/www/html"
+      ],
+      "environment": [
+        {
+          "name": "NEXTCLOUD_ADMIN_USER",
+          "value": "${ADMIN_USER}"
+        },
+        {
+          "name": "NEXTCLOUD_ADMIN_PASSWORD",
+          "value": "${ADMIN_PASSWORD}"
+        },
+        {
+          "name": "MYSQL_HOST",
+          "value": "db"
+        },
+        {
+          "name": "MYSQL_DATABASE",
+          "value": "nextcloud"
+        },
+        {
+          "name": "MYSQL_USER",
+          "value": "nextcloud"
+        },
+        {
+          "name": "MYSQL_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "mariadb:11",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/mysql"
+      ],
+      "environment": [
+        {
+          "name": "MARIADB_DATABASE",
+          "value": "nextcloud"
+        },
+        {
+          "name": "MARIADB_USER",
+          "value": "nextcloud"
+        },
+        {
+          "name": "MARIADB_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "MARIADB_ROOT_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": "--transaction-isolation=READ-COMMITTED --log-bin=binlog --binlog-format=ROW",
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Two services start together. Log in with the admin user/password above and finish setup in the browser.",
+  "documentation": "https://hub.docker.com/_/nextcloud"
+}

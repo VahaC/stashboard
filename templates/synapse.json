@@ -1,0 +1,68 @@
+{
+  "id": "synapse",
+  "name": "Matrix Synapse",
+  "description": "Reference homeserver for the Matrix decentralized chat protocol.",
+  "category": "Communication",
+  "icon": "matrix",
+  "projectName": "synapse",
+  "variables": [
+    {
+      "key": "SERVER_NAME",
+      "label": "Server name (domain)",
+      "type": "text",
+      "hint": null,
+      "default": "matrix.example.com",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./synapse",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8008",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "synapse",
+      "image": "matrixdotorg/synapse:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8008"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/data"
+      ],
+      "environment": [
+        {
+          "name": "SYNAPSE_SERVER_NAME",
+          "value": "${SERVER_NAME}"
+        },
+        {
+          "name": "SYNAPSE_REPORT_STATS",
+          "value": "no"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "On first run it generates config from SYNAPSE_SERVER_NAME. Review homeserver.yaml in the data directory afterwards.",
+  "documentation": "https://hub.docker.com/r/matrixdotorg/synapse"
+}

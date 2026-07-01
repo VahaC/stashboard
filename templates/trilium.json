@@ -1,0 +1,50 @@
+{
+  "id": "trilium",
+  "name": "Trilium Notes",
+  "description": "Hierarchical note-taking application with rich features.",
+  "category": "Files & productivity",
+  "icon": "trilium-notes",
+  "projectName": "trilium",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./trilium",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "trilium",
+      "image": "triliumnext/notes:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8080"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/home/node/trilium-data"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://github.com/TriliumNext/Notes"
+}

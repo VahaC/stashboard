@@ -1,0 +1,60 @@
+{
+  "id": "verdaccio",
+  "name": "Verdaccio",
+  "description": "Lightweight private npm proxy registry.",
+  "category": "Developer & Git",
+  "icon": "verdaccio",
+  "projectName": "verdaccio",
+  "variables": [
+    {
+      "key": "STORAGE_PATH",
+      "label": "Storage directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./verdaccio/storage",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./verdaccio/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "4873",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "verdaccio",
+      "image": "verdaccio/verdaccio:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:4873"
+      ],
+      "volumes": [
+        "${STORAGE_PATH}:/verdaccio/storage",
+        "${CONFIG_PATH}:/verdaccio/conf"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://verdaccio.org/"
+}

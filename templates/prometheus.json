@@ -1,0 +1,60 @@
+{
+  "id": "prometheus",
+  "name": "Prometheus",
+  "description": "Time-series database and monitoring system.",
+  "category": "Monitoring & dashboards",
+  "icon": "prometheus",
+  "projectName": "prometheus",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./prometheus/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./prometheus/data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "9090",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "prometheus",
+      "image": "prom/prometheus:v2.54.1",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:9090"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/etc/prometheus",
+        "${DATA_PATH}:/prometheus"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": "--config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus",
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Place a prometheus.yml in the config directory before starting.",
+  "documentation": "https://hub.docker.com/r/prom/prometheus"
+}

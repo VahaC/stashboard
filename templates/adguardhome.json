@@ -1,0 +1,62 @@
+{
+  "id": "adguardhome",
+  "name": "AdGuard Home",
+  "description": "Network-wide ad and tracker blocking with DNS-over-HTTPS.",
+  "category": "Networking & proxies",
+  "icon": "adguard-home",
+  "projectName": "adguardhome",
+  "variables": [
+    {
+      "key": "WORK_PATH",
+      "label": "Work directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./adguard/work",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./adguard/conf",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "SETUP_PORT",
+      "label": "Initial setup port",
+      "type": "port",
+      "hint": null,
+      "default": "3000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "adguardhome",
+      "image": "adguard/adguardhome:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "53:53/tcp",
+        "53:53/udp",
+        "${SETUP_PORT}:3000"
+      ],
+      "volumes": [
+        "${WORK_PATH}:/opt/adguardhome/work",
+        "${CONFIG_PATH}:/opt/adguardhome/conf"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Open the setup port to run the first-time wizard. If port 53 is taken, free it first.",
+  "documentation": "https://hub.docker.com/r/adguard/adguardhome"
+}

@@ -1,0 +1,69 @@
+{
+  "id": "stashboard",
+  "name": "Stashboard",
+  "description": "Self-hosted dashboard for monitoring Docker, Proxmox/LXC and web services — this very app.",
+  "category": "Monitoring & dashboards",
+  "icon": "/favicon.svg",
+  "projectName": "stashboard",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": "Holds the SQLite database and the auto-generated encryption/JWT keys — back it up.",
+      "default": "./stashboard/data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "UPLOADS_PATH",
+      "label": "Uploads directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./stashboard/uploads",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "app",
+      "image": "vahac/stashboard:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8080"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/app/Data",
+        "${UPLOADS_PATH}:/app/wwwroot/uploads"
+      ],
+      "environment": [
+        {
+          "name": "ASPNETCORE_ENVIRONMENT",
+          "value": "Production"
+        },
+        {
+          "name": "STASHBOARD_ConnectionStrings__DefaultConnection",
+          "value": "Data Source=/app/Data/app.db"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Zero-config: the encryption key and JWT secret are auto-generated under /app/Data/.secrets on first start (back up the data directory). Create your account in the browser. To track containers on this host, add a Docker socket mount (/var/run/docker.sock) — see the Docker update monitoring guide.",
+  "documentation": "https://hub.docker.com/r/vahac/stashboard"
+}

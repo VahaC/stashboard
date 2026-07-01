@@ -1,0 +1,70 @@
+{
+  "id": "mosquitto",
+  "name": "Eclipse Mosquitto",
+  "description": "Lightweight MQTT message broker for IoT messaging.",
+  "category": "Smart home & IoT",
+  "icon": "mosquitto",
+  "projectName": "mosquitto",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./mosquitto/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./mosquitto/data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "MQTT_PORT",
+      "label": "MQTT port",
+      "type": "port",
+      "hint": null,
+      "default": "1883",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "WS_PORT",
+      "label": "WebSocket port",
+      "type": "port",
+      "hint": null,
+      "default": "9001",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "mosquitto",
+      "image": "eclipse-mosquitto:2",
+      "restart": "unless-stopped",
+      "ports": [
+        "${MQTT_PORT}:1883",
+        "${WS_PORT}:9001"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/mosquitto/config",
+        "${DATA_PATH}:/mosquitto/data"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Add a mosquitto.conf to the config directory (e.g. ‘listener 1883’ + ‘allow_anonymous true’ to start), then restart.",
+  "documentation": "https://hub.docker.com/_/eclipse-mosquitto"
+}

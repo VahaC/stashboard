@@ -1,0 +1,86 @@
+{
+  "id": "rocketchat",
+  "name": "Rocket.Chat",
+  "description": "Open-source team communication platform, with MongoDB.",
+  "category": "Communication",
+  "icon": "rocket-chat",
+  "projectName": "rocketchat",
+  "variables": [
+    {
+      "key": "ROOT_URL",
+      "label": "Root URL",
+      "type": "text",
+      "hint": null,
+      "default": "http://localhost:3000",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./rocketchat/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "3000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "rocketchat",
+      "image": "rocketchat/rocket.chat:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:3000"
+      ],
+      "volumes": [],
+      "environment": [
+        {
+          "name": "ROOT_URL",
+          "value": "${ROOT_URL}"
+        },
+        {
+          "name": "MONGO_URL",
+          "value": "mongodb://db:27017/rocketchat?replicaSet=rs0"
+        },
+        {
+          "name": "MONGO_OPLOG_URL",
+          "value": "mongodb://db:27017/local?replicaSet=rs0"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "mongo:6",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/data/db"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": "mongod --replSet rs0 --oplogSize 128",
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Two services start together. MongoDB runs as a replica set — you may need to initiate it once (rs.initiate()).",
+  "documentation": "https://docs.rocket.chat/"
+}

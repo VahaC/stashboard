@@ -1,0 +1,60 @@
+{
+  "id": "emqx",
+  "name": "EMQX",
+  "description": "Scalable, distributed MQTT broker with a management dashboard.",
+  "category": "Smart home & IoT",
+  "icon": "emqx",
+  "projectName": "emqx",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./emqx",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "MQTT_PORT",
+      "label": "MQTT port",
+      "type": "port",
+      "hint": null,
+      "default": "1883",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DASHBOARD_PORT",
+      "label": "Dashboard port",
+      "type": "port",
+      "hint": null,
+      "default": "18083",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "emqx",
+      "image": "emqx/emqx:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${MQTT_PORT}:1883",
+        "${DASHBOARD_PORT}:18083"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/opt/emqx/data"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Dashboard on the dashboard port; default login admin / public.",
+  "documentation": "https://hub.docker.com/_/emqx"
+}

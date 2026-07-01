@@ -1,0 +1,73 @@
+{
+  "id": "prowlarr",
+  "name": "Prowlarr",
+  "description": "Indexer manager/proxy for the *arr apps.",
+  "category": "Media automation",
+  "icon": "prowlarr",
+  "projectName": "prowlarr",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./prowlarr/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Media/downloads (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "9696",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "prowlarr",
+      "image": "lscr.io/linuxserver/prowlarr:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:9696"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${DATA_PATH}:/data"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://docs.linuxserver.io/images/docker-prowlarr"
+}

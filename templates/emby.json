@@ -1,0 +1,73 @@
+{
+  "id": "emby",
+  "name": "Emby",
+  "description": "Personal media server to stream video, music and photos.",
+  "category": "Media servers",
+  "icon": "emby",
+  "projectName": "emby",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./emby/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "MEDIA_PATH",
+      "label": "Media library (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./media",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8096",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "emby",
+      "image": "lscr.io/linuxserver/emby:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8096"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${MEDIA_PATH}:/media:ro"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://docs.linuxserver.io/images/docker-emby"
+}

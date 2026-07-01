@@ -1,0 +1,50 @@
+{
+  "id": "node-red",
+  "name": "Node-RED",
+  "description": "Low-code programming for event-driven applications and flows.",
+  "category": "Smart home & IoT",
+  "icon": "node-red",
+  "projectName": "nodered",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./node-red",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "1880",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "node-red",
+      "image": "nodered/node-red:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:1880"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/data"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://nodered.org/docs/getting-started/docker"
+}

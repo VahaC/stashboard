@@ -1,0 +1,60 @@
+{
+  "id": "komga",
+  "name": "Komga",
+  "description": "Comics and manga server you can read in a browser.",
+  "category": "Media servers",
+  "icon": "komga",
+  "projectName": "komga",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./komga/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "BOOKS_PATH",
+      "label": "Comics library (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./comics",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "25600",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "komga",
+      "image": "gotson/komga:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:25600"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${BOOKS_PATH}:/books"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://komga.org/"
+}

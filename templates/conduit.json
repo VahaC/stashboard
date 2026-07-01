@@ -1,0 +1,80 @@
+{
+  "id": "conduit",
+  "name": "Conduit",
+  "description": "Lightweight Matrix homeserver written in Rust.",
+  "category": "Communication",
+  "icon": "matrix",
+  "projectName": "conduit",
+  "variables": [
+    {
+      "key": "SERVER_NAME",
+      "label": "Server name (domain)",
+      "type": "text",
+      "hint": null,
+      "default": "matrix.example.com",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./conduit",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "6167",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "conduit",
+      "image": "matrixconduit/matrix-conduit:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:6167"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/var/lib/matrix-conduit"
+      ],
+      "environment": [
+        {
+          "name": "CONDUIT_SERVER_NAME",
+          "value": "${SERVER_NAME}"
+        },
+        {
+          "name": "CONDUIT_DATABASE_BACKEND",
+          "value": "rocksdb"
+        },
+        {
+          "name": "CONDUIT_DATABASE_PATH",
+          "value": "/var/lib/matrix-conduit"
+        },
+        {
+          "name": "CONDUIT_ALLOW_REGISTRATION",
+          "value": "true"
+        },
+        {
+          "name": "CONDUIT_PORT",
+          "value": "6167"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Registration is enabled here for setup — disable it after creating your account.",
+  "documentation": "https://docs.conduit.rs/"
+}

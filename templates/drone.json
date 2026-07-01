@@ -1,0 +1,81 @@
+{
+  "id": "drone",
+  "name": "Drone CI",
+  "description": "Self-service continuous delivery platform.",
+  "category": "Developer & Git",
+  "icon": "drone",
+  "projectName": "drone",
+  "variables": [
+    {
+      "key": "RPC_SECRET",
+      "label": "RPC secret",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "HOST",
+      "label": "Public host",
+      "type": "text",
+      "hint": null,
+      "default": "localhost",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./drone",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "drone",
+      "image": "drone/drone:2",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:80"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/data"
+      ],
+      "environment": [
+        {
+          "name": "DRONE_RPC_SECRET",
+          "value": "${RPC_SECRET}"
+        },
+        {
+          "name": "DRONE_SERVER_HOST",
+          "value": "${HOST}"
+        },
+        {
+          "name": "DRONE_SERVER_PROTO",
+          "value": "http"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Requires connecting to a Git forge — set DRONE_GITEA_* / DRONE_GITHUB_* in the file, and add a runner.",
+  "documentation": "https://docs.drone.io/server/overview/"
+}

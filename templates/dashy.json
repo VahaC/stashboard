@@ -1,0 +1,50 @@
+{
+  "id": "dashy",
+  "name": "Dashy",
+  "description": "Highly customizable, self-hosted dashboard with status checks.",
+  "category": "Monitoring & dashboards",
+  "icon": "dashy",
+  "projectName": "dashy",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./dashy",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "dashy",
+      "image": "lissy93/dashy:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8080"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/app/user-data"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Edit conf.yml in the config directory to define your sections and items.",
+  "documentation": "https://dashy.to/"
+}

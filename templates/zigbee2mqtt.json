@@ -1,0 +1,56 @@
+{
+  "id": "zigbee2mqtt",
+  "name": "Zigbee2MQTT",
+  "description": "Bridge your Zigbee devices to MQTT — no vendor bridge needed.",
+  "category": "Smart home & IoT",
+  "icon": "zigbee2mqtt",
+  "projectName": "zigbee2mqtt",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./zigbee2mqtt",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Web UI port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "zigbee2mqtt",
+      "image": "koenkk/zigbee2mqtt:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8080"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/app/data",
+        "/run/udev:/run/udev:ro"
+      ],
+      "environment": [
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Pass your Zigbee adapter through by adding the device (e.g. /dev/ttyACM0) to the file after creating.",
+  "documentation": "https://www.zigbee2mqtt.io/guide/installation/02_docker.html"
+}

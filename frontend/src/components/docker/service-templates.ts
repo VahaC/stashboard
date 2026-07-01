@@ -93,6 +93,21 @@ export interface TemplateProjectFields {
   run: boolean
 }
 
+/**
+ * Joins the entered (stacks-root) directory with the project name into the
+ * project's own folder — POSIX paths, since every Docker host this talks to is
+ * Linux (remote host for SSH, the Stashboard container for a local socket). The
+ * template flow treats the directory field as the parent that holds all stacks,
+ * so each project lands in its own `<parent>/<project>` subfolder rather than
+ * dropping the Compose file straight into the shared parent.
+ */
+export function joinProjectDir(parent: string, projectName: string): string {
+  const base = parent.trim().replace(/\/+$/, '')
+  const name = projectName.trim()
+  if (name.length === 0) return base
+  return base.length === 0 ? name : `${base}/${name}`
+}
+
 /** Resolves the template + entered values into the create-project payload. */
 export function buildCreateRequest(
   template: ServiceTemplate,
@@ -101,7 +116,7 @@ export function buildCreateRequest(
 ): ComposeProjectCreateRequest {
   return {
     projectName: fields.projectName.trim(),
-    directory: fields.directory.trim(),
+    directory: joinProjectDir(fields.directory, fields.projectName),
     fileName: fields.fileName?.trim() || null,
     createDirectory: fields.createDirectory,
     run: fields.run,

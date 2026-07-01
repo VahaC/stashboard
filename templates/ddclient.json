@@ -1,0 +1,52 @@
+{
+  "id": "ddclient",
+  "name": "ddclient",
+  "description": "Dynamic DNS update client for keeping a hostname pointed at your IP.",
+  "category": "Networking & proxies",
+  "icon": "linuxserver",
+  "projectName": "ddclient",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./ddclient",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "ddclient",
+      "image": "lscr.io/linuxserver/ddclient:latest",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${CONFIG_PATH}:/config"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Configure ddclient.conf in the config directory for your DNS provider.",
+  "documentation": "https://docs.linuxserver.io/images/docker-ddclient"
+}

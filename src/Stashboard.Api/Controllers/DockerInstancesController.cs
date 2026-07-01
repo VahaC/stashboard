@@ -178,33 +178,31 @@ public class DockerInstancesController(
     /// <c>Stashboard.AllowContainerRemoval</c> feature flag. V5.0:
     /// exited and dead containers can always be removed — they're
     /// already stopped, so the flag only protects live containers.
+    /// V8.2 — <paramref name="deleteProjectFolder"/> additionally deletes the
+    /// container's compose project directory (docker-compose.yml + all its
+    /// services' data) on the host. SSH-only; runs after the container is
+    /// successfully removed.
     /// </summary>
     [HttpDelete("containers/{containerName}")]
     public async Task<ActionResult<DockerContainerActionResponse>> Remove(
         Guid connectionId, string containerName,
         [FromQuery] bool force = false,
+        [FromQuery] bool deleteProjectFolder = false,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(containerName))
             return BadRequest(new { error = "Container name is required." });
 
-        if (!AllowRemoval)
-        {
-            var connection = await LoadOwnedConnectionAsync(connectionId, cancellationToken);
-            if (connection is null) return NotFound();
+        var connection = await LoadOwnedConnectionAsync(connectionId, cancellationToken);
+        if (connection is null) return NotFound();
 
-            var transport = connectionMapper.BuildTransport(connection);
+        var transport = connectionMapper.BuildTransport(connection);
+        IReadOnlyList<DockerContainerDetail>? details = null;
+        if (!AllowRemoval || deleteProjectFolder)
+        {
             try
             {
-                var details = await hostClient.ListContainerDetailsAsync(transport, cancellationToken);
-                var target = details.FirstOrDefault(c =>
-                    string.Equals(c.Name, containerName, StringComparison.OrdinalIgnoreCase));
-                var state = target?.State?.ToLowerInvariant() ?? "";
-                if (state is not ("exited" or "dead"))
-                    return StatusCode(StatusCodes.Status403Forbidden, new
-                    {
-                        error = "Container removal is disabled for running containers. Set Stashboard:AllowContainerRemoval=true to enable it.",
-                    });
+                details = await hostClient.ListContainerDetailsAsync(transport, cancellationToken);
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
@@ -212,10 +210,50 @@ public class DockerInstancesController(
                     new { error = $"Docker host unreachable: {ex.Message}" });
             }
         }
+        var target = details?.FirstOrDefault(c =>
+            string.Equals(c.Name, containerName, StringComparison.OrdinalIgnoreCase));
 
-        return await ExecuteActionAsync(connectionId, containerName, DockerContainerActionType.Remove,
-            (transport, ct) => hostClient.RemoveContainerAsync(transport, containerName, force, ct),
+        if (!AllowRemoval)
+        {
+            var state = target?.State?.ToLowerInvariant() ?? "";
+            if (state is not ("exited" or "dead"))
+                return StatusCode(StatusCodes.Status403Forbidden, new
+                {
+                    error = "Container removal is disabled for running containers. Set Stashboard:AllowContainerRemoval=true to enable it.",
+                });
+        }
+
+        string? projectFolderPath = null;
+        if (deleteProjectFolder)
+        {
+            if (connection.HostType != DockerHostType.Ssh)
+                return BadRequest(new { error = "Deleting the project folder is only supported for SSH-connected Docker hosts." });
+            if (string.IsNullOrWhiteSpace(target?.ComposeProject))
+                return BadRequest(new { error = "This container is not part of a docker-compose project." });
+
+            var workingDir = target.Labels.GetValueOrDefault(ComposeProjectPaths.WorkingDirLabel);
+            projectFolderPath = ComposeProjectPaths.Resolve(connection.HostType, null, workingDir);
+            if (string.IsNullOrWhiteSpace(projectFolderPath))
+                return BadRequest(new
+                {
+                    error = "Compose project does not advertise a working directory (no com.docker.compose.project.working_dir label).",
+                });
+        }
+
+        var removeResult = await ExecuteActionAsync(connectionId, containerName, DockerContainerActionType.Remove,
+            (t, ct) => hostClient.RemoveContainerAsync(t, containerName, force, ct),
             cancellationToken);
+
+        if (projectFolderPath is null
+            || removeResult.Result is not OkObjectResult { Value: DockerContainerActionResponse actionResponse })
+            return removeResult;
+
+        var deleteResult = await hostClient.DeleteHostDirectoryAsync(transport, projectFolderPath, cancellationToken);
+        return Ok(actionResponse with
+        {
+            ProjectFolderDeleted = deleteResult.IsSuccess,
+            ProjectFolderError = deleteResult.IsSuccess ? null : deleteResult.Error,
+        });
     }
 
     // ── V7.8 — custom container icon ─────────────────────────────────────────

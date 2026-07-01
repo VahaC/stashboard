@@ -1,0 +1,70 @@
+{
+  "id": "audiobookshelf",
+  "name": "Audiobookshelf",
+  "description": "Self-hosted audiobook and podcast server.",
+  "category": "Media servers",
+  "icon": "audiobookshelf",
+  "projectName": "audiobookshelf",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./abs/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "METADATA_PATH",
+      "label": "Metadata directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./abs/metadata",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "AUDIOBOOKS_PATH",
+      "label": "Audiobooks library (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./audiobooks",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "13378",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "audiobookshelf",
+      "image": "ghcr.io/advplyr/audiobookshelf:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:80"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${METADATA_PATH}:/metadata",
+        "${AUDIOBOOKS_PATH}:/audiobooks"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://www.audiobookshelf.org/"
+}

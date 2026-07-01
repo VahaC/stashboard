@@ -1,0 +1,44 @@
+{
+  "id": "flaresolverr",
+  "name": "FlareSolverr",
+  "description": "Proxy server to bypass Cloudflare protection (used by Prowlarr).",
+  "category": "Media automation",
+  "icon": "flaresolverr",
+  "projectName": "flaresolverr",
+  "variables": [
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8191",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "flaresolverr",
+      "image": "ghcr.io/flaresolverr/flaresolverr:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8191"
+      ],
+      "volumes": [],
+      "environment": [
+        {
+          "name": "LOG_LEVEL",
+          "value": "info"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://github.com/FlareSolverr/FlareSolverr"
+}

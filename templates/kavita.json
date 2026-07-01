@@ -1,0 +1,73 @@
+{
+  "id": "kavita",
+  "name": "Kavita",
+  "description": "Fast, cross-platform reading server for comics, manga and books.",
+  "category": "Media servers",
+  "icon": "kavita",
+  "projectName": "kavita",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./kavita/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "LIBRARY_PATH",
+      "label": "Library (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./books",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "5000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "kavita",
+      "image": "lscr.io/linuxserver/kavita:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:5000"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${LIBRARY_PATH}:/books"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://www.kavitareader.com/"
+}

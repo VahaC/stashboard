@@ -1,0 +1,50 @@
+{
+  "id": "element",
+  "name": "Element Web",
+  "description": "Glossy Matrix web client served as static files.",
+  "category": "Communication",
+  "icon": "element",
+  "projectName": "element",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config file (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./element/config.json",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "element",
+      "image": "vectorim/element-web:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:80"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/app/config.json:ro"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Add a config.json in the config directory pointing at your Matrix homeserver.",
+  "documentation": "https://github.com/vector-im/element-web"
+}

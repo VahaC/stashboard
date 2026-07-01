@@ -31,6 +31,7 @@ function renderCard(card: DockerContainerCard) {
         card={card}
         variant="docker-page"
         allowRemoval={false}
+        isSshHost={false}
         busy={false}
         onOpen={() => {}}
         onAction={() => {}}

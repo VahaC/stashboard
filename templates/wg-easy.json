@@ -1,0 +1,74 @@
+{
+  "id": "wg-easy",
+  "name": "WireGuard (wg-easy)",
+  "description": "The easiest way to run WireGuard VPN with a web UI.",
+  "category": "Networking & proxies",
+  "icon": "wireguard",
+  "projectName": "wgeasy",
+  "variables": [
+    {
+      "key": "WG_HOST",
+      "label": "Public host (IP or domain)",
+      "type": "text",
+      "hint": null,
+      "default": "vpn.example.com",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./wg-easy",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "UI_PORT",
+      "label": "Web UI port",
+      "type": "port",
+      "hint": null,
+      "default": "51821",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "VPN_PORT",
+      "label": "WireGuard port",
+      "type": "port",
+      "hint": null,
+      "default": "51820",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "wg-easy",
+      "image": "ghcr.io/wg-easy/wg-easy:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${VPN_PORT}:51820/udp",
+        "${UI_PORT}:51821/tcp"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/etc/wireguard"
+      ],
+      "environment": [
+        {
+          "name": "WG_HOST",
+          "value": "${WG_HOST}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Set WG_HOST to your public IP or domain. Needs NET_ADMIN/SYS_MODULE capabilities — add them to the file after creating if your host requires it.",
+  "documentation": "https://github.com/wg-easy/wg-easy"
+}

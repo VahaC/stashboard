@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Renci.SshNet.Common;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Enums;
+using Stashboard.Infrastructure.Docker.Ssh;
 
 namespace Stashboard.Infrastructure.Docker;
 
@@ -438,6 +439,35 @@ public sealed class DockerHostClient(
                 new ContainerRemoveParameters { Force = force },
                 ct);
         }, cancellationToken);
+
+    public async Task<DockerContainerActionResult> DeleteHostDirectoryAsync(
+        DockerHostTransport transport, string path, CancellationToken cancellationToken = default)
+    {
+        if (transport.Ssh is null)
+            return new DockerContainerActionResult(DockerHostStatus.UnsupportedHostType, null,
+                "Deleting a host directory is only supported for SSH-connected Docker hosts.");
+
+        var script = $"rm -rf -- {SshCommandExecutor.QuoteForShell(path)}";
+        try
+        {
+            var outcome = await SshCommandExecutor.RunAsync(
+                transport.Ssh, script, cancellationToken, TimeSpan.FromSeconds(30));
+            if (outcome.ExitStatus == 0)
+                return new DockerContainerActionResult(DockerHostStatus.Ok, null, null);
+
+            logger.LogWarning("rm -rf on {Path} exited {Status}: {Stderr}", path, outcome.ExitStatus, outcome.Stderr);
+            return new DockerContainerActionResult(DockerHostStatus.ActionFailed, null,
+                string.IsNullOrWhiteSpace(outcome.Stderr)
+                    ? $"Deleting '{path}' on the host failed (exit {outcome.ExitStatus})."
+                    : outcome.Stderr.Trim());
+        }
+        catch (Exception ex) when (IsSshConnectFailure(ex))
+        {
+            logger.LogWarning(ex, "SSH connection failed deleting host directory: {Path}", path);
+            return new DockerContainerActionResult(DockerHostStatus.HostUnreachable, null,
+                $"SSH connection failed: {ex.Message}");
+        }
+    }
 
     /// <summary>
     /// V3.5 — shared lifecycle action pipeline. Resolves

@@ -1,0 +1,50 @@
+{
+  "id": "jellyseerr",
+  "name": "Jellyseerr",
+  "description": "Request management and discovery for Jellyfin / Plex.",
+  "category": "Media servers",
+  "icon": "jellyseerr",
+  "projectName": "jellyseerr",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./jellyseerr",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "5055",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "jellyseerr",
+      "image": "fallenbagel/jellyseerr:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:5055"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/app/config"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://github.com/fallenbagel/jellyseerr"
+}

@@ -1,0 +1,50 @@
+{
+  "id": "apprise",
+  "name": "Apprise API",
+  "description": "Send notifications to dozens of services through one simple API.",
+  "category": "Communication",
+  "icon": "apprise",
+  "projectName": "apprise",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./apprise",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "apprise",
+      "image": "caronc/apprise:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8000"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://github.com/caronc/apprise-api"
+}

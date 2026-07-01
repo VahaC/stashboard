@@ -1,0 +1,81 @@
+{
+  "id": "woodpecker",
+  "name": "Woodpecker CI",
+  "description": "Simple, container-native continuous integration server.",
+  "category": "Developer & Git",
+  "icon": "woodpecker-ci",
+  "projectName": "woodpecker",
+  "variables": [
+    {
+      "key": "AGENT_SECRET",
+      "label": "Agent secret",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "HOST",
+      "label": "Public host",
+      "type": "text",
+      "hint": null,
+      "default": "http://localhost:8000",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./woodpecker",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "server",
+      "image": "woodpeckerci/woodpecker-server:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8000"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/var/lib/woodpecker"
+      ],
+      "environment": [
+        {
+          "name": "WOODPECKER_OPEN",
+          "value": "true"
+        },
+        {
+          "name": "WOODPECKER_HOST",
+          "value": "${HOST}"
+        },
+        {
+          "name": "WOODPECKER_AGENT_SECRET",
+          "value": "${AGENT_SECRET}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Requires connecting to a Git forge (Gitea/GitHub/GitLab) — set the WOODPECKER_<FORGE>_* variables in the file, and add a runner agent.",
+  "documentation": "https://woodpecker-ci.org/docs/administration/deployment/overview"
+}

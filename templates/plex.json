@@ -1,0 +1,90 @@
+{
+  "id": "plex",
+  "name": "Plex",
+  "description": "Organize and stream your personal media collection (LinuxServer).",
+  "category": "Media servers",
+  "icon": "plex",
+  "projectName": "plex",
+  "variables": [
+    {
+      "key": "PLEX_CLAIM",
+      "label": "Claim token (optional)",
+      "type": "text",
+      "hint": null,
+      "default": "",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./plex/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "MEDIA_PATH",
+      "label": "Media library (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./media",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "32400",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "plex",
+      "image": "lscr.io/linuxserver/plex:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:32400"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${MEDIA_PATH}:/media:ro"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        },
+        {
+          "name": "VERSION",
+          "value": "docker"
+        },
+        {
+          "name": "PLEX_CLAIM",
+          "value": "${PLEX_CLAIM}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Get a claim token at plex.tv/claim and paste it above for the first run.",
+  "documentation": "https://docs.linuxserver.io/images/docker-plex"
+}

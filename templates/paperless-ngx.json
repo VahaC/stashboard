@@ -1,0 +1,183 @@
+{
+  "id": "paperless-ngx",
+  "name": "Paperless-ngx",
+  "description": "Scan, index and archive your documents with OCR — with database and broker.",
+  "category": "Files & productivity",
+  "icon": "paperless-ngx",
+  "projectName": "paperlessngx",
+  "variables": [
+    {
+      "key": "ADMIN_USER",
+      "label": "Admin username",
+      "type": "text",
+      "hint": null,
+      "default": "admin",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "ADMIN_PASSWORD",
+      "label": "Admin password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "SECRET_KEY",
+      "label": "App secret key",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./paperless/data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "MEDIA_PATH",
+      "label": "Media directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./paperless/media",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CONSUME_PATH",
+      "label": "Consume directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./paperless/consume",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./paperless/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "webserver",
+      "image": "ghcr.io/paperless-ngx/paperless-ngx:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8000"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/usr/src/paperless/data",
+        "${MEDIA_PATH}:/usr/src/paperless/media",
+        "${CONSUME_PATH}:/usr/src/paperless/consume"
+      ],
+      "environment": [
+        {
+          "name": "PAPERLESS_REDIS",
+          "value": "redis://broker:6379"
+        },
+        {
+          "name": "PAPERLESS_DBHOST",
+          "value": "db"
+        },
+        {
+          "name": "PAPERLESS_DBPASS",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "PAPERLESS_SECRET_KEY",
+          "value": "${SECRET_KEY}"
+        },
+        {
+          "name": "PAPERLESS_ADMIN_USER",
+          "value": "${ADMIN_USER}"
+        },
+        {
+          "name": "PAPERLESS_ADMIN_PASSWORD",
+          "value": "${ADMIN_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "broker",
+      "image": "redis:7-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "postgres:16-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/postgresql/data"
+      ],
+      "environment": [
+        {
+          "name": "POSTGRES_DB",
+          "value": "paperless"
+        },
+        {
+          "name": "POSTGRES_USER",
+          "value": "paperless"
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Three services start together. Log in with the admin user/password above; drop files into the consume folder.",
+  "documentation": "https://docs.paperless-ngx.com/"
+}

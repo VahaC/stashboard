@@ -1,0 +1,51 @@
+{
+  "id": "homepage",
+  "name": "Homepage",
+  "description": "A modern, fully static, fast homepage for your services.",
+  "category": "Monitoring & dashboards",
+  "icon": "homepage",
+  "projectName": "homepage",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./homepage",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "3000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "homepage",
+      "image": "ghcr.io/gethomepage/homepage:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:3000"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/app/config",
+        "/var/run/docker.sock:/var/run/docker.sock:ro"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Edit the YAML files in the config directory to add services and widgets.",
+  "documentation": "https://gethomepage.dev/"
+}

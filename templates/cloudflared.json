@@ -1,0 +1,42 @@
+{
+  "id": "cloudflared",
+  "name": "Cloudflare Tunnel",
+  "description": "Expose local services through Cloudflare without opening ports.",
+  "category": "Networking & proxies",
+  "icon": "cloudflare",
+  "projectName": "cloudflared",
+  "variables": [
+    {
+      "key": "TUNNEL_TOKEN",
+      "label": "Tunnel token",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    }
+  ],
+  "services": [
+    {
+      "name": "cloudflared",
+      "image": "cloudflare/cloudflared:latest",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [],
+      "environment": [
+        {
+          "name": "TUNNEL_TOKEN",
+          "value": "${TUNNEL_TOKEN}"
+        }
+      ],
+      "labels": [],
+      "command": "tunnel --no-autoupdate run",
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Create a tunnel in the Cloudflare Zero Trust dashboard and paste its token above.",
+  "documentation": "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/"
+}

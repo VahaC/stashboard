@@ -1,0 +1,50 @@
+{
+  "id": "homebridge",
+  "name": "Homebridge",
+  "description": "Bring HomeKit support to devices that don’t natively support it.",
+  "category": "Smart home & IoT",
+  "icon": "homebridge",
+  "projectName": "homebridge",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./homebridge",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Web UI port",
+      "type": "port",
+      "hint": null,
+      "default": "8581",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "homebridge",
+      "image": "homebridge/homebridge:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8581"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/homebridge"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "For HomeKit pairing you usually need host networking — add network_mode: host after creating.",
+  "documentation": "https://github.com/homebridge/docker-homebridge"
+}

@@ -1,0 +1,103 @@
+{
+  "id": "mysql",
+  "name": "MySQL",
+  "description": "The world's most popular open-source relational database.",
+  "category": "Databases & caches",
+  "icon": "mysql",
+  "projectName": "mysql",
+  "variables": [
+    {
+      "key": "ROOT_PASSWORD",
+      "label": "Root password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_NAME",
+      "label": "Initial database",
+      "type": "text",
+      "hint": null,
+      "default": "appdb",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_USER",
+      "label": "Application user",
+      "type": "text",
+      "hint": null,
+      "default": "appuser",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_PASSWORD",
+      "label": "Application password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./mysql-data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "3306",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "db",
+      "image": "mysql:8.4",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:3306"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/var/lib/mysql"
+      ],
+      "environment": [
+        {
+          "name": "MYSQL_ROOT_PASSWORD",
+          "value": "${ROOT_PASSWORD}"
+        },
+        {
+          "name": "MYSQL_DATABASE",
+          "value": "${DB_NAME}"
+        },
+        {
+          "name": "MYSQL_USER",
+          "value": "${DB_USER}"
+        },
+        {
+          "name": "MYSQL_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://hub.docker.com/_/mysql"
+}

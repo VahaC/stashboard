@@ -1,0 +1,64 @@
+{
+  "id": "grafana",
+  "name": "Grafana",
+  "description": "Analytics and interactive visualization dashboards.",
+  "category": "Monitoring & dashboards",
+  "icon": "grafana",
+  "projectName": "grafana",
+  "variables": [
+    {
+      "key": "ADMIN_PASSWORD",
+      "label": "Admin password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./grafana-data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "3000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "grafana",
+      "image": "grafana/grafana:11.2.0",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:3000"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/var/lib/grafana"
+      ],
+      "environment": [
+        {
+          "name": "GF_SECURITY_ADMIN_PASSWORD",
+          "value": "${ADMIN_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Log in as ‘admin’ with the password you set above on first launch.",
+  "documentation": "https://hub.docker.com/r/grafana/grafana"
+}

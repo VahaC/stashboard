@@ -1,0 +1,61 @@
+{
+  "id": "scrutiny",
+  "name": "Scrutiny",
+  "description": "Hard-drive S.M.A.R.T. monitoring dashboard with historical trends.",
+  "category": "Monitoring & dashboards",
+  "icon": "scrutiny",
+  "projectName": "scrutiny",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./scrutiny/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "INFLUX_PATH",
+      "label": "InfluxDB directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./scrutiny/influxdb",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "scrutiny",
+      "image": "ghcr.io/analogj/scrutiny:master-omnibus",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8080"
+      ],
+      "volumes": [
+        "/run/udev:/run/udev:ro",
+        "${CONFIG_PATH}:/opt/scrutiny/config",
+        "${INFLUX_PATH}:/opt/scrutiny/influxdb"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Needs access to host disks. You may have to add cap_add SYS_RAWIO and the disk devices to the file after creating.",
+  "documentation": "https://github.com/AnalogJ/scrutiny"
+}

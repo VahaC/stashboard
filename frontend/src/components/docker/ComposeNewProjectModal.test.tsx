@@ -22,7 +22,7 @@ const mockTemplates = useServiceTemplates as unknown as any
 
 function fillRequired() {
   fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'myapp' } })
-  fireEvent.change(screen.getByLabelText('Directory'), { target: { value: '/opt/stacks/myapp' } })
+  fireEvent.change(screen.getByLabelText('Directory'), { target: { value: '/opt/stacks' } })
   fireEvent.change(screen.getByLabelText('Service name'), { target: { value: 'web' } })
   fireEvent.change(screen.getByPlaceholderText('nginx:1.27'), { target: { value: 'nginx:1.27' } })
 }
@@ -68,6 +68,13 @@ describe('ComposeNewProjectModal', () => {
     expect(screen.getByText(/home-server/)).toBeInTheDocument()
   })
 
+  it('previews the project subfolder under the entered parent directory', () => {
+    renderModal()
+    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'myapp' } })
+    fireEvent.change(screen.getByLabelText('Directory'), { target: { value: '/opt/stacks' } })
+    expect(screen.getByText('/opt/stacks/myapp/docker-compose.yml')).toBeInTheDocument()
+  })
+
   it('keeps the actions disabled until name, directory, service and image are set', () => {
     renderModal()
     const run = screen.getByRole('button', { name: /create and run/i })
@@ -82,17 +89,23 @@ describe('ComposeNewProjectModal', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/lowercase/i)
   })
 
-  it('creates the project without running on "Create only"', async () => {
+  it('offers no "Create only" action — creation always runs the stack', () => {
+    renderModal()
+    expect(screen.queryByRole('button', { name: /create only/i })).not.toBeInTheDocument()
+  })
+
+  it('always runs, posting the full payload with run: true', async () => {
     renderModal()
     fillRequired()
-    fireEvent.click(screen.getByRole('button', { name: /create only/i }))
+    fireEvent.click(screen.getByRole('button', { name: /create and run/i }))
 
     await vi.waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
     const arg = mutateAsync.mock.calls[0][0]
     expect(arg.projectName).toBe('myapp')
+    // The entered directory is the parent; the project gets its own subfolder.
     expect(arg.directory).toBe('/opt/stacks/myapp')
     expect(arg.createDirectory).toBe(true)
-    expect(arg.run).toBe(false)
+    expect(arg.run).toBe(true)
     expect(arg.services[0].name).toBe('web')
     expect(arg.services[0].image).toBe('nginx:1.27')
   })

@@ -1,0 +1,50 @@
+{
+  "id": "docker-registry",
+  "name": "Docker Registry",
+  "description": "Private registry for storing and distributing Docker images.",
+  "category": "Developer & Git",
+  "icon": "docker",
+  "projectName": "dockerregistry",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./registry",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "5000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "registry",
+      "image": "registry:2",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:5000"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/var/lib/registry"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://hub.docker.com/_/registry"
+}

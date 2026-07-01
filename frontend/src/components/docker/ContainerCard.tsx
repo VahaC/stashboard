@@ -21,6 +21,10 @@ export type ContainerCardProps = {
   variant: ContainerCardVariant
   /** Feature flag from /api/features. */
   allowRemoval: boolean
+  /** V8.2 — true when the connection is SSH-based, the only transport that
+   *  can delete files on the host. Gates the "also delete the project
+   *  folder" opt-in in the remove-confirm dialog. */
+  isSshHost: boolean
   /** When true, the lifecycle/diagnostics action rows are disabled. */
   busy: boolean
   /** Optional inline error from the last action attempt. */
@@ -28,7 +32,10 @@ export type ContainerCardProps = {
   /** Caller decides what to do when a tab button is clicked. The
    *  variant decides what tab the bare-body click maps to. */
   onOpen: (tab: ContainerModalTab) => void
-  onAction: (action: 'start' | 'stop' | 'restart' | 'remove') => void | Promise<void>
+  onAction: (
+    action: 'start' | 'stop' | 'restart' | 'remove',
+    options?: { deleteProjectFolder?: boolean },
+  ) => void | Promise<void>
   onComposeClick?: (project: string) => void
 }
 
@@ -45,10 +52,13 @@ export type ContainerCardProps = {
  * - Inspect / Remove live behind the `⋯` overflow menu.
  */
 export function ContainerCard({
-  card, linkedWatch = null, variant, allowRemoval, busy, error, onOpen, onAction,
+  card, linkedWatch = null, variant, allowRemoval, isSshHost, busy, error, onOpen, onAction,
 }: ContainerCardProps) {
   const stateLower = card.state.toLowerCase()
-  const running = stateLower === 'running'
+  // A container stuck in a restart loop reports state "restarting", not
+  // "running" — but it's still live and must be stoppable, otherwise it can
+  // never reach "exited" to be removed.
+  const running = stateLower === 'running' || stateLower === 'restarting'
   const stopped = stateLower === 'exited' || stateLower === 'dead'
   const notFound = stateLower === 'not found'
   const defaultTab: ContainerModalTab = notFound ? 'watch' : variant === 'service-modal' ? 'watch' : 'overview'
@@ -57,10 +67,11 @@ export function ContainerCard({
   const openMenu = (e: { preventDefault(): void; stopPropagation(): void; clientX: number; clientY: number }) => { e.preventDefault(); e.stopPropagation(); setMenuPos({ x: e.clientX, y: e.clientY }) }
 
   const requestRemove = () => setRemoveDialogOpen(true)
-  const confirmRemove = async () => {
-    await (onAction('remove') as Promise<void>)
+  const confirmRemove = async (opts: { deleteProjectFolder: boolean }) => {
+    await (onAction('remove', opts) as Promise<void>)
     setRemoveDialogOpen(false)
   }
+  const composeProjectName = isSshHost ? card.composeProject : null
 
   // Docker reports a container's `Image` as the tag (`mariadb:11`) only while
   // that tag still points to the same local image. After Stashboard pulls a
@@ -139,6 +150,7 @@ export function ContainerCard({
             <ContainerLifecycleActions
               containerName={card.name}
               running={running}
+              restarting={stateLower === 'restarting'}
               allowRemoval={false}
               busy={busy}
               density="full"
@@ -174,6 +186,7 @@ export function ContainerCard({
         image={card.image}
         status={card.status || card.state}
         ghost={notFound}
+        composeProjectName={composeProjectName}
         onConfirm={confirmRemove}
         onCancel={() => setRemoveDialogOpen(false)}
       />
@@ -190,7 +203,9 @@ export function ContainerCard({
               <div className="cgroup-menu-sep" />
               {running && <>
                 <button className="cgroup-menu-item" disabled={busy} onClick={() => { setMenuPos(null); void onAction('stop') }}><Square className="h-3.5 w-3.5" /> Stop</button>
-                <button className="cgroup-menu-item" disabled={busy} onClick={() => { setMenuPos(null); void onAction('restart') }}><RefreshCw className="h-3.5 w-3.5" /> Restart</button>
+                {stateLower !== 'restarting' && (
+                  <button className="cgroup-menu-item" disabled={busy} onClick={() => { setMenuPos(null); void onAction('restart') }}><RefreshCw className="h-3.5 w-3.5" /> Restart</button>
+                )}
               </>}
               {stopped && <button className="cgroup-menu-item" disabled={busy} onClick={() => { setMenuPos(null); void onAction('start') }}><Play className="h-3.5 w-3.5" /> Start</button>}
             </>

@@ -1,0 +1,73 @@
+{
+  "id": "nzbget",
+  "name": "NZBGet",
+  "description": "Efficient Usenet downloader.",
+  "category": "Media automation",
+  "icon": "nzbget",
+  "projectName": "nzbget",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./nzbget/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DOWNLOADS_PATH",
+      "label": "Downloads (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./downloads",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Web UI port",
+      "type": "port",
+      "hint": null,
+      "default": "6789",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "nzbget",
+      "image": "lscr.io/linuxserver/nzbget:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:6789"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${DOWNLOADS_PATH}:/downloads"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://docs.linuxserver.io/images/docker-nzbget"
+}

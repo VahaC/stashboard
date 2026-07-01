@@ -14,6 +14,9 @@ public enum DockerHostStatus
     /// but never pulled, or when the user typed the wrong image reference.</summary>
     NoMatchingRepoDigest = 4,
     UnsupportedHostType = 5,
+    /// <summary>The action reached the host but the host rejected or failed it
+    /// (e.g. a non-zero exit status from a host-side command).</summary>
+    ActionFailed = 6,
 }
 
 /// <summary>
@@ -384,6 +387,18 @@ public interface IDockerHostClient
         DockerHostTransport transport,
         string containerName,
         bool force = false,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// V8.2 — deletes a directory on the Docker host's filesystem (e.g. a
+    /// Compose project's working directory) over SSH. SSH-only — TCP+TLS and
+    /// LocalSocket hosts have no general filesystem access through the Docker
+    /// API. Destructive and irreversible; callers must already have the
+    /// user's confirmation before calling this.
+    /// </summary>
+    Task<DockerContainerActionResult> DeleteHostDirectoryAsync(
+        DockerHostTransport transport,
+        string path,
         CancellationToken cancellationToken = default);
 
     /// <summary>

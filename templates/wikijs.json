@@ -1,0 +1,111 @@
+{
+  "id": "wikijs",
+  "name": "Wiki.js",
+  "description": "Powerful and extensible open-source wiki, with PostgreSQL.",
+  "category": "Files & productivity",
+  "icon": "wikijs",
+  "projectName": "wikijs",
+  "variables": [
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./wikijs/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "3000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "wiki",
+      "image": "ghcr.io/requarks/wiki:2",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:3000"
+      ],
+      "volumes": [],
+      "environment": [
+        {
+          "name": "DB_TYPE",
+          "value": "postgres"
+        },
+        {
+          "name": "DB_HOST",
+          "value": "db"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "5432"
+        },
+        {
+          "name": "DB_USER",
+          "value": "wikijs"
+        },
+        {
+          "name": "DB_PASS",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "DB_NAME",
+          "value": "wiki"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "postgres:16-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/postgresql/data"
+      ],
+      "environment": [
+        {
+          "name": "POSTGRES_DB",
+          "value": "wiki"
+        },
+        {
+          "name": "POSTGRES_USER",
+          "value": "wikijs"
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Two services start together. Complete the admin setup in the browser on first launch.",
+  "documentation": "https://js.wiki/"
+}

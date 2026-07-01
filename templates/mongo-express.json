@@ -1,0 +1,79 @@
+{
+  "id": "mongo-express",
+  "name": "Mongo Express",
+  "description": "Web-based MongoDB admin interface.",
+  "category": "Databases & caches",
+  "icon": "mongodb",
+  "projectName": "mongoexpress",
+  "variables": [
+    {
+      "key": "MONGO_HOST",
+      "label": "MongoDB host",
+      "type": "text",
+      "hint": null,
+      "default": "mongo",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "MONGO_USER",
+      "label": "MongoDB admin user",
+      "type": "text",
+      "hint": null,
+      "default": "root",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "MONGO_PASSWORD",
+      "label": "MongoDB admin password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8081",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "mongo-express",
+      "image": "mongo-express:1",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8081"
+      ],
+      "volumes": [],
+      "environment": [
+        {
+          "name": "ME_CONFIG_MONGODB_SERVER",
+          "value": "${MONGO_HOST}"
+        },
+        {
+          "name": "ME_CONFIG_MONGODB_ADMINUSERNAME",
+          "value": "${MONGO_USER}"
+        },
+        {
+          "name": "ME_CONFIG_MONGODB_ADMINPASSWORD",
+          "value": "${MONGO_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://hub.docker.com/_/mongo-express"
+}

@@ -1,0 +1,50 @@
+{
+  "id": "authelia",
+  "name": "Authelia",
+  "description": "Full-featured authentication server providing SSO and 2FA.",
+  "category": "Security & identity",
+  "icon": "authelia",
+  "projectName": "authelia",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./authelia",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "9091",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "authelia",
+      "image": "authelia/authelia:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:9091"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Requires a configuration.yml and users database in the config directory before it will start.",
+  "documentation": "https://www.authelia.com/"
+}

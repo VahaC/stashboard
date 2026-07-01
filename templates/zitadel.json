@@ -1,0 +1,140 @@
+{
+  "id": "zitadel",
+  "name": "Zitadel",
+  "description": "Cloud-native identity and access management, with PostgreSQL.",
+  "category": "Security & identity",
+  "icon": "zitadel",
+  "projectName": "zitadel",
+  "variables": [
+    {
+      "key": "MASTERKEY",
+      "label": "Master key (32 chars)",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./zitadel/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "zitadel",
+      "image": "ghcr.io/zitadel/zitadel:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8080"
+      ],
+      "volumes": [],
+      "environment": [
+        {
+          "name": "ZITADEL_MASTERKEY",
+          "value": "${MASTERKEY}"
+        },
+        {
+          "name": "ZITADEL_DATABASE_POSTGRES_HOST",
+          "value": "db"
+        },
+        {
+          "name": "ZITADEL_DATABASE_POSTGRES_PORT",
+          "value": "5432"
+        },
+        {
+          "name": "ZITADEL_DATABASE_POSTGRES_DATABASE",
+          "value": "zitadel"
+        },
+        {
+          "name": "ZITADEL_DATABASE_POSTGRES_USER_USERNAME",
+          "value": "zitadel"
+        },
+        {
+          "name": "ZITADEL_DATABASE_POSTGRES_USER_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE",
+          "value": "disable"
+        },
+        {
+          "name": "ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME",
+          "value": "postgres"
+        },
+        {
+          "name": "ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE",
+          "value": "disable"
+        },
+        {
+          "name": "ZITADEL_EXTERNALSECURE",
+          "value": "false"
+        }
+      ],
+      "labels": [],
+      "command": "start-from-init --masterkeyFromEnv --tlsMode disabled",
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "postgres:16-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/postgresql/data"
+      ],
+      "environment": [
+        {
+          "name": "POSTGRES_USER",
+          "value": "postgres"
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "POSTGRES_DB",
+          "value": "zitadel"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Two services start together. The master key must be exactly 32 characters.",
+  "documentation": "https://zitadel.com/docs/self-hosting/deploy/compose"
+}

@@ -1,0 +1,77 @@
+{
+  "id": "couchdb",
+  "name": "CouchDB",
+  "description": "Document database with a seamless multi-master sync protocol.",
+  "category": "Databases & caches",
+  "icon": "couchdb",
+  "projectName": "couchdb",
+  "variables": [
+    {
+      "key": "ADMIN_USER",
+      "label": "Admin username",
+      "type": "text",
+      "hint": null,
+      "default": "admin",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "ADMIN_PASSWORD",
+      "label": "Admin password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./couchdb-data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "5984",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "couchdb",
+      "image": "couchdb:3",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:5984"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/opt/couchdb/data"
+      ],
+      "environment": [
+        {
+          "name": "COUCHDB_USER",
+          "value": "${ADMIN_USER}"
+        },
+        {
+          "name": "COUCHDB_PASSWORD",
+          "value": "${ADMIN_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://hub.docker.com/_/couchdb"
+}

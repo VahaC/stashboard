@@ -1,0 +1,39 @@
+{
+  "id": "adminer",
+  "name": "Adminer",
+  "description": "Full-featured database management in a single PHP file.",
+  "category": "Databases & caches",
+  "icon": "adminer",
+  "projectName": "adminer",
+  "variables": [
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "adminer",
+      "image": "adminer:4",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8080"
+      ],
+      "volumes": [],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Connects to an existing database server you enter at login.",
+  "documentation": "https://hub.docker.com/_/adminer"
+}

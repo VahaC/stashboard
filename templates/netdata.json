@@ -1,0 +1,63 @@
+{
+  "id": "netdata",
+  "name": "Netdata",
+  "description": "Real-time, per-second infrastructure and application monitoring.",
+  "category": "Monitoring & dashboards",
+  "icon": "netdata",
+  "projectName": "netdata",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./netdata/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "LIB_PATH",
+      "label": "Library directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./netdata/lib",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "19999",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "netdata",
+      "image": "netdata/netdata:stable",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:19999"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/etc/netdata",
+        "${LIB_PATH}:/var/lib/netdata",
+        "/proc:/host/proc:ro",
+        "/sys:/host/sys:ro",
+        "/var/run/docker.sock:/var/run/docker.sock:ro"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://hub.docker.com/r/netdata/netdata"
+}

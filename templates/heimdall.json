@@ -1,0 +1,63 @@
+{
+  "id": "heimdall",
+  "name": "Heimdall",
+  "description": "An elegant application dashboard and launcher (LinuxServer).",
+  "category": "Monitoring & dashboards",
+  "icon": "heimdall",
+  "projectName": "heimdall",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./heimdall",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "heimdall",
+      "image": "lscr.io/linuxserver/heimdall:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:80"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://docs.linuxserver.io/images/docker-heimdall"
+}

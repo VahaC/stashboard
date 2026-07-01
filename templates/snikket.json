@@ -1,0 +1,72 @@
+{
+  "id": "snikket",
+  "name": "Snikket",
+  "description": "Easy-to-run, modern XMPP chat server with apps for everyone.",
+  "category": "Communication",
+  "icon": "snikket",
+  "projectName": "snikket",
+  "variables": [
+    {
+      "key": "DOMAIN",
+      "label": "Chat domain",
+      "type": "text",
+      "hint": null,
+      "default": "chat.example.com",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "ADMIN_EMAIL",
+      "label": "Admin email",
+      "type": "text",
+      "hint": null,
+      "default": "admin@example.com",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./snikket",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "snikket",
+      "image": "snikket/snikket-server:stable",
+      "restart": "unless-stopped",
+      "ports": [
+        "5222:5222",
+        "5269:5269",
+        "5443:5443",
+        "80:80",
+        "443:443"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/snikket"
+      ],
+      "environment": [
+        {
+          "name": "SNIKKET_DOMAIN",
+          "value": "${DOMAIN}"
+        },
+        {
+          "name": "SNIKKET_ADMIN_EMAIL",
+          "value": "${ADMIN_EMAIL}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "XMPP needs many ports and a domain. Set the domain/admin email above; review the docs for DNS and firewall.",
+  "documentation": "https://snikket.org/service/quickstart/"
+}

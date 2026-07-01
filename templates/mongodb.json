@@ -1,0 +1,77 @@
+{
+  "id": "mongodb",
+  "name": "MongoDB",
+  "description": "Document-oriented NoSQL database.",
+  "category": "Databases & caches",
+  "icon": "mongodb",
+  "projectName": "mongodb",
+  "variables": [
+    {
+      "key": "ROOT_USER",
+      "label": "Root username",
+      "type": "text",
+      "hint": null,
+      "default": "root",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "ROOT_PASSWORD",
+      "label": "Root password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./mongo-data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "27017",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "mongo",
+      "image": "mongo:7",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:27017"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/data/db"
+      ],
+      "environment": [
+        {
+          "name": "MONGO_INITDB_ROOT_USERNAME",
+          "value": "${ROOT_USER}"
+        },
+        {
+          "name": "MONGO_INITDB_ROOT_PASSWORD",
+          "value": "${ROOT_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://hub.docker.com/_/mongo"
+}

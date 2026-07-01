@@ -10,6 +10,7 @@ import {
   buildCreateRequest,
   defaultVariableValues,
   generateSecret,
+  joinProjectDir,
   missingRequiredVariables,
   templateIconUrl,
 } from './service-templates'
@@ -188,15 +189,18 @@ function ComposeTemplateConfig({
     && directory.trim().length > 0
     && missing.length === 0 && !busy
 
-  const submit = async (run: boolean) => {
+  const submit = async () => {
     setError(null)
     try {
+      // Always `up -d`: Stashboard only surfaces a project once its containers
+      // carry the compose labels. Writing the file without running it would leave
+      // a stack that exists on disk but is invisible (and unmanageable) here.
       const result = await create.mutateAsync(
         buildCreateRequest(template, values, {
-          projectName, directory, fileName, createDirectory: createDir, run,
+          projectName, directory, fileName, createDirectory: createDir, run: true,
         }),
       )
-      if (run && !result.started) {
+      if (!result.started) {
         setError(
           `The Compose file was created at ${result.directory}, but `
           + `"docker compose up -d" failed: ${result.startError ?? 'unknown error'}.`,
@@ -233,6 +237,16 @@ function ComposeTemplateConfig({
       </div>
 
       <div className="compose-edit-body">
+        <p className="docker-template-warning" role="note">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          <span>
+            Templates are starting points — a new stack may not come up cleanly on the first
+            try. Depending on the template’s author you may still need to edit the
+            <code> docker-compose.yml</code> or other files (passwords, volume paths, ports, or
+            extra services) before it works. Review the settings below and the project’s docs.
+          </span>
+        </p>
+
         <div className="compose-edit-grid">
           <div className="service-modal-field">
             <Label className="service-modal-label">Project name</Label>
@@ -263,14 +277,21 @@ function ComposeTemplateConfig({
             <Input
               value={directory}
               onChange={(e) => setDirectory(e.target.value)}
-              placeholder="/opt/stacks/myapp"
+              placeholder="/opt/stacks"
               className="font-mono text-[12px]"
               aria-label="Directory"
             />
             <p className="compose-edit-hint">
-              Path as this connection sees it — inside the Stashboard container for a local
-              socket, on the remote host for SSH. Relative volume paths below are created here.
+              Parent directory as this connection sees it — inside the Stashboard container for a
+              local socket, on the remote host for SSH. A subfolder named after the project is
+              created here, holding the Compose file and its relative volume paths.
             </p>
+            {directory.trim().length > 0 && projectName.trim().length > 0 && !projectNameError && (
+              <p className="compose-edit-hint">
+                Will create:{' '}
+                <code>{`${joinProjectDir(directory, projectName)}/${fileName.trim() || 'docker-compose.yml'}`}</code>
+              </p>
+            )}
           </div>
           <div className="service-modal-field docker-section-field-full">
             <label className="compose-new-checkbox">
@@ -340,16 +361,8 @@ function ComposeTemplateConfig({
           <Button type="button" variant="outline" size="sm" className="mr-auto" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button type="button" size="sm" onClick={() => submit(true)} disabled={!canSave}>
+          <Button type="button" size="sm" onClick={() => submit()} disabled={!canSave}>
             {busy ? 'Creating…' : 'Create and run'}
-          </Button>
-          <Button
-            type="button" variant="outline" size="sm"
-            onClick={() => submit(false)}
-            disabled={!canSave}
-            title="Write the file without starting anything"
-          >
-            Create only
           </Button>
         </div>
       </div>

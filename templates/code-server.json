@@ -1,0 +1,86 @@
+{
+  "id": "code-server",
+  "name": "code-server",
+  "description": "Run VS Code in the browser on a remote server.",
+  "category": "Developer & Git",
+  "icon": "vscode",
+  "projectName": "codeserver",
+  "variables": [
+    {
+      "key": "PASSWORD",
+      "label": "Login password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./code-server",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PROJECT_PATH",
+      "label": "Project directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./project",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8443",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "code-server",
+      "image": "lscr.io/linuxserver/code-server:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8443"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${PROJECT_PATH}:/config/workspace"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        },
+        {
+          "name": "PASSWORD",
+          "value": "${PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://docs.linuxserver.io/images/docker-code-server"
+}

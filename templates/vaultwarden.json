@@ -1,0 +1,64 @@
+{
+  "id": "vaultwarden",
+  "name": "Vaultwarden",
+  "description": "Lightweight, self-hosted Bitwarden-compatible password manager.",
+  "category": "Security & identity",
+  "icon": "vaultwarden",
+  "projectName": "vaultwarden",
+  "variables": [
+    {
+      "key": "ADMIN_TOKEN",
+      "label": "Admin token",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./vw-data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "vaultwarden",
+      "image": "vaultwarden/server:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:80"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/data"
+      ],
+      "environment": [
+        {
+          "name": "ADMIN_TOKEN",
+          "value": "${ADMIN_TOKEN}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Put this behind HTTPS before real use. The /admin panel is unlocked with the admin token above.",
+  "documentation": "https://github.com/dani-garcia/vaultwarden/wiki"
+}

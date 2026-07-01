@@ -1,0 +1,60 @@
+{
+  "id": "jenkins",
+  "name": "Jenkins",
+  "description": "The leading open-source automation server for CI/CD.",
+  "category": "Developer & Git",
+  "icon": "jenkins",
+  "projectName": "jenkins",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./jenkins",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "AGENT_PORT",
+      "label": "Agent port",
+      "type": "port",
+      "hint": null,
+      "default": "50000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "jenkins",
+      "image": "jenkins/jenkins:lts-jdk17",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8080",
+        "${AGENT_PORT}:50000"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/var/jenkins_home"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "The initial admin password is printed in the container logs and stored under the data directory.",
+  "documentation": "https://www.jenkins.io/doc/book/installing/docker/"
+}

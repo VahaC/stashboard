@@ -1,0 +1,78 @@
+{
+  "id": "frigate",
+  "name": "Frigate",
+  "description": "Local NVR with real-time AI object detection for IP cameras.",
+  "category": "Smart home & IoT",
+  "icon": "frigate",
+  "projectName": "frigate",
+  "variables": [
+    {
+      "key": "RTSP_PASSWORD",
+      "label": "RTSP password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./frigate/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "MEDIA_PATH",
+      "label": "Recordings directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./frigate/media",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Web UI port",
+      "type": "port",
+      "hint": null,
+      "default": "5000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "frigate",
+      "image": "ghcr.io/blakeblackshear/frigate:stable",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:5000",
+        "8554:8554",
+        "8555:8555/tcp",
+        "8555:8555/udp"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${MEDIA_PATH}:/media/frigate",
+        "/etc/localtime:/etc/localtime:ro"
+      ],
+      "environment": [
+        {
+          "name": "FRIGATE_RTSP_PASSWORD",
+          "value": "${RTSP_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Add a config.yml in the config directory. For best performance pass through a Coral/GPU and raise shm_size.",
+  "documentation": "https://docs.frigate.video/"
+}

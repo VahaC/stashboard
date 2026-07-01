@@ -228,8 +228,15 @@ public sealed record DockerContainerPortMapping(
 /// V3.5 — response from a lifecycle action endpoint. <see cref="Attempt"/>
 /// is the new audit row written for the action.
 /// </summary>
+/// <param name="ProjectFolderDeleted">V8.2 — set when <c>Remove</c> was called
+/// with <c>deleteProjectFolder=true</c>: whether the compose project's host
+/// directory was deleted. <c>null</c> when folder deletion wasn't requested.</param>
+/// <param name="ProjectFolderError">V8.2 — error detail when
+/// <see cref="ProjectFolderDeleted"/> is <c>false</c>.</param>
 public sealed record DockerContainerActionResponse(
-    DockerUpdateAttemptResponse Attempt);
+    DockerUpdateAttemptResponse Attempt,
+    bool? ProjectFolderDeleted = null,
+    string? ProjectFolderError = null);
 
 /// <summary>
 /// V7.8 — custom card-icon upload. The image travels as a base64 data URI in a

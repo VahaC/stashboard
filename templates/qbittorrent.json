@@ -1,0 +1,79 @@
+{
+  "id": "qbittorrent",
+  "name": "qBittorrent",
+  "description": "Free, open-source BitTorrent client with a web UI.",
+  "category": "Media automation",
+  "icon": "qbittorrent",
+  "projectName": "qbittorrent",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./qbittorrent/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DOWNLOADS_PATH",
+      "label": "Downloads (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./downloads",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Web UI port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "qbittorrent",
+      "image": "lscr.io/linuxserver/qbittorrent:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8080",
+        "6881:6881",
+        "6881:6881/udp"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${DOWNLOADS_PATH}:/downloads"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        },
+        {
+          "name": "WEBUI_PORT",
+          "value": "8080"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Find the temporary admin password in the container logs on first start.",
+  "documentation": "https://docs.linuxserver.io/images/docker-qbittorrent"
+}

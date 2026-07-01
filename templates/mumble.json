@@ -1,0 +1,65 @@
+{
+  "id": "mumble",
+  "name": "Mumble",
+  "description": "Low-latency, high-quality voice chat server (Murmur).",
+  "category": "Communication",
+  "icon": "mumble",
+  "projectName": "mumble",
+  "variables": [
+    {
+      "key": "SUPERUSER_PASSWORD",
+      "label": "SuperUser password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./mumble",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Voice port",
+      "type": "port",
+      "hint": null,
+      "default": "64738",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "mumble",
+      "image": "mumblevoip/mumble-server:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:64738",
+        "${PORT}:64738/udp"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/data"
+      ],
+      "environment": [
+        {
+          "name": "MUMBLE_SUPERUSER_PASSWORD",
+          "value": "${SUPERUSER_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://hub.docker.com/r/mumblevoip/mumble-server"
+}

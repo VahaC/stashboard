@@ -1,0 +1,135 @@
+{
+  "id": "infisical",
+  "name": "Infisical",
+  "description": "Open-source secret management platform, with database and cache.",
+  "category": "Security & identity",
+  "icon": "infisical",
+  "projectName": "infisical",
+  "variables": [
+    {
+      "key": "ENCRYPTION_KEY",
+      "label": "Encryption key (32 hex chars)",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "AUTH_SECRET",
+      "label": "Auth secret",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./infisical/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "infisical",
+      "image": "infisical/infisical:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8080"
+      ],
+      "volumes": [],
+      "environment": [
+        {
+          "name": "ENCRYPTION_KEY",
+          "value": "${ENCRYPTION_KEY}"
+        },
+        {
+          "name": "AUTH_SECRET",
+          "value": "${AUTH_SECRET}"
+        },
+        {
+          "name": "DB_CONNECTION_URI",
+          "value": "postgres://infisical:${DB_PASSWORD}@db:5432/infisical"
+        },
+        {
+          "name": "REDIS_URL",
+          "value": "redis://redis:6379"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "postgres:16-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/postgresql/data"
+      ],
+      "environment": [
+        {
+          "name": "POSTGRES_DB",
+          "value": "infisical"
+        },
+        {
+          "name": "POSTGRES_USER",
+          "value": "infisical"
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "redis",
+      "image": "redis:7-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Three services start together. Create the first admin account in the browser.",
+  "documentation": "https://infisical.com/docs/self-hosting/overview"
+}

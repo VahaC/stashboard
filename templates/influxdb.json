@@ -1,0 +1,107 @@
+{
+  "id": "influxdb",
+  "name": "InfluxDB",
+  "description": "Time-series database for metrics, events and real-time analytics.",
+  "category": "Databases & caches",
+  "icon": "influxdb",
+  "projectName": "influxdb",
+  "variables": [
+    {
+      "key": "INIT_USER",
+      "label": "Admin username",
+      "type": "text",
+      "hint": null,
+      "default": "admin",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "INIT_PASSWORD",
+      "label": "Admin password (min 8 chars)",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "INIT_ORG",
+      "label": "Organization",
+      "type": "text",
+      "hint": null,
+      "default": "homelab",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "INIT_BUCKET",
+      "label": "Initial bucket",
+      "type": "text",
+      "hint": null,
+      "default": "default",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./influxdb-data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8086",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "influxdb",
+      "image": "influxdb:2.7",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8086"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/var/lib/influxdb2"
+      ],
+      "environment": [
+        {
+          "name": "DOCKER_INFLUXDB_INIT_MODE",
+          "value": "setup"
+        },
+        {
+          "name": "DOCKER_INFLUXDB_INIT_USERNAME",
+          "value": "${INIT_USER}"
+        },
+        {
+          "name": "DOCKER_INFLUXDB_INIT_PASSWORD",
+          "value": "${INIT_PASSWORD}"
+        },
+        {
+          "name": "DOCKER_INFLUXDB_INIT_ORG",
+          "value": "${INIT_ORG}"
+        },
+        {
+          "name": "DOCKER_INFLUXDB_INIT_BUCKET",
+          "value": "${INIT_BUCKET}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://hub.docker.com/_/influxdb"
+}

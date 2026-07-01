@@ -1,0 +1,90 @@
+{
+  "id": "swag",
+  "name": "SWAG",
+  "description": "Nginx reverse proxy with built-in Certbot and fail2ban (LinuxServer).",
+  "category": "Networking & proxies",
+  "icon": "swag",
+  "projectName": "swag",
+  "variables": [
+    {
+      "key": "URL",
+      "label": "Your domain",
+      "type": "text",
+      "hint": null,
+      "default": "example.com",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./swag/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "HTTPS_PORT",
+      "label": "HTTPS port",
+      "type": "port",
+      "hint": null,
+      "default": "443",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "HTTP_PORT",
+      "label": "HTTP port",
+      "type": "port",
+      "hint": null,
+      "default": "80",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "swag",
+      "image": "lscr.io/linuxserver/swag:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${HTTPS_PORT}:443",
+        "${HTTP_PORT}:80"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        },
+        {
+          "name": "URL",
+          "value": "${URL}"
+        },
+        {
+          "name": "VALIDATION",
+          "value": "http"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Set URL to your domain. Uses HTTP validation by default; point your DNS at this host.",
+  "documentation": "https://docs.linuxserver.io/general/swag"
+}

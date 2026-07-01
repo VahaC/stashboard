@@ -1,0 +1,65 @@
+{
+  "id": "crowdsec",
+  "name": "CrowdSec",
+  "description": "Collaborative, open-source intrusion prevention system.",
+  "category": "Security & identity",
+  "icon": "crowdsec",
+  "projectName": "crowdsec",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./crowdsec/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./crowdsec/data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "API port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "crowdsec",
+      "image": "crowdsecurity/crowdsec:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8080"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/etc/crowdsec",
+        "${DATA_PATH}:/var/lib/crowdsec/data"
+      ],
+      "environment": [
+        {
+          "name": "COLLECTIONS",
+          "value": "crowdsecurity/linux"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://docs.crowdsec.net/"
+}

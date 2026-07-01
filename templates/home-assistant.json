@@ -1,0 +1,64 @@
+{
+  "id": "home-assistant",
+  "name": "Home Assistant",
+  "description": "Open-source home automation that puts local control and privacy first.",
+  "category": "Smart home & IoT",
+  "icon": "home-assistant",
+  "projectName": "homeassistant",
+  "variables": [
+    {
+      "key": "TZ",
+      "label": "Timezone",
+      "type": "text",
+      "hint": null,
+      "default": "Etc/UTC",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./homeassistant",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8123",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "homeassistant",
+      "image": "ghcr.io/home-assistant/home-assistant:stable",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8123"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config"
+      ],
+      "environment": [
+        {
+          "name": "TZ",
+          "value": "${TZ}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "For device discovery and many integrations you may want host networking — add network_mode: host after creating if needed.",
+  "documentation": "https://www.home-assistant.io/installation/"
+}

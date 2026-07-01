@@ -895,6 +895,9 @@ export interface DockerImageStorage {
 
 export interface DockerContainerActionResponse {
   attempt: DockerUpdateAttempt
+  /** V8.2 — set when Remove was called with deleteProjectFolder=true. */
+  projectFolderDeleted: boolean | null
+  projectFolderError: string | null
 }
 
 /** V5.4 — response from the bulk "Update project" endpoint. */

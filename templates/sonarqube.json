@@ -1,0 +1,110 @@
+{
+  "id": "sonarqube",
+  "name": "SonarQube",
+  "description": "Continuous code quality and security inspection, with PostgreSQL.",
+  "category": "Developer & Git",
+  "icon": "sonarqube",
+  "projectName": "sonarqube",
+  "variables": [
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./sonarqube/data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./sonarqube/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "9000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "sonarqube",
+      "image": "sonarqube:lts-community",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:9000"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/opt/sonarqube/data"
+      ],
+      "environment": [
+        {
+          "name": "SONAR_JDBC_URL",
+          "value": "jdbc:postgresql://db:5432/sonar"
+        },
+        {
+          "name": "SONAR_JDBC_USERNAME",
+          "value": "sonar"
+        },
+        {
+          "name": "SONAR_JDBC_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "postgres:16-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/postgresql/data"
+      ],
+      "environment": [
+        {
+          "name": "POSTGRES_USER",
+          "value": "sonar"
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "POSTGRES_DB",
+          "value": "sonar"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Two services start together. May require host setting vm.max_map_count=262144. Default login admin / admin.",
+  "documentation": "https://docs.sonarsource.com/sonarqube/latest/setup-and-upgrade/install-the-server/installing-from-docker/"
+}

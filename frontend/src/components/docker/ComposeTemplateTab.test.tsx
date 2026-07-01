@@ -81,11 +81,27 @@ describe('ComposeTemplateTab', () => {
     await vi.waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
     const arg = mutateAsync.mock.calls[0][0]
     expect(arg.projectName).toBe('postgres')
-    expect(arg.directory).toBe('/opt/stacks/pg')
+    // The entered directory is the stacks parent; the project gets its own subfolder.
+    expect(arg.directory).toBe('/opt/stacks/pg/postgres')
     expect(arg.run).toBe(true)
     expect(arg.services[0].ports).toEqual(['5432:5432'])
     expect(arg.services[0].environment[0].value).toBe('s3cret')
     await vi.waitFor(() => expect(onCreated).toHaveBeenCalledWith('postgres', true))
+  })
+
+  it('warns the template may need tuning and previews the project subfolder', () => {
+    renderTab()
+    fireEvent.click(screen.getByText('PostgreSQL'))
+    expect(screen.getByText(/Templates are starting points/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Directory'), { target: { value: '/opt/stacks' } })
+    // Project name is prefilled to 'postgres' → project lands in its own subfolder.
+    expect(screen.getByText('/opt/stacks/postgres/docker-compose.yml')).toBeInTheDocument()
+  })
+
+  it('offers no "Create only" action — creation always runs the stack', () => {
+    renderTab()
+    fireEvent.click(screen.getByText('PostgreSQL'))
+    expect(screen.queryByRole('button', { name: /create only/i })).not.toBeInTheDocument()
   })
 
   it('can go back to the grid from the config panel', () => {

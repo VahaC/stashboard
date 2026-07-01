@@ -1,0 +1,128 @@
+{
+  "id": "joplin-server",
+  "name": "Joplin Server",
+  "description": "Sync server for the Joplin note-taking app, with PostgreSQL.",
+  "category": "Files & productivity",
+  "icon": "joplin",
+  "projectName": "joplinserver",
+  "variables": [
+    {
+      "key": "APP_BASE_URL",
+      "label": "Base URL",
+      "type": "text",
+      "hint": null,
+      "default": "http://localhost:22300",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./joplin/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "22300",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "joplin",
+      "image": "joplin/server:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:22300"
+      ],
+      "volumes": [],
+      "environment": [
+        {
+          "name": "APP_PORT",
+          "value": "22300"
+        },
+        {
+          "name": "APP_BASE_URL",
+          "value": "${APP_BASE_URL}"
+        },
+        {
+          "name": "DB_CLIENT",
+          "value": "pg"
+        },
+        {
+          "name": "POSTGRES_HOST",
+          "value": "db"
+        },
+        {
+          "name": "POSTGRES_PORT",
+          "value": "5432"
+        },
+        {
+          "name": "POSTGRES_USER",
+          "value": "joplin"
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "POSTGRES_DATABASE",
+          "value": "joplin"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "postgres:16-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/postgresql/data"
+      ],
+      "environment": [
+        {
+          "name": "POSTGRES_DB",
+          "value": "joplin"
+        },
+        {
+          "name": "POSTGRES_USER",
+          "value": "joplin"
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Two services start together. Set APP_BASE_URL to how you’ll reach it; default login admin@localhost / admin.",
+  "documentation": "https://github.com/laurent22/joplin/blob/dev/readme/install/desktop.md"
+}

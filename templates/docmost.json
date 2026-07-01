@@ -1,0 +1,133 @@
+{
+  "id": "docmost",
+  "name": "Docmost",
+  "description": "Open-source collaborative wiki and documentation, with database and cache.",
+  "category": "Files & productivity",
+  "icon": "docmost",
+  "projectName": "docmost",
+  "variables": [
+    {
+      "key": "APP_SECRET",
+      "label": "App secret",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./docmost/data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./docmost/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "3000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "docmost",
+      "image": "docmost/docmost:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:3000"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/app/data/storage"
+      ],
+      "environment": [
+        {
+          "name": "APP_SECRET",
+          "value": "${APP_SECRET}"
+        },
+        {
+          "name": "DATABASE_URL",
+          "value": "postgresql://docmost:${DB_PASSWORD}@db:5432/docmost"
+        },
+        {
+          "name": "REDIS_URL",
+          "value": "redis://redis:6379"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "postgres:16-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/postgresql/data"
+      ],
+      "environment": [
+        {
+          "name": "POSTGRES_DB",
+          "value": "docmost"
+        },
+        {
+          "name": "POSTGRES_USER",
+          "value": "docmost"
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "redis",
+      "image": "redis:7-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Three services start together. Create the first admin account in the browser.",
+  "documentation": "https://docmost.com/"
+}

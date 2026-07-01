@@ -1,0 +1,57 @@
+{
+  "id": "vault",
+  "name": "HashiCorp Vault",
+  "description": "Secrets management, encryption as a service and access control (dev mode).",
+  "category": "Security & identity",
+  "icon": "vault",
+  "projectName": "vault",
+  "variables": [
+    {
+      "key": "ROOT_TOKEN",
+      "label": "Root token",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8200",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "vault",
+      "image": "hashicorp/vault:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8200"
+      ],
+      "volumes": [],
+      "environment": [
+        {
+          "name": "VAULT_DEV_ROOT_TOKEN_ID",
+          "value": "${ROOT_TOKEN}"
+        },
+        {
+          "name": "VAULT_DEV_LISTEN_ADDRESS",
+          "value": "0.0.0.0:8200"
+        }
+      ],
+      "labels": [],
+      "command": "server -dev",
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Dev mode only (in-memory, unsealed). Use the root token above. Do not use dev mode in production.",
+  "documentation": "https://hub.docker.com/r/hashicorp/vault"
+}

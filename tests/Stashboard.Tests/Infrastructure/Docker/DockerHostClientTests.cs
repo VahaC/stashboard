@@ -393,6 +393,21 @@ public class DockerHostClientTests
         Assert.Equal("same", DockerHostClient.DescribeError(ex));
     }
 
+    // ── V8.2 — DeleteHostDirectoryAsync ──────────────────────────────────────
+
+    [Fact]
+    public async Task DeleteHostDirectory_RejectsNonSshTransport()
+    {
+        var client = new DockerHostClient(
+            Mock.Of<IDockerClientFactory>(), new ImageReferenceParser(), NullLogger<DockerHostClient>.Instance);
+        var transport = new DockerHostTransport(DockerHostType.LocalSocket, null, null);
+
+        var result = await client.DeleteHostDirectoryAsync(transport, "/srv/myproject");
+
+        Assert.Equal(DockerHostStatus.UnsupportedHostType, result.Status);
+        Assert.False(result.IsSuccess);
+    }
+
     // ── Harness ──────────────────────────────────────────────────────────────
 
     private sealed class Harness

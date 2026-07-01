@@ -1,0 +1,106 @@
+{
+  "id": "tdarr",
+  "name": "Tdarr",
+  "description": "Distributed transcoding system for automating your media library.",
+  "category": "Media servers",
+  "icon": "tdarr",
+  "projectName": "tdarr",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./tdarr/server",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CONFIGS_PATH",
+      "label": "Configs directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./tdarr/configs",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "MEDIA_PATH",
+      "label": "Media library (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./media",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CACHE_PATH",
+      "label": "Transcode cache (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./tdarr/cache",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Web UI port",
+      "type": "port",
+      "hint": null,
+      "default": "8265",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "tdarr",
+      "image": "ghcr.io/haveagitgat/tdarr:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8265",
+        "8266:8266"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/app/server",
+        "${CONFIGS_PATH}:/app/configs",
+        "${MEDIA_PATH}:/media",
+        "${CACHE_PATH}:/temp"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        },
+        {
+          "name": "serverIP",
+          "value": "0.0.0.0"
+        },
+        {
+          "name": "serverPort",
+          "value": "8266"
+        },
+        {
+          "name": "webUIPort",
+          "value": "8265"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://docs.tdarr.io/"
+}

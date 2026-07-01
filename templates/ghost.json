@@ -1,0 +1,127 @@
+{
+  "id": "ghost",
+  "name": "Ghost + MySQL",
+  "description": "Professional publishing platform / blog, bundled with MySQL.",
+  "category": "Files & productivity",
+  "icon": "ghost",
+  "projectName": "ghost",
+  "variables": [
+    {
+      "key": "URL",
+      "label": "Site URL",
+      "type": "text",
+      "hint": null,
+      "default": "http://localhost:2368",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "CONTENT_PATH",
+      "label": "Content directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./ghost/content",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./ghost/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "2368",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "ghost",
+      "image": "ghost:5",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:2368"
+      ],
+      "volumes": [
+        "${CONTENT_PATH}:/var/lib/ghost/content"
+      ],
+      "environment": [
+        {
+          "name": "url",
+          "value": "${URL}"
+        },
+        {
+          "name": "database__client",
+          "value": "mysql"
+        },
+        {
+          "name": "database__connection__host",
+          "value": "db"
+        },
+        {
+          "name": "database__connection__user",
+          "value": "root"
+        },
+        {
+          "name": "database__connection__password",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "database__connection__database",
+          "value": "ghost"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "mysql:8.4",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/mysql"
+      ],
+      "environment": [
+        {
+          "name": "MYSQL_ROOT_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "MYSQL_DATABASE",
+          "value": "ghost"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Two services start together. Set the url to how you’ll reach it; admin is at /ghost.",
+  "documentation": "https://hub.docker.com/_/ghost"
+}

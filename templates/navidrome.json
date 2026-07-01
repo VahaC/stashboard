@@ -1,0 +1,60 @@
+{
+  "id": "navidrome",
+  "name": "Navidrome",
+  "description": "Modern music server and streamer compatible with Subsonic clients.",
+  "category": "Media servers",
+  "icon": "navidrome",
+  "projectName": "navidrome",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./navidrome",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "MUSIC_PATH",
+      "label": "Music library (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./music",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "4533",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "navidrome",
+      "image": "deluan/navidrome:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:4533"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/data",
+        "${MUSIC_PATH}:/music:ro"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://www.navidrome.org/"
+}

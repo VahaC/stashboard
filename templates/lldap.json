@@ -1,0 +1,91 @@
+{
+  "id": "lldap",
+  "name": "LLDAP",
+  "description": "Lightweight LDAP server with a friendly web UI for user management.",
+  "category": "Security & identity",
+  "icon": "openldap",
+  "projectName": "lldap",
+  "variables": [
+    {
+      "key": "JWT_SECRET",
+      "label": "JWT secret",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "ADMIN_PASSWORD",
+      "label": "Admin password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./lldap",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "WEB_PORT",
+      "label": "Web UI port",
+      "type": "port",
+      "hint": null,
+      "default": "17170",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "LDAP_PORT",
+      "label": "LDAP port",
+      "type": "port",
+      "hint": null,
+      "default": "3890",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "lldap",
+      "image": "lldap/lldap:stable",
+      "restart": "unless-stopped",
+      "ports": [
+        "${WEB_PORT}:17170",
+        "${LDAP_PORT}:3890"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/data"
+      ],
+      "environment": [
+        {
+          "name": "LLDAP_JWT_SECRET",
+          "value": "${JWT_SECRET}"
+        },
+        {
+          "name": "LLDAP_LDAP_USER_PASS",
+          "value": "${ADMIN_PASSWORD}"
+        },
+        {
+          "name": "LLDAP_LDAP_BASE_DN",
+          "value": "dc=example,dc=com"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://github.com/lldap/lldap"
+}

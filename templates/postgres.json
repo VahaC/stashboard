@@ -1,0 +1,90 @@
+{
+  "id": "postgres",
+  "name": "PostgreSQL",
+  "description": "Powerful, open-source object-relational database.",
+  "category": "Databases & caches",
+  "icon": "postgresql",
+  "projectName": "postgres",
+  "variables": [
+    {
+      "key": "POSTGRES_PASSWORD",
+      "label": "Superuser password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "POSTGRES_USER",
+      "label": "Superuser name",
+      "type": "text",
+      "hint": null,
+      "default": "postgres",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "POSTGRES_DB",
+      "label": "Initial database",
+      "type": "text",
+      "hint": null,
+      "default": "postgres",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./postgres-data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "5432",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "db",
+      "image": "postgres:17-alpine",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:5432"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/var/lib/postgresql/data"
+      ],
+      "environment": [
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "${POSTGRES_PASSWORD}"
+        },
+        {
+          "name": "POSTGRES_USER",
+          "value": "${POSTGRES_USER}"
+        },
+        {
+          "name": "POSTGRES_DB",
+          "value": "${POSTGRES_DB}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Connect with the user/password you set above on the exposed port.",
+  "documentation": "https://hub.docker.com/_/postgres"
+}

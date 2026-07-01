@@ -1,0 +1,73 @@
+{
+  "id": "readarr",
+  "name": "Readarr",
+  "description": "E-book and audiobook collection management.",
+  "category": "Media automation",
+  "icon": "readarr",
+  "projectName": "readarr",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./readarr/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Media/downloads (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8787",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "readarr",
+      "image": "lscr.io/linuxserver/readarr:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8787"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${DATA_PATH}:/data"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://docs.linuxserver.io/images/docker-readarr"
+}

@@ -1,0 +1,50 @@
+{
+  "id": "redis",
+  "name": "Redis",
+  "description": "In-memory data store used as a database, cache and message broker.",
+  "category": "Databases & caches",
+  "icon": "redis",
+  "projectName": "redis",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./redis-data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "6379",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "redis",
+      "image": "redis:7-alpine",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:6379"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/data"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": "redis-server --save 60 1 --loglevel warning",
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://hub.docker.com/_/redis"
+}

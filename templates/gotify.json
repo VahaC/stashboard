@@ -1,0 +1,64 @@
+{
+  "id": "gotify",
+  "name": "Gotify",
+  "description": "A simple server for sending and receiving push messages.",
+  "category": "Communication",
+  "icon": "gotify",
+  "projectName": "gotify",
+  "variables": [
+    {
+      "key": "ADMIN_PASSWORD",
+      "label": "Admin password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./gotify",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "gotify",
+      "image": "gotify/server:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:80"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/app/data"
+      ],
+      "environment": [
+        {
+          "name": "GOTIFY_DEFAULTUSER_PASS",
+          "value": "${ADMIN_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Default login admin / admin — change it immediately.",
+  "documentation": "https://gotify.net/"
+}

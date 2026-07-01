@@ -1,0 +1,73 @@
+{
+  "id": "calibre-web",
+  "name": "Calibre-Web",
+  "description": "Clean web app for browsing and reading a Calibre e-book library.",
+  "category": "Media servers",
+  "icon": "calibre-web",
+  "projectName": "calibreweb",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./calibre-web",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "BOOKS_PATH",
+      "label": "Calibre library (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./books",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8083",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "calibre-web",
+      "image": "lscr.io/linuxserver/calibre-web:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8083"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${BOOKS_PATH}:/books"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Default login admin / admin123 — change it immediately.",
+  "documentation": "https://docs.linuxserver.io/images/docker-calibre-web"
+}

@@ -7,6 +7,10 @@ export type LifecycleAction = 'start' | 'stop' | 'restart' | 'remove'
 export type ContainerLifecycleActionsProps = {
   containerName: string
   running: boolean
+  /** True while Docker is auto-restarting the container in a crash loop.
+   *  Restart is hidden in this state — it would just duplicate what the
+   *  restart policy is already doing; only Stop is meaningful. */
+  restarting?: boolean
   allowRemoval: boolean
   busy: boolean
   size?: 'sm' | 'default'
@@ -22,7 +26,7 @@ export type ContainerLifecycleActionsProps = {
 }
 
 export function ContainerLifecycleActions({
-  containerName: _containerName, running, allowRemoval, busy, size = 'sm', density = 'full', className, onAction, onRemoveRequest,
+  containerName: _containerName, running, restarting = false, allowRemoval, busy, size = 'sm', density = 'full', className, onAction, onRemoveRequest,
 }: ContainerLifecycleActionsProps) {
   const compact = density === 'compact'
   const remove = () => {
@@ -41,18 +45,20 @@ export function ContainerLifecycleActions({
             <Square className="h-3.5 w-3.5" />
             <span className="label-text">Stop</span>
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size={size}
-            disabled={busy}
-            onClick={() => void onAction('restart')}
-            title="Restart container"
-            aria-label="Restart container"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            {!compact && <span className="label-text">Restart</span>}
-          </Button>
+          {!restarting && (
+            <Button
+              type="button"
+              variant="outline"
+              size={size}
+              disabled={busy}
+              onClick={() => void onAction('restart')}
+              title="Restart container"
+              aria-label="Restart container"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              {!compact && <span className="label-text">Restart</span>}
+            </Button>
+          )}
         </>
       ) : (
         <Button type="button" variant="outline" size={size} disabled={busy} onClick={() => void onAction('start')}>

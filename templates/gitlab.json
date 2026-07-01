@@ -1,0 +1,104 @@
+{
+  "id": "gitlab",
+  "name": "GitLab CE",
+  "description": "Complete DevOps platform: Git hosting, CI/CD, issues and more.",
+  "category": "Developer & Git",
+  "icon": "gitlab",
+  "projectName": "gitlab",
+  "variables": [
+    {
+      "key": "HOST",
+      "label": "External URL host",
+      "type": "text",
+      "hint": null,
+      "default": "gitlab.example.com",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./gitlab/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "LOGS_PATH",
+      "label": "Logs directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./gitlab/logs",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./gitlab/data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "HTTP_PORT",
+      "label": "HTTP port",
+      "type": "port",
+      "hint": null,
+      "default": "80",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "HTTPS_PORT",
+      "label": "HTTPS port",
+      "type": "port",
+      "hint": null,
+      "default": "443",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "SSH_PORT",
+      "label": "SSH port",
+      "type": "port",
+      "hint": null,
+      "default": "2222",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "gitlab",
+      "image": "gitlab/gitlab-ce:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${HTTP_PORT}:80",
+        "${HTTPS_PORT}:443",
+        "${SSH_PORT}:22"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/etc/gitlab",
+        "${LOGS_PATH}:/var/log/gitlab",
+        "${DATA_PATH}:/var/opt/gitlab"
+      ],
+      "environment": [
+        {
+          "name": "GITLAB_OMNIBUS_CONFIG",
+          "value": "external_url 'http://${HOST}'"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Heavy — give it a few minutes and plenty of RAM. Initial root password is in config/initial_root_password.",
+  "documentation": "https://docs.gitlab.com/install/docker/"
+}

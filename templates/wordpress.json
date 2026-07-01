@@ -1,0 +1,127 @@
+{
+  "id": "wordpress",
+  "name": "WordPress + MariaDB",
+  "description": "The world's most popular CMS, bundled with its MariaDB database.",
+  "category": "Files & productivity",
+  "icon": "wordpress",
+  "projectName": "wordpress",
+  "variables": [
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_ROOT_PASSWORD",
+      "label": "Database root password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./wordpress/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "WP_CONTENT_PATH",
+      "label": "wp-content directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./wordpress/wp-content",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "db",
+      "image": "mariadb:11",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/mysql"
+      ],
+      "environment": [
+        {
+          "name": "MARIADB_ROOT_PASSWORD",
+          "value": "${DB_ROOT_PASSWORD}"
+        },
+        {
+          "name": "MARIADB_DATABASE",
+          "value": "wordpress"
+        },
+        {
+          "name": "MARIADB_USER",
+          "value": "wordpress"
+        },
+        {
+          "name": "MARIADB_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "wordpress",
+      "image": "wordpress:6",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:80"
+      ],
+      "volumes": [
+        "${WP_CONTENT_PATH}:/var/www/html/wp-content"
+      ],
+      "environment": [
+        {
+          "name": "WORDPRESS_DB_HOST",
+          "value": "db:3306"
+        },
+        {
+          "name": "WORDPRESS_DB_USER",
+          "value": "wordpress"
+        },
+        {
+          "name": "WORDPRESS_DB_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "WORDPRESS_DB_NAME",
+          "value": "wordpress"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Two services start together. Finish setup in the browser on the exposed port.",
+  "documentation": "https://hub.docker.com/_/wordpress"
+}

@@ -1,0 +1,75 @@
+{
+  "id": "transmission",
+  "name": "Transmission",
+  "description": "Lightweight, cross-platform BitTorrent client with a web UI.",
+  "category": "Media automation",
+  "icon": "transmission",
+  "projectName": "transmission",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./transmission/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DOWNLOADS_PATH",
+      "label": "Downloads (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./downloads",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Web UI port",
+      "type": "port",
+      "hint": null,
+      "default": "9091",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "transmission",
+      "image": "lscr.io/linuxserver/transmission:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:9091",
+        "51413:51413",
+        "51413:51413/udp"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${DOWNLOADS_PATH}:/downloads"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://docs.linuxserver.io/images/docker-transmission"
+}

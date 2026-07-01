@@ -583,6 +583,10 @@ function HostSection({
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({})
   const [hostMenuPos, setHostMenuPos] = useState<{ x: number; y: number } | null>(null)
   const isSsh = resolveDockerHostType(connection.hostType) === 'Ssh'
+  // V8.2 — surfaced separately from per-card actionErrors because a failed
+  // project-folder delete happens *after* the container (and its card) is
+  // already gone from the list.
+  const [folderDeleteError, setFolderDeleteError] = useState<string | null>(null)
 
   const watchByContainer = useMemo(() => {
     const map = new Map<string, DockerWatch>()
@@ -603,12 +607,24 @@ function HostSection({
     })
   }, [containers, search, stateFilter])
 
-  const handleAction = async (containerName: string, kind: 'start' | 'stop' | 'restart' | 'remove') => {
+  const handleAction = async (
+    containerName: string,
+    kind: 'start' | 'stop' | 'restart' | 'remove',
+    options?: { deleteProjectFolder?: boolean },
+  ) => {
     setActionErrors((prev) => {
       const next = { ...prev }; delete next[containerName]; return next
     })
     try {
-      await action.mutateAsync({ containerName, action: kind })
+      const response = await action.mutateAsync({
+        containerName, action: kind, deleteProjectFolder: options?.deleteProjectFolder,
+      })
+      if (kind === 'remove' && options?.deleteProjectFolder && response.projectFolderDeleted === false) {
+        setFolderDeleteError(
+          `"${containerName}" was removed, but deleting its project folder failed: `
+          + (response.projectFolderError ?? 'unknown error'),
+        )
+      }
     } catch (err) {
       if (kind === 'remove') throw err
       const message = getApiErrorMessage(err) ?? `Failed to ${kind} ${containerName}`
@@ -616,12 +632,16 @@ function HostSection({
     }
   }
 
-  const onCardAction = async (card: DockerContainerCard, kind: 'start' | 'stop' | 'restart' | 'remove') => {
+  const onCardAction = async (
+    card: DockerContainerCard,
+    kind: 'start' | 'stop' | 'restart' | 'remove',
+    options?: { deleteProjectFolder?: boolean },
+  ) => {
     if (kind === 'remove' && card.state.toLowerCase() === 'not found' && card.watchId) {
       await deleteWatch.mutateAsync(card.watchId)
       return
     }
-    await handleAction(card.name, kind)
+    await handleAction(card.name, kind, options)
   }
 
   const transport = resolveDockerHostType(connection.hostType)
@@ -712,9 +732,19 @@ function HostSection({
         />
       )}
 
+      {folderDeleteError && (
+        <p className="dock-error">
+          <AlertCircle className="h-3.5 w-3.5 inline" /> {folderDeleteError}{' '}
+          <button type="button" className="dock-error-dismiss" onClick={() => setFolderDeleteError(null)}>
+            Dismiss
+          </button>
+        </p>
+      )}
+
       <ProjectGroups
         connectionId={connection.id}
         isComposable={resolveDockerHostType(connection.hostType) !== 'TcpTls'}
+        isSshHost={isSsh}
         containers={containers}
         containersError={containerError}
         filtered={filtered}
@@ -738,6 +768,7 @@ function HostSection({
 interface ProjectGroupsProps {
   connectionId: string
   isComposable: boolean
+  isSshHost: boolean
   containers: DockerContainerCard[] | null
   containersError: unknown
   filtered: DockerContainerCard[]
@@ -748,7 +779,11 @@ interface ProjectGroupsProps {
   layout: PackLayout
   openGroups: Record<string, boolean>
   onToggleGroup: (key: string) => void
-  onCardAction: (card: DockerContainerCard, kind: 'start' | 'stop' | 'restart' | 'remove') => Promise<void>
+  onCardAction: (
+    card: DockerContainerCard,
+    kind: 'start' | 'stop' | 'restart' | 'remove',
+    options?: { deleteProjectFolder?: boolean },
+  ) => Promise<void>
   onOpenModal: (card: DockerContainerCard, tab: ContainerModalTab) => void
   onOpenCompose: (project: string) => void
 }
@@ -760,7 +795,7 @@ interface ProjectGroup {
 }
 
 function ProjectGroups({
-  connectionId, isComposable, containers, containersError, filtered, watchByContainer, allowRemoval,
+  connectionId, isComposable, isSshHost, containers, containersError, filtered, watchByContainer, allowRemoval,
   actionPending, actionErrors, layout, openGroups, onToggleGroup, onCardAction, onOpenModal, onOpenCompose,
 }: ProjectGroupsProps) {
   // V7.1.1 — every Compose project gets its own group, even a single-container
@@ -816,6 +851,7 @@ function ProjectGroups({
           project={g.project}
           connectionId={connectionId}
           isComposable={isComposable}
+          isSshHost={isSshHost}
           containers={g.containers}
           watchByContainer={watchByContainer}
           allowRemoval={allowRemoval}
@@ -839,6 +875,7 @@ interface PackedGroupProps {
   project: string | null
   connectionId: string
   isComposable: boolean
+  isSshHost: boolean
   containers: DockerContainerCard[]
   watchByContainer: Map<string, DockerWatch>
   allowRemoval: boolean
@@ -847,13 +884,17 @@ interface PackedGroupProps {
   layout: PackLayout
   open: boolean
   onToggle: (key: string) => void
-  onCardAction: (card: DockerContainerCard, kind: 'start' | 'stop' | 'restart' | 'remove') => Promise<void>
+  onCardAction: (
+    card: DockerContainerCard,
+    kind: 'start' | 'stop' | 'restart' | 'remove',
+    options?: { deleteProjectFolder?: boolean },
+  ) => Promise<void>
   onOpenModal: (card: DockerContainerCard, tab: ContainerModalTab) => void
   onOpenCompose: (project: string) => void
 }
 
 function PackedGroup({
-  groupKey, isOther, project, connectionId, isComposable, containers, watchByContainer, allowRemoval,
+  groupKey, isOther, project, connectionId, isComposable, isSshHost, containers, watchByContainer, allowRemoval,
   actionPending, actionErrors, layout, open, onToggle, onCardAction, onOpenModal, onOpenCompose,
 }: PackedGroupProps) {
   const projectUpdate = useDockerProjectUpdate(connectionId)
@@ -954,9 +995,10 @@ function PackedGroup({
                 linkedWatch={watchByContainer.get(card.name) ?? null}
                 variant="docker-page"
                 allowRemoval={allowRemoval}
+                isSshHost={isSshHost}
                 busy={actionPending || projectUpdate.isPending}
                 error={actionErrors[card.name]}
-                onAction={(kind) => onCardAction(card, kind)}
+                onAction={(kind, options) => onCardAction(card, kind, options)}
                 onOpen={(tab) => onOpenModal(card, tab)}
               />
             ))}
@@ -1048,16 +1090,34 @@ function ContainerModalHost({
     if (fresh && fresh !== state.card) onCardRefresh(fresh)
   }, [containersQuery.data, state.card, onCardRefresh])
 
-  const handleAction = async (kind: 'start' | 'stop' | 'restart' | 'remove') => {
+  const handleAction = async (
+    kind: 'start' | 'stop' | 'restart' | 'remove',
+    options?: { deleteProjectFolder?: boolean },
+  ) => {
     setError(undefined)
     try {
-      await action.mutateAsync({ containerName: state.card.name, action: kind })
-      if (kind === 'remove') onClose()
+      const response = await action.mutateAsync({
+        containerName: state.card.name, action: kind, deleteProjectFolder: options?.deleteProjectFolder,
+      })
+      if (kind === 'remove') {
+        // Keep the modal open to show the folder-delete failure instead of
+        // closing on it — the container itself was already removed.
+        if (options?.deleteProjectFolder && response.projectFolderDeleted === false) {
+          setError(
+            `Container removed, but deleting its project folder failed: `
+            + (response.projectFolderError ?? 'unknown error'),
+          )
+          return
+        }
+        onClose()
+      }
     } catch (err) {
       if (kind === 'remove') throw err
       setError(getApiErrorMessage(err) ?? `Failed to ${kind} ${state.card.name}`)
     }
   }
+
+  const isSshHost = resolveDockerHostType(connection?.hostType ?? 'LocalSocket') === 'Ssh'
 
   return (
     <ContainerModal
@@ -1065,6 +1125,7 @@ function ContainerModalHost({
       card={state.card}
       initialTab={state.tab}
       allowRemoval={allowRemoval}
+      isSshHost={isSshHost}
       busy={action.isPending}
       actionError={error}
       allowExec={connection?.allowExec ?? false}

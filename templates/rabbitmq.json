@@ -1,0 +1,87 @@
+{
+  "id": "rabbitmq",
+  "name": "RabbitMQ",
+  "description": "Reliable message broker with a management UI (AMQP).",
+  "category": "Databases & caches",
+  "icon": "rabbitmq",
+  "projectName": "rabbitmq",
+  "variables": [
+    {
+      "key": "USER",
+      "label": "Default user",
+      "type": "text",
+      "hint": null,
+      "default": "guest",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PASSWORD",
+      "label": "Default password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./rabbitmq-data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "AMQP_PORT",
+      "label": "AMQP port",
+      "type": "port",
+      "hint": null,
+      "default": "5672",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "UI_PORT",
+      "label": "Management UI port",
+      "type": "port",
+      "hint": null,
+      "default": "15672",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "rabbitmq",
+      "image": "rabbitmq:3-management",
+      "restart": "unless-stopped",
+      "ports": [
+        "${AMQP_PORT}:5672",
+        "${UI_PORT}:15672"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/var/lib/rabbitmq"
+      ],
+      "environment": [
+        {
+          "name": "RABBITMQ_DEFAULT_USER",
+          "value": "${USER}"
+        },
+        {
+          "name": "RABBITMQ_DEFAULT_PASS",
+          "value": "${PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Management UI on the management port; log in with the user/password above.",
+  "documentation": "https://hub.docker.com/_/rabbitmq"
+}

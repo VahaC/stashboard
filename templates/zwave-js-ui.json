@@ -1,0 +1,65 @@
+{
+  "id": "zwave-js-ui",
+  "name": "Z-Wave JS UI",
+  "description": "Full-featured Z-Wave control panel and MQTT gateway.",
+  "category": "Smart home & IoT",
+  "icon": "z-wave-js-ui",
+  "projectName": "zwavejsui",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./zwave-js-ui",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "UI_PORT",
+      "label": "Web UI port",
+      "type": "port",
+      "hint": null,
+      "default": "8091",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "WS_PORT",
+      "label": "WebSocket port",
+      "type": "port",
+      "hint": null,
+      "default": "3000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "zwave-js-ui",
+      "image": "zwavejs/zwave-js-ui:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${UI_PORT}:8091",
+        "${WS_PORT}:3000"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/usr/src/app/store"
+      ],
+      "environment": [
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Pass your Z-Wave stick through by adding the device (e.g. /dev/ttyUSB0) to the file after creating.",
+  "documentation": "https://zwave-js.github.io/zwave-js-ui/"
+}

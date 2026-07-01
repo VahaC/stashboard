@@ -1,0 +1,66 @@
+{
+  "id": "technitium",
+  "name": "Technitium DNS",
+  "description": "Self-hosted DNS server with ad-blocking and a clean web console.",
+  "category": "Networking & proxies",
+  "icon": "technitium",
+  "projectName": "technitium",
+  "variables": [
+    {
+      "key": "ADMIN_PASSWORD",
+      "label": "Admin password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./technitium",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "WEB_PORT",
+      "label": "Web console port",
+      "type": "port",
+      "hint": null,
+      "default": "5380",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "technitium",
+      "image": "technitium/dns-server:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${WEB_PORT}:5380",
+        "53:53/udp",
+        "53:53/tcp"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/etc/dns"
+      ],
+      "environment": [
+        {
+          "name": "DNS_SERVER_ADMIN_PASSWORD",
+          "value": "${ADMIN_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "If port 53 is taken (systemd-resolved), free it first.",
+  "documentation": "https://technitium.com/dns/"
+}

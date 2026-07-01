@@ -1,0 +1,70 @@
+{
+  "id": "jellyfin",
+  "name": "Jellyfin",
+  "description": "Free software media system to stream your movies, shows and music.",
+  "category": "Media servers",
+  "icon": "jellyfin",
+  "projectName": "jellyfin",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./jellyfin/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CACHE_PATH",
+      "label": "Cache directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./jellyfin/cache",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "MEDIA_PATH",
+      "label": "Media library (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./media",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8096",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "jellyfin",
+      "image": "jellyfin/jellyfin:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8096"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${CACHE_PATH}:/cache",
+        "${MEDIA_PATH}:/media:ro"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Point the media path at your library; complete setup in the web UI.",
+  "documentation": "https://jellyfin.org/docs/general/installation/container/"
+}

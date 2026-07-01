@@ -1,0 +1,66 @@
+{
+  "id": "keycloak",
+  "name": "Keycloak",
+  "description": "Open-source identity and access management (dev mode).",
+  "category": "Security & identity",
+  "icon": "keycloak",
+  "projectName": "keycloak",
+  "variables": [
+    {
+      "key": "ADMIN_USER",
+      "label": "Admin username",
+      "type": "text",
+      "hint": null,
+      "default": "admin",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "ADMIN_PASSWORD",
+      "label": "Admin password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "keycloak",
+      "image": "quay.io/keycloak/keycloak:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8080"
+      ],
+      "volumes": [],
+      "environment": [
+        {
+          "name": "KEYCLOAK_ADMIN",
+          "value": "${ADMIN_USER}"
+        },
+        {
+          "name": "KEYCLOAK_ADMIN_PASSWORD",
+          "value": "${ADMIN_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": "start-dev",
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Dev mode (in-memory). Log in to the admin console with the credentials above.",
+  "documentation": "https://www.keycloak.org/server/containers"
+}

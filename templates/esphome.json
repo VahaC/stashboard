@@ -1,0 +1,50 @@
+{
+  "id": "esphome",
+  "name": "ESPHome",
+  "description": "Control your ESP8266/ESP32 devices with simple YAML config.",
+  "category": "Smart home & IoT",
+  "icon": "esphome",
+  "projectName": "esphome",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./esphome",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "6052",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "esphome",
+      "image": "ghcr.io/esphome/esphome:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:6052"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://esphome.io/guides/getting_started_command_line"
+}

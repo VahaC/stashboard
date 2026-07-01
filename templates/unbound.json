@@ -1,0 +1,51 @@
+{
+  "id": "unbound",
+  "name": "Unbound",
+  "description": "Validating, recursive, caching DNS resolver.",
+  "category": "Networking & proxies",
+  "icon": "unbound",
+  "projectName": "unbound",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./unbound",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "DNS port",
+      "type": "port",
+      "hint": null,
+      "default": "53",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "unbound",
+      "image": "mvance/unbound:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:53/tcp",
+        "${PORT}:53/udp"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/opt/unbound/etc/unbound"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://github.com/MatthewVance/unbound-docker"
+}

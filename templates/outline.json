@@ -1,0 +1,163 @@
+{
+  "id": "outline",
+  "name": "Outline",
+  "description": "Fast, collaborative knowledge base, with database and cache.",
+  "category": "Files & productivity",
+  "icon": "outline",
+  "projectName": "outline",
+  "variables": [
+    {
+      "key": "SECRET_KEY",
+      "label": "Secret key (32 bytes hex)",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "UTILS_SECRET",
+      "label": "Utils secret (32 bytes hex)",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "URL",
+      "label": "Public URL",
+      "type": "text",
+      "hint": null,
+      "default": "http://localhost:3000",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./outline/data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./outline/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "3000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "outline",
+      "image": "outlinewiki/outline:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:3000"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/var/lib/outline/data"
+      ],
+      "environment": [
+        {
+          "name": "SECRET_KEY",
+          "value": "${SECRET_KEY}"
+        },
+        {
+          "name": "UTILS_SECRET",
+          "value": "${UTILS_SECRET}"
+        },
+        {
+          "name": "URL",
+          "value": "${URL}"
+        },
+        {
+          "name": "DATABASE_URL",
+          "value": "postgres://outline:${DB_PASSWORD}@db:5432/outline"
+        },
+        {
+          "name": "REDIS_URL",
+          "value": "redis://redis:6379"
+        },
+        {
+          "name": "FILE_STORAGE",
+          "value": "local"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "postgres:16-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/postgresql/data"
+      ],
+      "environment": [
+        {
+          "name": "POSTGRES_DB",
+          "value": "outline"
+        },
+        {
+          "name": "POSTGRES_USER",
+          "value": "outline"
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "redis",
+      "image": "redis:7-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Three services start together. Outline REQUIRES an external auth provider (OIDC/Google/Slack) — configure it in the file before it will start.",
+  "documentation": "https://docs.getoutline.com/s/hosting/"
+}

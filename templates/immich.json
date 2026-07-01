@@ -1,0 +1,132 @@
+{
+  "id": "immich",
+  "name": "Immich",
+  "description": "High-performance, self-hosted photo and video backup (Google Photos alternative).",
+  "category": "Media servers",
+  "icon": "immich",
+  "projectName": "immich",
+  "variables": [
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "UPLOAD_PATH",
+      "label": "Upload library (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./immich/library",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./immich/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "2283",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "immich-server",
+      "image": "ghcr.io/immich-app/immich-server:release",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:2283"
+      ],
+      "volumes": [
+        "${UPLOAD_PATH}:/usr/src/app/upload"
+      ],
+      "environment": [
+        {
+          "name": "DB_HOSTNAME",
+          "value": "database"
+        },
+        {
+          "name": "DB_USERNAME",
+          "value": "postgres"
+        },
+        {
+          "name": "DB_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "DB_DATABASE_NAME",
+          "value": "immich"
+        },
+        {
+          "name": "REDIS_HOSTNAME",
+          "value": "redis"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "redis",
+      "image": "docker.io/redis:7-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "database",
+      "image": "ghcr.io/immich-app/postgres:14-vectorchord0.3.0-pgv-pgvectors0.2.0",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/postgresql/data"
+      ],
+      "environment": [
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "POSTGRES_USER",
+          "value": "postgres"
+        },
+        {
+          "name": "POSTGRES_DB",
+          "value": "immich"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Machine-learning is optional and omitted here; add it later for smart search. Uploads land in the upload path.",
+  "documentation": "https://immich.app/docs/install/docker-compose"
+}

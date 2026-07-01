@@ -1,0 +1,73 @@
+{
+  "id": "lidarr",
+  "name": "Lidarr",
+  "description": "Music collection management and automation.",
+  "category": "Media automation",
+  "icon": "lidarr",
+  "projectName": "lidarr",
+  "variables": [
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./lidarr/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Media/downloads (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8686",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "lidarr",
+      "image": "lscr.io/linuxserver/lidarr:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8686"
+      ],
+      "volumes": [
+        "${CONFIG_PATH}:/config",
+        "${DATA_PATH}:/data"
+      ],
+      "environment": [
+        {
+          "name": "PUID",
+          "value": "1000"
+        },
+        {
+          "name": "PGID",
+          "value": "1000"
+        },
+        {
+          "name": "TZ",
+          "value": "Etc/UTC"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://docs.linuxserver.io/images/docker-lidarr"
+}

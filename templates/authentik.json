@@ -1,0 +1,196 @@
+{
+  "id": "authentik",
+  "name": "Authentik",
+  "description": "Flexible identity provider (SSO, 2FA), with worker, database and cache.",
+  "category": "Security & identity",
+  "icon": "authentik",
+  "projectName": "authentik",
+  "variables": [
+    {
+      "key": "SECRET_KEY",
+      "label": "Authentik secret key",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "MEDIA_PATH",
+      "label": "Media directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./authentik/media",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./authentik/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "HTTP_PORT",
+      "label": "HTTP port",
+      "type": "port",
+      "hint": null,
+      "default": "9000",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "HTTPS_PORT",
+      "label": "HTTPS port",
+      "type": "port",
+      "hint": null,
+      "default": "9443",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "server",
+      "image": "ghcr.io/goauthentik/server:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${HTTP_PORT}:9000",
+        "${HTTPS_PORT}:9443"
+      ],
+      "volumes": [
+        "${MEDIA_PATH}:/media"
+      ],
+      "environment": [
+        {
+          "name": "AUTHENTIK_SECRET_KEY",
+          "value": "${SECRET_KEY}"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__HOST",
+          "value": "db"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__USER",
+          "value": "authentik"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__NAME",
+          "value": "authentik"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "AUTHENTIK_REDIS__HOST",
+          "value": "redis"
+        }
+      ],
+      "labels": [],
+      "command": "server",
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "worker",
+      "image": "ghcr.io/goauthentik/server:latest",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${MEDIA_PATH}:/media"
+      ],
+      "environment": [
+        {
+          "name": "AUTHENTIK_SECRET_KEY",
+          "value": "${SECRET_KEY}"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__HOST",
+          "value": "db"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__USER",
+          "value": "authentik"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__NAME",
+          "value": "authentik"
+        },
+        {
+          "name": "AUTHENTIK_POSTGRESQL__PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "AUTHENTIK_REDIS__HOST",
+          "value": "redis"
+        }
+      ],
+      "labels": [],
+      "command": "worker",
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "postgres:16-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/postgresql/data"
+      ],
+      "environment": [
+        {
+          "name": "POSTGRES_DB",
+          "value": "authentik"
+        },
+        {
+          "name": "POSTGRES_USER",
+          "value": "authentik"
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "redis",
+      "image": "redis:7-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Four services start together. Open /if/flow/initial-setup/ to create the first admin.",
+  "documentation": "https://docs.goauthentik.io/docs/install-config/install/docker-compose"
+}

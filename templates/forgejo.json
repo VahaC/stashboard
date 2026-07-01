@@ -1,0 +1,69 @@
+{
+  "id": "forgejo",
+  "name": "Forgejo",
+  "description": "Self-hosted lightweight software forge (community Gitea fork).",
+  "category": "Developer & Git",
+  "icon": "forgejo",
+  "projectName": "forgejo",
+  "variables": [
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./forgejo",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "HTTP_PORT",
+      "label": "HTTP port",
+      "type": "port",
+      "hint": null,
+      "default": "3000",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "SSH_PORT",
+      "label": "SSH port",
+      "type": "port",
+      "hint": null,
+      "default": "222",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "forgejo",
+      "image": "codeberg.org/forgejo/forgejo:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${HTTP_PORT}:3000",
+        "${SSH_PORT}:22"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/data"
+      ],
+      "environment": [
+        {
+          "name": "USER_UID",
+          "value": "1000"
+        },
+        {
+          "name": "USER_GID",
+          "value": "1000"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://forgejo.org/docs/latest/admin/installation-docker/"
+}

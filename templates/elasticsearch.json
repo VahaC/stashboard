@@ -1,0 +1,76 @@
+{
+  "id": "elasticsearch",
+  "name": "Elasticsearch",
+  "description": "Distributed search and analytics engine (single-node).",
+  "category": "Databases & caches",
+  "icon": "elasticsearch",
+  "projectName": "elasticsearch",
+  "variables": [
+    {
+      "key": "ELASTIC_PASSWORD",
+      "label": "elastic user password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./es-data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "9200",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "elasticsearch",
+      "image": "docker.elastic.co/elasticsearch/elasticsearch:8.15.3",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:9200"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/usr/share/elasticsearch/data"
+      ],
+      "environment": [
+        {
+          "name": "discovery.type",
+          "value": "single-node"
+        },
+        {
+          "name": "ELASTIC_PASSWORD",
+          "value": "${ELASTIC_PASSWORD}"
+        },
+        {
+          "name": "xpack.security.enabled",
+          "value": "true"
+        },
+        {
+          "name": "ES_JAVA_OPTS",
+          "value": "-Xms512m -Xmx512m"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Single-node dev setup. May require raising vm.max_map_count=262144 on the host.",
+  "documentation": "https://www.docker.elastic.co/"
+}

@@ -1,0 +1,129 @@
+{
+  "id": "mattermost",
+  "name": "Mattermost",
+  "description": "Open-source, self-hosted team chat (Slack alternative), with PostgreSQL.",
+  "category": "Communication",
+  "icon": "mattermost",
+  "projectName": "mattermost",
+  "variables": [
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "SITE_URL",
+      "label": "Site URL",
+      "type": "text",
+      "hint": null,
+      "default": "http://localhost:8065",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./mattermost/data",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./mattermost/config",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./mattermost/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8065",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "mattermost",
+      "image": "mattermost/mattermost-team-edition:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8065"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/mattermost/data",
+        "${CONFIG_PATH}:/mattermost/config"
+      ],
+      "environment": [
+        {
+          "name": "MM_SQLSETTINGS_DRIVERNAME",
+          "value": "postgres"
+        },
+        {
+          "name": "MM_SQLSETTINGS_DATASOURCE",
+          "value": "postgres://mattermost:${DB_PASSWORD}@db:5432/mattermost?sslmode=disable"
+        },
+        {
+          "name": "MM_SERVICESETTINGS_SITEURL",
+          "value": "${SITE_URL}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "postgres:16-alpine",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/postgresql/data"
+      ],
+      "environment": [
+        {
+          "name": "POSTGRES_DB",
+          "value": "mattermost"
+        },
+        {
+          "name": "POSTGRES_USER",
+          "value": "mattermost"
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Two services start together. Create the first admin account in the browser.",
+  "documentation": "https://docs.mattermost.com/install/install-docker.html"
+}

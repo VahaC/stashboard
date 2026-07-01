@@ -1,0 +1,60 @@
+{
+  "id": "filebrowser",
+  "name": "File Browser",
+  "description": "Web file manager for a directory — upload, edit, share.",
+  "category": "Files & productivity",
+  "icon": "filebrowser",
+  "projectName": "filebrowser",
+  "variables": [
+    {
+      "key": "SRV_PATH",
+      "label": "Directory to serve (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./files",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "CONFIG_PATH",
+      "label": "Config directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./filebrowser",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "filebrowser",
+      "image": "filebrowser/filebrowser:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:80"
+      ],
+      "volumes": [
+        "${SRV_PATH}:/srv",
+        "${CONFIG_PATH}:/database"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Default login admin / admin — change it immediately.",
+  "documentation": "https://filebrowser.org/"
+}

@@ -1,0 +1,77 @@
+{
+  "id": "2fauth",
+  "name": "2FAuth",
+  "description": "Web app to manage your two-factor authentication (2FA) accounts.",
+  "category": "Security & identity",
+  "icon": "2fauth",
+  "projectName": "2fauth",
+  "variables": [
+    {
+      "key": "APP_KEY",
+      "label": "App key (32 chars)",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "APP_URL",
+      "label": "App URL",
+      "type": "text",
+      "hint": null,
+      "default": "http://localhost:8000",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DATA_PATH",
+      "label": "Data directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./2fauth",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8000",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "2fauth",
+      "image": "2fauth/2fauth:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:8000"
+      ],
+      "volumes": [
+        "${DATA_PATH}:/2fauth"
+      ],
+      "environment": [
+        {
+          "name": "APP_KEY",
+          "value": "${APP_KEY}"
+        },
+        {
+          "name": "APP_URL",
+          "value": "${APP_URL}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "The app key must be a 32-character random string.",
+  "documentation": "https://docs.2fauth.app/"
+}

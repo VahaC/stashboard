@@ -1,0 +1,50 @@
+{
+  "id": "apache",
+  "name": "Apache HTTP Server",
+  "description": "The classic Apache web server serving static files.",
+  "category": "Networking & proxies",
+  "icon": "apache",
+  "projectName": "apache",
+  "variables": [
+    {
+      "key": "HTML_PATH",
+      "label": "Site directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./html",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "8080",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "web",
+      "image": "httpd:2.4",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:80"
+      ],
+      "volumes": [
+        "${HTML_PATH}:/usr/local/apache2/htdocs:ro"
+      ],
+      "environment": [],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://hub.docker.com/_/httpd"
+}

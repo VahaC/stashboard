@@ -1,0 +1,46 @@
+{
+  "id": "glances",
+  "name": "Glances",
+  "description": "Cross-platform system monitoring in a web dashboard.",
+  "category": "Monitoring & dashboards",
+  "icon": "glances",
+  "projectName": "glances",
+  "variables": [
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "61208",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "glances",
+      "image": "nicolargo/glances:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:61208"
+      ],
+      "volumes": [
+        "/var/run/docker.sock:/var/run/docker.sock:ro"
+      ],
+      "environment": [
+        {
+          "name": "GLANCES_OPT",
+          "value": "-w"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://hub.docker.com/r/nicolargo/glances"
+}

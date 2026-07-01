@@ -1,0 +1,48 @@
+{
+  "id": "memcached",
+  "name": "Memcached",
+  "description": "High-performance, distributed memory object caching system.",
+  "category": "Databases & caches",
+  "icon": "memcached",
+  "projectName": "memcached",
+  "variables": [
+    {
+      "key": "MEMORY_MB",
+      "label": "Cache size (MB)",
+      "type": "text",
+      "hint": null,
+      "default": "256",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "11211",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "memcached",
+      "image": "memcached:1.6-alpine",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:11211"
+      ],
+      "volumes": [],
+      "environment": [],
+      "labels": [],
+      "command": "memcached -m ${MEMORY_MB}",
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": null,
+  "documentation": "https://hub.docker.com/_/memcached"
+}

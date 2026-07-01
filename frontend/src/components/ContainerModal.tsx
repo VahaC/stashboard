@@ -70,6 +70,10 @@ interface ContainerModalProps {
   card: DockerContainerCard
   initialTab: ContainerModalTab
   allowRemoval: boolean
+  /** V8.2 — true when the connection is SSH-based, the only transport that
+   *  can delete files on the host. Gates the "also delete the project
+   *  folder" opt-in in the remove-confirm dialog. */
+  isSshHost: boolean
   busy: boolean
   actionError?: string
   /** V5.7 — per-connection container-exec opt-in. */
@@ -80,7 +84,10 @@ interface ContainerModalProps {
    *  capabilities for the service's watch (or empty-state with a create
    *  CTA when no watch exists yet). */
   serviceContext?: { service: Service; watch: DockerWatch | null }
-  onAction: (kind: 'start' | 'stop' | 'restart' | 'remove') => void
+  onAction: (
+    kind: 'start' | 'stop' | 'restart' | 'remove',
+    options?: { deleteProjectFolder?: boolean },
+  ) => void
   onClose: () => void
 }
 
@@ -94,7 +101,7 @@ const TABS: ReadonlyArray<{ id: ContainerModalTab; label: string; icon: typeof I
 ]
 
 export function ContainerModal({
-  connectionId, card, initialTab, allowRemoval, busy, actionError, serviceContext,
+  connectionId, card, initialTab, allowRemoval, isSshHost, busy, actionError, serviceContext,
   allowExec, allowExecGlobal, onAction, onClose,
 }: ContainerModalProps) {
   const [tab, setTab] = useState<ContainerModalTab>(initialTab)
@@ -144,6 +151,7 @@ export function ContainerModal({
               connectionId={connectionId}
               card={card}
               allowRemoval={allowRemoval}
+              isSshHost={isSshHost}
               busy={busy}
               actionError={actionError}
               serviceContext={serviceContext}
@@ -188,18 +196,25 @@ interface OverviewTabProps {
   connectionId: string
   card: DockerContainerCard
   allowRemoval: boolean
+  isSshHost: boolean
   busy: boolean
   actionError?: string
   serviceContext?: { service: Service; watch: DockerWatch | null }
-  onAction: (kind: 'start' | 'stop' | 'restart' | 'remove') => void
+  onAction: (
+    kind: 'start' | 'stop' | 'restart' | 'remove',
+    options?: { deleteProjectFolder?: boolean },
+  ) => void
   onOpenWatch: () => void
 }
 
 function OverviewTab({
-  connectionId, card, allowRemoval, busy, actionError, serviceContext, onAction, onOpenWatch,
+  connectionId, card, allowRemoval, isSshHost, busy, actionError, serviceContext, onAction, onOpenWatch,
 }: OverviewTabProps) {
   const stateLower = card.state.toLowerCase()
-  const running = stateLower === 'running'
+  // A container stuck in a restart loop reports state "restarting", not
+  // "running" — but it's still live and must be stoppable, otherwise it can
+  // never reach "exited" to be removed.
+  const running = stateLower === 'running' || stateLower === 'restarting'
   const stopped = stateLower === 'exited' || stateLower === 'dead'
   const notFound = stateLower === 'not found'
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
@@ -214,6 +229,7 @@ function OverviewTab({
 
   const updateAvailable =
     linkedWatch && resolveDockerUpdateStatus(linkedWatch.updateStatus) === 'UpdateAvailable'
+  const composeProjectName = isSshHost ? card.composeProject : null
 
   return (
     <div className="container-modal-overview">
@@ -253,6 +269,7 @@ function OverviewTab({
             <ContainerLifecycleActions
               containerName={card.name}
               running={running}
+              restarting={stateLower === 'restarting'}
               allowRemoval={allowRemoval || stopped}
               busy={busy}
               onAction={onAction}
@@ -307,8 +324,9 @@ function OverviewTab({
         image={card.image}
         status={card.status || card.state}
         ghost={notFound}
-        onConfirm={async () => {
-          await (onAction('remove') as unknown as Promise<void>)
+        composeProjectName={composeProjectName}
+        onConfirm={async (opts) => {
+          await (onAction('remove', opts) as unknown as Promise<void>)
           setRemoveDialogOpen(false)
         }}
         onCancel={() => setRemoveDialogOpen(false)}

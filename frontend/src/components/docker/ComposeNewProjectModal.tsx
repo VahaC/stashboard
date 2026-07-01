@@ -20,6 +20,7 @@ import {
   formStateToRequestFields,
   type ServiceFormState,
 } from './compose-service-form'
+import { joinProjectDir } from './service-templates'
 import '@/styles/docker-instances.css'
 
 /**
@@ -86,7 +87,7 @@ export function ComposeNewProjectModal({
   const syntheticProject: ComposeProject = useMemo(() => ({
     projectName: projectName.trim() || null,
     fileName: fileName.trim() || 'docker-compose.yml',
-    projectPath: directory.trim(),
+    projectPath: joinProjectDir(directory, projectName),
     services: [],
     networks: [],
     volumes: [],
@@ -96,18 +97,21 @@ export function ComposeNewProjectModal({
     lint: [],
   }), [projectName, fileName, directory])
 
-  const submit = async (run: boolean) => {
+  const submit = async () => {
     setError(null)
     try {
+      // Always `up -d`: Stashboard only surfaces a project once its containers
+      // carry the compose labels. Writing the file without running it would leave
+      // a stack that exists on disk but is invisible (and unmanageable) here.
       const result = await create.mutateAsync({
         projectName: projectName.trim(),
-        directory: directory.trim(),
+        directory: joinProjectDir(directory, projectName),
         fileName: fileName.trim() || null,
         createDirectory: createDir,
-        run,
+        run: true,
         services: [{ name: serviceName.trim(), ...formStateToRequestFields(state) }],
       })
-      if (run && !result.started) {
+      if (!result.started) {
         setError(
           `The Compose file was created at ${result.directory}, but `
           + `"docker compose up -d" failed: ${result.startError ?? 'unknown error'}.`,
@@ -192,14 +196,21 @@ export function ComposeNewProjectModal({
                   <Input
                     value={directory}
                     onChange={(e) => setDirectory(e.target.value)}
-                    placeholder="/opt/stacks/myapp"
+                    placeholder="/opt/stacks"
                     className="font-mono text-[12px]"
                     aria-label="Directory"
                   />
                   <p className="compose-edit-hint">
-                    Path as this connection sees it — inside the Stashboard container for a local
-                    socket, on the remote host for SSH.
+                    Parent directory as this connection sees it — inside the Stashboard container
+                    for a local socket, on the remote host for SSH. A subfolder named after the
+                    project is created here, holding the Compose file and its relative volumes.
                   </p>
+                  {directory.trim().length > 0 && projectName.trim().length > 0 && !projectNameError && (
+                    <p className="compose-edit-hint">
+                      Will create:{' '}
+                      <code>{`${joinProjectDir(directory, projectName)}/${fileName.trim() || 'docker-compose.yml'}`}</code>
+                    </p>
+                  )}
                 </div>
                 <div className="service-modal-field docker-section-field-full">
                   <label className="compose-new-checkbox">
@@ -254,16 +265,8 @@ export function ComposeNewProjectModal({
               <Button type="button" variant="outline" size="sm" className="mr-auto" onClick={onClose} disabled={busy}>
                 Cancel
               </Button>
-              <Button type="button" size="sm" onClick={() => submit(true)} disabled={!canSave}>
+              <Button type="button" size="sm" onClick={() => submit()} disabled={!canSave}>
                 {busy ? 'Creating…' : 'Create and run'}
-              </Button>
-              <Button
-                type="button" variant="outline" size="sm"
-                onClick={() => submit(false)}
-                disabled={!canSave}
-                title="Write the file without starting anything"
-              >
-                Create only
               </Button>
             </div>
           </div>

@@ -1,0 +1,145 @@
+{
+  "id": "photoprism",
+  "name": "PhotoPrism",
+  "description": "AI-powered photos app for browsing, organizing and sharing.",
+  "category": "Media servers",
+  "icon": "photoprism",
+  "projectName": "photoprism",
+  "variables": [
+    {
+      "key": "ADMIN_PASSWORD",
+      "label": "Admin password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "DB_PASSWORD",
+      "label": "Database password",
+      "type": "password",
+      "hint": null,
+      "default": null,
+      "required": true,
+      "generate": true
+    },
+    {
+      "key": "ORIGINALS_PATH",
+      "label": "Photo library (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./photos",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "STORAGE_PATH",
+      "label": "Storage directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./photoprism/storage",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "DB_DATA_PATH",
+      "label": "Database directory (host)",
+      "type": "path",
+      "hint": null,
+      "default": "./photoprism/db",
+      "required": false,
+      "generate": false
+    },
+    {
+      "key": "PORT",
+      "label": "Exposed port",
+      "type": "port",
+      "hint": null,
+      "default": "2342",
+      "required": false,
+      "generate": false
+    }
+  ],
+  "services": [
+    {
+      "name": "photoprism",
+      "image": "photoprism/photoprism:latest",
+      "restart": "unless-stopped",
+      "ports": [
+        "${PORT}:2342"
+      ],
+      "volumes": [
+        "${ORIGINALS_PATH}:/photoprism/originals",
+        "${STORAGE_PATH}:/photoprism/storage"
+      ],
+      "environment": [
+        {
+          "name": "PHOTOPRISM_ADMIN_PASSWORD",
+          "value": "${ADMIN_PASSWORD}"
+        },
+        {
+          "name": "PHOTOPRISM_DATABASE_DRIVER",
+          "value": "mysql"
+        },
+        {
+          "name": "PHOTOPRISM_DATABASE_SERVER",
+          "value": "db:3306"
+        },
+        {
+          "name": "PHOTOPRISM_DATABASE_NAME",
+          "value": "photoprism"
+        },
+        {
+          "name": "PHOTOPRISM_DATABASE_USER",
+          "value": "photoprism"
+        },
+        {
+          "name": "PHOTOPRISM_DATABASE_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    },
+    {
+      "name": "db",
+      "image": "mariadb:11",
+      "restart": "unless-stopped",
+      "ports": [],
+      "volumes": [
+        "${DB_DATA_PATH}:/var/lib/mysql"
+      ],
+      "environment": [
+        {
+          "name": "MARIADB_DATABASE",
+          "value": "photoprism"
+        },
+        {
+          "name": "MARIADB_USER",
+          "value": "photoprism"
+        },
+        {
+          "name": "MARIADB_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        },
+        {
+          "name": "MARIADB_ROOT_PASSWORD",
+          "value": "${DB_PASSWORD}"
+        }
+      ],
+      "labels": [],
+      "command": null,
+      "entrypoint": null,
+      "user": null,
+      "workingDir": null,
+      "resources": null
+    }
+  ],
+  "notes": "Log in as ‘admin’ with the password above. Originals are your photo library.",
+  "documentation": "https://docs.photoprism.app/getting-started/docker-compose/"
+}
