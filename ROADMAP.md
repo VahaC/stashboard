@@ -12,7 +12,7 @@
 > and the V7.x visual Compose editor track (V7.0–V7.9) to [`HISTORY.md`](./HISTORY.md) §17,
 > once those phases all shipped; only V8.1+ remains in this file.
 >
-> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2) · ✅ V5.4 (Compose project grouping & bulk update, image 5.4.0) · ✅ V5.5 (image cleanup / prune, image 5.5.0) · ✅ V5.6 (health-check tuning page, image 5.6.0) · ✅ V5.7 (container exec, image 5.7.0) · ✅ V5.8 (session audit viewer, image 5.8.0) · ✅ V5.9 (Docker instances page redesign, image 5.9.0) · ✅ V6.0 (Proxmox LXC update monitoring, image 6.0.0) · ✅ V6.1 (Proxmox LXC detail modal + Docker-style cards, image 6.1.0) · ✅ V6.2 (LXC Config tab, image 6.2.0) · ✅ V6.3 (LXC Stats + Tasks tabs, image 6.3.0) · ✅ V6.4 (LXC lifecycle actions + real-time stats, image 6.4.0) · ✅ V6.5 (edit LXC parameters, image 6.5.0) · ✅ V6.6 (browser LXC console / Console tab, image 6.6.0) · ✅ V6.7 (per-LXC update monitoring toggle, image 6.7.0) · ✅ V6.7.1 (Proxmox one-click "Update now", image 6.7.1) · ✅ V6.8 (PVE node health card + node modal, image 6.8.0) · ✅ V6.8.1 (PVE node alerting, image 6.8.1) · ✅ V6.8.2 (PVE node deep telemetry / SSH collectors, image 6.8.2) · ✅ V6.9.0 (edit LXC network interfaces & mount points, image 6.9.0) · ✅ V6.10 (Proxmox page Docker-parity redesign, image 6.10.0) · ✅ V6.11 (bulk LXC monitoring & update operations + audit, image 6.11.0) · ✅ V6.12 (LXC live logs / Logs tab, image 6.12.0) · ✅ V6.13 (destroy / remove LXC, image 6.13.0) · ✅ V6.13.1 (create LXC, image 6.13.1) · ✅ V6.14 (VM / QEMU support, image 6.14.0) · ✅ V6.15 (Proxmox connections in backup/restore, image 6.15.0) · ✅ V7.0 (visual Compose viewer, image 7.0.0) · ✅ V7.1 (edit basic service fields, image 7.1.0) · ✅ V7.1.1 (Compose as a per-project modal, image 7.1.1) · ✅ V7.2 (resource constraints UI, image 7.2.0) · ✅ V7.2.1 (PBS disk/SMART fixes, image 7.2.1) · ✅ V7.3 (top-level resources, image 7.3.0) · ✅ V7.4 (create a new service, image 7.4.0) · ✅ V7.4.1 (create a whole project, image 7.4.1) · ✅ V7.5 (service templates, image 7.5.0) · ✅ V7.6 (diff / dry-run / apply, image 7.6.0) · ✅ V7.7 (dependency graph + linter, image 7.7.0) · ✅ V7.8 (container card icons, image 7.8.0) · ✅ V7.9 (link Proxmox guests to services + Docker↔Proxmox cross-link, image 7.9.0) · ✅ V8.0 (clone & snapshot LXC, image 8.0.0) · ✅ V8.1 (restore LXC from backup, image 8.1.0). Shipped V5.x phase detail now lives in [`HISTORY.md`](./HISTORY.md) §14, the V6.x Proxmox parity & LXC/VM phase detail in [`HISTORY.md`](./HISTORY.md) §16, and the V7.x visual Compose editor track in [`HISTORY.md`](./HISTORY.md) §17; V1–V4 historical detail is also in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
+> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2) · ✅ V5.4 (Compose project grouping & bulk update, image 5.4.0) · ✅ V5.5 (image cleanup / prune, image 5.5.0) · ✅ V5.6 (health-check tuning page, image 5.6.0) · ✅ V5.7 (container exec, image 5.7.0) · ✅ V5.8 (session audit viewer, image 5.8.0) · ✅ V5.9 (Docker instances page redesign, image 5.9.0) · ✅ V6.0 (Proxmox LXC update monitoring, image 6.0.0) · ✅ V6.1 (Proxmox LXC detail modal + Docker-style cards, image 6.1.0) · ✅ V6.2 (LXC Config tab, image 6.2.0) · ✅ V6.3 (LXC Stats + Tasks tabs, image 6.3.0) · ✅ V6.4 (LXC lifecycle actions + real-time stats, image 6.4.0) · ✅ V6.5 (edit LXC parameters, image 6.5.0) · ✅ V6.6 (browser LXC console / Console tab, image 6.6.0) · ✅ V6.7 (per-LXC update monitoring toggle, image 6.7.0) · ✅ V6.7.1 (Proxmox one-click "Update now", image 6.7.1) · ✅ V6.8 (PVE node health card + node modal, image 6.8.0) · ✅ V6.8.1 (PVE node alerting, image 6.8.1) · ✅ V6.8.2 (PVE node deep telemetry / SSH collectors, image 6.8.2) · ✅ V6.9.0 (edit LXC network interfaces & mount points, image 6.9.0) · ✅ V6.10 (Proxmox page Docker-parity redesign, image 6.10.0) · ✅ V6.11 (bulk LXC monitoring & update operations + audit, image 6.11.0) · ✅ V6.12 (LXC live logs / Logs tab, image 6.12.0) · ✅ V6.13 (destroy / remove LXC, image 6.13.0) · ✅ V6.13.1 (create LXC, image 6.13.1) · ✅ V6.14 (VM / QEMU support, image 6.14.0) · ✅ V6.15 (Proxmox connections in backup/restore, image 6.15.0) · ✅ V7.0 (visual Compose viewer, image 7.0.0) · ✅ V7.1 (edit basic service fields, image 7.1.0) · ✅ V7.1.1 (Compose as a per-project modal, image 7.1.1) · ✅ V7.2 (resource constraints UI, image 7.2.0) · ✅ V7.2.1 (PBS disk/SMART fixes, image 7.2.1) · ✅ V7.3 (top-level resources, image 7.3.0) · ✅ V7.4 (create a new service, image 7.4.0) · ✅ V7.4.1 (create a whole project, image 7.4.1) · ✅ V7.5 (service templates, image 7.5.0) · ✅ V7.6 (diff / dry-run / apply, image 7.6.0) · ✅ V7.7 (dependency graph + linter, image 7.7.0) · ✅ V7.8 (container card icons, image 7.8.0) · ✅ V7.9 (link Proxmox guests to services + Docker↔Proxmox cross-link, image 7.9.0) · ✅ V8.0 (clone & snapshot LXC, image 8.0.0) · ✅ V8.1 (restore LXC from backup, image 8.1.0) · ✅ V8.2 (clone & snapshot VM / QEMU, image 8.2.0). Shipped V5.x phase detail now lives in [`HISTORY.md`](./HISTORY.md) §14, the V6.x Proxmox parity & LXC/VM phase detail in [`HISTORY.md`](./HISTORY.md) §16, and the V7.x visual Compose editor track in [`HISTORY.md`](./HISTORY.md) §17; V1–V4 historical detail is also in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
 
 ## 14. Post-V4 backlog (V5+) — deferred Docker features
 
@@ -144,53 +144,30 @@ the result appears after the auto-scan, and the action is audited.
 
 ---
 
-### Phase V8.2 — Clone & snapshot VM (QEMU)
+### Phase V8.2 — Clone & snapshot VM (QEMU) ✅ Shipped (8.2.0)
 
-**Complexity:** Medium
-**Value:** The VM analogue of V8.0 — extend **clone** and **snapshots** from LXC
-containers to QEMU/KVM virtual machines, so the same "stamp out a copy of a
-known-good guest" and "snapshot before a risky change" workflows work for VMs
-without dropping to the Proxmox web UI. Most of the machinery already exists: the
-`kind` (`lxc`/`qemu`) duality shipped in V6.14 (status / config / stats / tasks /
-destroy), and the V8.0 gating, audit entity, settings switch, modals, and
-double-confirm dialogs are all guest-kind-agnostic and reused as-is.
-
-**Scope:**
-
-- **API client** — make the five V8.0 methods kind-aware (a shared private helper +
-  thin `lxc`/`qemu` wrappers, mirroring `GetGuestStatusAsync` / `DestroyGuestAsync`):
-  `…/qemu/{vmid}/clone` and `…/qemu/{vmid}/snapshot[/{name}[/rollback]]`. Snapshots
-  are a pure path-segment swap; clone differs in two parameters — VMs use **`name`**
-  (not `hostname`) and accept an optional disk **`format`** (raw / qcow2 / vmdk) on a
-  full clone. Each is a task UPID → reuse `PollTaskAsync`.
-- **`vmstate` returns for VMs.** Unlike an LXC snapshot (whose endpoint rejects it),
-  a **QEMU snapshot supports `vmstate`** — saving the running RAM state. Re-introduce
-  the "Include running memory state (RAM)" toggle, **kind-gated to `qemu`** only.
-- **Controller** — shared clone/snapshot handlers taking a `qemu` flag with
-  `/qemu/...` routes, mirroring the existing `DestroyLxc` / `DestroyQemu` split. No
-  new gate, no new audit table — `ProxmoxCloneAuditEntity` already records the source
-  `VmId` / action / target irrespective of guest kind.
-- **Frontend** — thread `kind` through the six V8.0 hooks; drop the `!isVm` guards so
-  the **Snapshots** + **Audit** tabs and the **Clone** button appear for VMs; reuse
-  `LxcCloneModal` / `SnapshotConfirmDialog` with VM wording (`name` vs `hostname`,
-  "VM" vs "container") and the kind-gated `vmstate` checkbox.
-- **Running-guest clone guard** — keep the V8.0 client-side guard, kind-aware: a full
-  clone of a running guest needs a source snapshot (Proxmox stays authoritative and a
-  host rejection surfaces verbatim as a 502).
-
-**Out of scope:** cross-node clone migration; scheduled snapshots; snapshot trees
-beyond a flat list (same exclusions as V8.0).
-
-**Tests:** the QEMU clone POSTs `name`/`format` (not `hostname`) to `…/qemu/.../clone`;
-a QEMU snapshot create sends `vmstate` when requested (and the LXC path still never
-does); snapshot create/rollback/delete hit the `qemu` endpoints and poll the task;
-gate failures return deterministic 403 before any API call; each action writes an
-audit row; a Proxmox rejection surfaces as a 502 with the host's message.
-
-**Acceptance bar:** with the flag + per-host opt-in enabled, a user can clone a VM
-and take / roll back / delete VM snapshots (with the optional RAM state) entirely
-from the Stashboard UI, the result appears after the auto-scan, and every action is
-audited — reusing the exact V8.0 surfaces, not a parallel system.
+**Shipped in 8.2.0.** The V8.0 **clone** and **snapshot** workflows now extend to
+QEMU/KVM virtual machines, reusing the exact V8.0 surfaces (gating, audit entity,
+settings switch, modals, double-confirm dialogs) rather than a parallel system. The
+five V8.0 `IProxmoxApiClient` methods became kind-aware via shared private helpers
+behind thin `lxc`/`qemu` wrappers (mirroring `GetLxc`/`GetQemuStatusAsync`):
+`CloneLxc`/`CloneQemuAsync`, `ListLxc`/`ListQemuSnapshotsAsync`,
+`CreateLxc`/`CreateQemuSnapshotAsync`, `Rollback…`, `Delete…`, all polling the task
+UPID via `PollTaskAsync`. A VM clone POSTs the new name as `name` (not `hostname`)
+and a full clone accepts an optional disk `format` (`raw` / `qcow2` / `vmdk`); a VM
+snapshot additionally supports `vmstate` (the running RAM state), re-introduced as a
+**kind-gated** "Include running memory state (RAM)" toggle shown only for a running
+VM. The controller routes both kinds through shared `qemu`-flag handlers with
+`/qemu/...` routes (mirroring `DestroyLxc`/`DestroyQemu`); no new gate and no new
+audit table — `ProxmoxCloneAuditEntity` records the action irrespective of guest
+kind. The frontend threads `kind` through the six V8.0 hooks and drops the `!isVm`
+guards so the **Snapshots** + **Audit** tabs and the **Clone** button appear for VMs,
+reusing `LxcCloneModal` / `SnapshotConfirmDialog` with VM wording. The running-guest
+clone guard is kept kind-aware (a running guest must clone from a snapshot; the host
+stays authoritative and a rejection surfaces verbatim as a 502).
+Out of scope (deferred): cross-node clone migration, scheduled snapshots, and
+snapshot trees beyond a flat list (same exclusions as V8.0).
+See the [CHANGELOG](./CHANGELOG.md).
 
 ---
 

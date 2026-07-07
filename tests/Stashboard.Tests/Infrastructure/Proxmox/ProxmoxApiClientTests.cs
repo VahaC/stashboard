@@ -829,7 +829,7 @@ public class ProxmoxApiClientTests
             return Json("""{"data":"UPID:pve:0000:vzsnapshot::root@pam:"}""");
         });
 
-        await client.CreateSnapshotAsync(Profile(), 105, "before-upgrade", "pre");
+        await client.CreateLxcSnapshotAsync(Profile(), 105, "before-upgrade", "pre");
 
         Assert.Equal("/api2/json/nodes/pve/lxc/105/snapshot", path);
         Assert.NotNull(body);
@@ -858,7 +858,7 @@ public class ProxmoxApiClientTests
             return Json("""{"data":"UPID:pve:0000:vzrollback::root@pam:"}""");
         });
 
-        await client.RollbackSnapshotAsync(Profile(), 105, "before-upgrade");
+        await client.RollbackLxcSnapshotAsync(Profile(), 105, "before-upgrade");
 
         Assert.Equal(HttpMethod.Post, method);
         Assert.Equal("/api2/json/nodes/pve/lxc/105/snapshot/before-upgrade/rollback", path);
@@ -883,7 +883,7 @@ public class ProxmoxApiClientTests
             return Json("""{"data":"UPID:pve:0000:vzdelsnapshot::root@pam:"}""");
         });
 
-        await client.DeleteSnapshotAsync(Profile(), 105, "before-upgrade");
+        await client.DeleteLxcSnapshotAsync(Profile(), 105, "before-upgrade");
 
         Assert.Equal(HttpMethod.Delete, method);
         Assert.Equal("/api2/json/nodes/pve/lxc/105/snapshot/before-upgrade", path);
@@ -901,7 +901,7 @@ public class ProxmoxApiClientTests
             ]}
             """));
 
-        var snapshots = await client.ListSnapshotsAsync(Profile(), 105);
+        var snapshots = await client.ListLxcSnapshotsAsync(Profile(), 105);
 
         Assert.Equal(2, snapshots.Count);
         Assert.DoesNotContain(snapshots, s => s.Name == "current");
@@ -918,9 +918,131 @@ public class ProxmoxApiClientTests
             Content = new StringContent("snapshot 'before-upgrade' does not exist"),
         });
 
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => client.DeleteSnapshotAsync(
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => client.DeleteLxcSnapshotAsync(
             Profile(), 105, "before-upgrade"));
         Assert.Contains("does not exist", ex.Message);
+    }
+
+    // ── V8.2 — clone & snapshot QEMU VMs ─────────────────────────────────────
+
+    [Fact]
+    public async Task CloneQemu_PostsNameAndFormat_ToQemuClonePath_ThenPollsTask()
+    {
+        string? path = null;
+        string? body = null;
+        var statusPolls = 0;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+            {
+                statusPolls++;
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            }
+            path = req.RequestUri!.AbsolutePath;
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json("""{"data":"UPID:pve:0000:qmclone::root@pam:"}""");
+        });
+
+        await client.CloneQemuAsync(Profile(), sourceVmId: 200, new ProxmoxLxcClone(
+            NewVmId: 260, Hostname: "newvm-clone", TargetStorage: "local-lvm", Full: true, Format: "qcow2"));
+
+        Assert.Equal("/api2/json/nodes/pve/qemu/200/clone", path);
+        Assert.NotNull(body);
+        Assert.Contains("newid=260", body);
+        // A VM sends the new name as name=, not hostname=.
+        Assert.Contains("name=newvm-clone", body);
+        Assert.DoesNotContain("hostname=", body);
+        Assert.Contains("format=qcow2", body);
+        Assert.True(statusPolls >= 1);
+    }
+
+    [Fact]
+    public async Task CreateQemuSnapshot_WithVmstate_SendsVmstate_ToQemuPath()
+    {
+        string? path = null;
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            path = req.RequestUri!.AbsolutePath;
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json("""{"data":"UPID:pve:0000:qmsnapshot::root@pam:"}""");
+        });
+
+        await client.CreateQemuSnapshotAsync(Profile(), 200, "before-upgrade", null, vmstate: true);
+
+        Assert.Equal("/api2/json/nodes/pve/qemu/200/snapshot", path);
+        Assert.NotNull(body);
+        Assert.Contains("snapname=before-upgrade", body);
+        Assert.Contains("vmstate=1", body);
+    }
+
+    [Fact]
+    public async Task CreateQemuSnapshot_WithoutVmstate_OmitsVmstate()
+    {
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json("""{"data":"UPID:pve:0000:qmsnapshot::root@pam:"}""");
+        });
+
+        await client.CreateQemuSnapshotAsync(Profile(), 200, "before-upgrade", null, vmstate: false);
+
+        Assert.NotNull(body);
+        Assert.DoesNotContain("vmstate", body);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RollbackAndDeleteQemuSnapshot_HitQemuPaths_ThenPollTask(bool rollback)
+    {
+        HttpMethod? method = null;
+        string? path = null;
+        var statusPolls = 0;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+            {
+                statusPolls++;
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            }
+            method = req.Method;
+            path = req.RequestUri!.AbsolutePath;
+            return Json("""{"data":"UPID:pve:0000:qmsnap::root@pam:"}""");
+        });
+
+        if (rollback) await client.RollbackQemuSnapshotAsync(Profile(), 200, "before-upgrade");
+        else await client.DeleteQemuSnapshotAsync(Profile(), 200, "before-upgrade");
+
+        Assert.Equal(rollback ? HttpMethod.Post : HttpMethod.Delete, method);
+        Assert.Equal(
+            rollback
+                ? "/api2/json/nodes/pve/qemu/200/snapshot/before-upgrade/rollback"
+                : "/api2/json/nodes/pve/qemu/200/snapshot/before-upgrade",
+            path);
+        Assert.True(statusPolls >= 1);
+    }
+
+    [Fact]
+    public async Task ListQemuSnapshots_HitsQemuPath()
+    {
+        string? path = null;
+        var client = BuildClient(req =>
+        {
+            path = req.RequestUri!.AbsolutePath;
+            return Json("""{"data":[{"name":"snap1","snaptime":1700000000,"vmstate":1}]}""");
+        });
+
+        var snapshots = await client.ListQemuSnapshotsAsync(Profile(), 200);
+
+        Assert.Equal("/api2/json/nodes/pve/qemu/200/snapshot", path);
+        Assert.Single(snapshots);
+        Assert.True(snapshots[0].Vmstate);
     }
 
     // ── V6.5 — UpdateLxcConfigAsync ──────────────────────────────────────────

@@ -9,10 +9,11 @@ import { parseApiErrors } from '@/lib/utils'
 import '@/styles/account-page.css'
 
 /**
- * V8.0 — Settings → Clone/snapshot LXC. The app-wide master switch for cloning a
- * guest (`POST …/lxc/{vmid}/clone`) and managing snapshots (take / roll back /
- * delete). Like the destroy / create pages, it leads with what the actions do and
- * spells out every condition required before the affordances appear.
+ * V8.0 / V8.2 — Settings → Clone/snapshot. The app-wide master switch for cloning a
+ * guest (`POST …/{lxc|qemu}/{vmid}/clone`) and managing snapshots (take / roll back /
+ * delete), for both LXC containers and QEMU VMs. Like the destroy / create pages, it
+ * leads with what the actions do and spells out every condition required before the
+ * affordances appear.
  */
 export function ProxmoxCloneSettings() {
   const queryClient = useQueryClient()
@@ -48,17 +49,18 @@ export function ProxmoxCloneSettings() {
 
   return (
     <div className="account-page account-stack">
-      <h1 className="text-2xl font-semibold">Clone/snapshot LXC (Proxmox)</h1>
+      <h1 className="text-2xl font-semibold">Clone/snapshot (Proxmox)</h1>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Copy className="h-5 w-5" /> Clone &amp; snapshot LXC
+            <Copy className="h-5 w-5" /> Clone &amp; snapshot
           </CardTitle>
           <CardDescription>
-            Adds a <strong>Clone</strong> button and a <strong>Snapshots</strong> tab to a Proxmox container — stamp out a
-            copy of a known-good container (<code>POST …/lxc/&#123;vmid&#125;/clone</code>) or take a point-in-time snapshot you
-            can roll back to before a risky change, without leaving Stashboard.
+            Adds a <strong>Clone</strong> button and a <strong>Snapshots</strong> tab to a Proxmox guest — an LXC container
+            or a QEMU VM. Stamp out a copy of a known-good guest
+            (<code>POST …/&#123;lxc|qemu&#125;/&#123;vmid&#125;/clone</code>) or take a point-in-time snapshot you can roll
+            back to before a risky change, without leaving Stashboard.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -67,7 +69,7 @@ export function ProxmoxCloneSettings() {
             <div>
               <strong>This writes real state on the host.</strong> A clone consumes disk on the chosen storage; a rollback
               <em> discards</em> any state newer than the snapshot. It is off by default — leave it off unless you want
-              operators to be able to clone containers and manage snapshots from the dashboard.
+              operators to be able to clone guests and manage snapshots from the dashboard.
             </div>
           </div>
 
@@ -116,7 +118,7 @@ export function ProxmoxCloneSettings() {
               <li><strong>Validated.</strong> The clone's VMID range is checked before the request leaves Stashboard; a VMID already in use is rejected.</li>
               <li><strong>Double-confirmed.</strong> Rolling back to or deleting a snapshot needs an explicit second confirmation — a rollback discards newer state.</li>
               <li><strong>Proxmox is authoritative.</strong> An impossible linked clone, a duplicate snapshot name, or any other host rejection is surfaced verbatim — nothing is silently swallowed.</li>
-              <li><strong>Audited.</strong> Every clone / snapshot / rollback / delete records who triggered it, when, against which host / node / vmid, and the result — on the container's <strong>Audit</strong> tab.</li>
+              <li><strong>Audited.</strong> Every clone / snapshot / rollback / delete records who triggered it, when, against which host / node / vmid, and the result — on the guest's <strong>Audit</strong> tab.</li>
             </ul>
             <p className="host-shell-settings-note">
               Cross-node clone migration, scheduled snapshots, and snapshot trees beyond a flat list are out of scope.

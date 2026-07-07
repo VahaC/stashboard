@@ -5,6 +5,47 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [8.2.0] — 2026-06-20
+
+### Added
+- **Clone & snapshot QEMU VMs (V8.2).** The V8.0 **clone** and **snapshot**
+  workflows now work for QEMU/KVM virtual machines, reusing the exact V8.0 surfaces
+  (gating, audit, modals, double-confirm dialogs) rather than a parallel system. On a
+  **VM** card the **Clone** button (Lifecycle row) and the **Snapshots** + **Audit**
+  tabs appear once the clone/snapshot feature is enabled for the host.
+- **Kind-aware API client (V8.2).** The five V8.0 `IProxmoxApiClient` methods became
+  kind-aware via shared private helpers behind thin `lxc`/`qemu` wrappers (mirroring
+  `GetLxc`/`GetQemuStatusAsync`): `CloneLxc`/`CloneQemuAsync`,
+  `ListLxc`/`ListQemuSnapshotsAsync`, `CreateLxc`/`CreateQemuSnapshotAsync`,
+  `RollbackLxc`/`RollbackQemuSnapshotAsync`, `DeleteLxc`/`DeleteQemuSnapshotAsync` —
+  each routed to `…/qemu/{vmid}/clone` or `…/qemu/{vmid}/snapshot[/{name}[/rollback]]`
+  and polling the task UPID via the existing `PollTaskAsync`. A VM clone POSTs the new
+  name as `name` (not `hostname`) and a full clone accepts an optional disk `format`
+  (`raw` / `qcow2` / `vmdk`).
+- **Running-memory (`vmstate`) for VM snapshots (V8.2).** Unlike an LXC snapshot
+  (whose endpoint rejects it), a QEMU snapshot can save the live RAM state. The
+  modal re-introduces an **Include running memory state (RAM)** toggle, shown only
+  for a **running VM**, that sends `vmstate=1`; the LXC path still never sends it.
+- **Shared controller handlers + routes (V8.2).** Clone/snapshot now flow through
+  shared `qemu`-flag handlers with `/qemu/...` routes (mirroring the
+  `DestroyLxc`/`DestroyQemu` split). No new gate and no new audit table —
+  `ProxmoxCloneAuditEntity` records the action irrespective of guest kind, and the
+  `clone-audit` read serves both kinds. The frontend threads `kind` through the six
+  V8.0 hooks and drops the `!isVm` guards; `LxcCloneModal` / `SnapshotConfirmDialog`
+  are reused with VM wording (`Name` vs `Hostname`, "VM" vs "container") and the
+  kind-gated disk-format and `vmstate` controls.
+
+### Notes
+- Gating is unchanged: the same `Stashboard:AllowProxmoxClone` master switch
+  (**Settings → Clone/snapshot**) + per-host `ProxmoxConnection.AllowClone`
+  opt-in (both off by default) gate VMs too — deterministic `403`s before any host
+  call, a `409` on a vmid collision, and a host rejection surfaced verbatim as a `502`.
+- The running-guest clone guard is kept kind-aware: Proxmox won't clone a running
+  guest from its live state, so the modal requires a source snapshot (or a stopped
+  guest) first.
+- Out of scope (deferred), same exclusions as V8.0: cross-node clone migration,
+  scheduled snapshots, and nested snapshot trees beyond a flat list.
+
 ## [8.1.0] — 2026-06-20
 
 ### Added

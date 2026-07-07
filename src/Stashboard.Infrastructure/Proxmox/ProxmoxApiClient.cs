@@ -599,33 +599,61 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
         return result;
     }
 
-    public async Task CloneLxcAsync(
-        ProxmoxConnectionProfile profile, int sourceVmId, ProxmoxLxcClone spec, CancellationToken cancellationToken = default)
+    public Task CloneLxcAsync(
+        ProxmoxConnectionProfile profile, int sourceVmId, ProxmoxLxcClone spec, CancellationToken cancellationToken = default) =>
+        CloneGuestAsync(profile, "lxc", sourceVmId, spec, cancellationToken);
+
+    public Task CloneQemuAsync(
+        ProxmoxConnectionProfile profile, int sourceVmId, ProxmoxLxcClone spec, CancellationToken cancellationToken = default) =>
+        CloneGuestAsync(profile, "qemu", sourceVmId, spec, cancellationToken);
+
+    /// <summary>Shared clone POST for both guest kinds — same form shape and async
+    /// task UPID, differing only in the path segment and the new-name key
+    /// (<c>hostname</c> for LXC, <c>name</c> for QEMU) plus the QEMU-only disk
+    /// <c>format</c>.</summary>
+    private async Task CloneGuestAsync(
+        ProxmoxConnectionProfile profile, string kind, int sourceVmId, ProxmoxLxcClone spec, CancellationToken cancellationToken)
     {
         var form = new List<KeyValuePair<string, string>>
         {
             new("newid", spec.NewVmId.ToString()),
             new("full", spec.Full ? "1" : "0"),
         };
-        if (!string.IsNullOrWhiteSpace(spec.Hostname)) form.Add(new("hostname", spec.Hostname.Trim()));
+        // The new guest's name rides in a different key per kind.
+        if (!string.IsNullOrWhiteSpace(spec.Hostname))
+            form.Add(new(kind == "qemu" ? "name" : "hostname", spec.Hostname.Trim()));
         // The target storage only applies to a full clone (a linked clone references
         // the source's volumes), but Proxmox ignores it harmlessly for linked, so we
         // send it whenever set rather than second-guessing the host.
         if (!string.IsNullOrWhiteSpace(spec.TargetStorage)) form.Add(new("storage", spec.TargetStorage.Trim()));
         if (!string.IsNullOrWhiteSpace(spec.SnapName)) form.Add(new("snapname", spec.SnapName.Trim()));
         if (!string.IsNullOrWhiteSpace(spec.Description)) form.Add(new("description", spec.Description.Trim()));
+        // The disk format is a QEMU-only full-clone option; the LXC endpoint has no
+        // such key, so only emit it for a VM.
+        if (kind == "qemu" && !string.IsNullOrWhiteSpace(spec.Format)) form.Add(new("format", spec.Format.Trim()));
 
         var upid = await PostFormReadUpidAsync(
-            profile, $"nodes/{profile.NodeName}/lxc/{sourceVmId}/clone", form, cancellationToken);
+            profile, $"nodes/{profile.NodeName}/{kind}/{sourceVmId}/clone", form, cancellationToken);
         if (!string.IsNullOrEmpty(upid))
             await PollTaskAsync(profile, upid, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<ProxmoxSnapshot>> ListSnapshotsAsync(
-        ProxmoxConnectionProfile profile, int vmId, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<ProxmoxSnapshot>> ListLxcSnapshotsAsync(
+        ProxmoxConnectionProfile profile, int vmId, CancellationToken cancellationToken = default) =>
+        ListGuestSnapshotsAsync(profile, "lxc", vmId, cancellationToken);
+
+    public Task<IReadOnlyList<ProxmoxSnapshot>> ListQemuSnapshotsAsync(
+        ProxmoxConnectionProfile profile, int vmId, CancellationToken cancellationToken = default) =>
+        ListGuestSnapshotsAsync(profile, "qemu", vmId, cancellationToken);
+
+    /// <summary>Shared snapshot list for both guest kinds — the <c>lxc</c> and
+    /// <c>qemu</c> snapshot endpoints differ only in the path segment and return the
+    /// same fields (a QEMU snapshot may additionally carry <c>vmstate</c>).</summary>
+    private async Task<IReadOnlyList<ProxmoxSnapshot>> ListGuestSnapshotsAsync(
+        ProxmoxConnectionProfile profile, string kind, int vmId, CancellationToken cancellationToken)
     {
         using var doc = await GetJsonAsync(
-            profile, $"nodes/{profile.NodeName}/lxc/{vmId}/snapshot", cancellationToken);
+            profile, $"nodes/{profile.NodeName}/{kind}/{vmId}/snapshot", cancellationToken);
         if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
             return [];
 
@@ -649,38 +677,71 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
         return result;
     }
 
-    public async Task CreateSnapshotAsync(
+    public Task CreateLxcSnapshotAsync(
         ProxmoxConnectionProfile profile, int vmId, string name, string? description,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        // An LXC snapshot has no running-memory option (its schema rejects vmstate),
+        // so the shared helper is always called with vmstate off for the LXC kind.
+        CreateGuestSnapshotAsync(profile, "lxc", vmId, name, description, vmstate: false, cancellationToken);
+
+    public Task CreateQemuSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, string? description, bool vmstate,
+        CancellationToken cancellationToken = default) =>
+        CreateGuestSnapshotAsync(profile, "qemu", vmId, name, description, vmstate, cancellationToken);
+
+    /// <summary>Shared snapshot-create POST for both guest kinds. <c>vmstate</c> is
+    /// QEMU-only (the LXC endpoint rejects it), so it is only emitted for a VM and
+    /// only when requested.</summary>
+    private async Task CreateGuestSnapshotAsync(
+        ProxmoxConnectionProfile profile, string kind, int vmId, string name, string? description, bool vmstate,
+        CancellationToken cancellationToken)
     {
-        // Only snapname (+ optional description) — the LXC snapshot endpoint has no
-        // vmstate option (that's a QEMU-only feature; its schema rejects vmstate).
         var form = new List<KeyValuePair<string, string>> { new("snapname", name) };
         if (!string.IsNullOrWhiteSpace(description)) form.Add(new("description", description.Trim()));
+        if (kind == "qemu" && vmstate) form.Add(new("vmstate", "1"));
 
         var upid = await PostFormReadUpidAsync(
-            profile, $"nodes/{profile.NodeName}/lxc/{vmId}/snapshot", form, cancellationToken);
+            profile, $"nodes/{profile.NodeName}/{kind}/{vmId}/snapshot", form, cancellationToken);
         if (!string.IsNullOrEmpty(upid))
             await PollTaskAsync(profile, upid, cancellationToken);
     }
 
-    public async Task RollbackSnapshotAsync(
-        ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default)
+    public Task RollbackLxcSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default) =>
+        RollbackGuestSnapshotAsync(profile, "lxc", vmId, name, cancellationToken);
+
+    public Task RollbackQemuSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default) =>
+        RollbackGuestSnapshotAsync(profile, "qemu", vmId, name, cancellationToken);
+
+    /// <summary>Shared rollback POST for both guest kinds — a pure path-segment
+    /// swap.</summary>
+    private async Task RollbackGuestSnapshotAsync(
+        ProxmoxConnectionProfile profile, string kind, int vmId, string name, CancellationToken cancellationToken)
     {
         var upid = await PostFormReadUpidAsync(
-            profile, $"nodes/{profile.NodeName}/lxc/{vmId}/snapshot/{Uri.EscapeDataString(name)}/rollback",
+            profile, $"nodes/{profile.NodeName}/{kind}/{vmId}/snapshot/{Uri.EscapeDataString(name)}/rollback",
             [], cancellationToken);
         if (!string.IsNullOrEmpty(upid))
             await PollTaskAsync(profile, upid, cancellationToken);
     }
 
-    public async Task DeleteSnapshotAsync(
-        ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default)
+    public Task DeleteLxcSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default) =>
+        DeleteGuestSnapshotAsync(profile, "lxc", vmId, name, cancellationToken);
+
+    public Task DeleteQemuSnapshotAsync(
+        ProxmoxConnectionProfile profile, int vmId, string name, CancellationToken cancellationToken = default) =>
+        DeleteGuestSnapshotAsync(profile, "qemu", vmId, name, cancellationToken);
+
+    /// <summary>Shared snapshot-delete for both guest kinds — a path-segment swap.
+    /// Snapshot delete is asynchronous on Proxmox (the DELETE returns a task UPID),
+    /// so poll it to a terminal state like the other write actions.</summary>
+    private async Task DeleteGuestSnapshotAsync(
+        ProxmoxConnectionProfile profile, string kind, int vmId, string name, CancellationToken cancellationToken)
     {
-        // Snapshot delete is asynchronous on Proxmox — the DELETE returns a task
-        // UPID, so poll it to a terminal state like the other write actions.
         var upid = await DeleteReadUpidAsync(
-            profile, $"nodes/{profile.NodeName}/lxc/{vmId}/snapshot/{Uri.EscapeDataString(name)}", cancellationToken);
+            profile, $"nodes/{profile.NodeName}/{kind}/{vmId}/snapshot/{Uri.EscapeDataString(name)}", cancellationToken);
         if (!string.IsNullOrEmpty(upid))
             await PollTaskAsync(profile, upid, cancellationToken);
     }

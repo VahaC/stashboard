@@ -437,7 +437,7 @@ export function ProxmoxConnectionModal({
                   <PermRow checked={allowCreate} onChange={setAllowCreate} label="Allow create"
                     hint="Adds a New LXC button to this host's header that provisions a container from a template. Needs Settings → Create LXC." />
                   <PermRow checked={allowClone} onChange={setAllowClone} label="Allow clone/snapshot"
-                    hint="Adds a Clone button + a Snapshots tab — duplicate a guest and take / roll back / delete snapshots. Needs Settings → Clone/snapshot LXC; rollback / delete double-confirm." />
+                    hint="Adds a Clone button + a Snapshots tab to a guest (LXC or VM) — duplicate it and take / roll back / delete snapshots. Needs Settings → Clone/snapshot; rollback / delete double-confirm." />
                   <PermRow checked={allowRestore} onChange={setAllowRestore} label="Allow restore"
                     hint="Adds a Restore LXC button that re-creates a container from a vzdump backup archive. Needs Settings → Restore LXC; overwriting an existing container needs it stopped + double-confirm." />
                 </>

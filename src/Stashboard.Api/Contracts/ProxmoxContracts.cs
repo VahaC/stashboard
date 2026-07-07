@@ -245,7 +245,10 @@ public sealed record ProxmoxCloneSettingsResponse(bool Enabled);
 public sealed record UpdateProxmoxCloneSettingsRequest(bool Enabled);
 
 /// <summary>
-/// V8.0 — clone one LXC from an existing guest (<c>POST …/lxc/{vmid}/clone</c>).
+/// V8.0 / V8.2 — clone one guest from an existing one
+/// (<c>POST …/{lxc|qemu}/{vmid}/clone</c>). <c>Hostname</c> is the new guest's name
+/// (sent as <c>hostname</c> for an LXC, <c>name</c> for a VM); <c>Format</c> is the
+/// QEMU-only optional full-clone disk format (<c>raw</c> / <c>qcow2</c> / <c>vmdk</c>).
 /// Validation mirrors create (vmid range + not already on the host); Proxmox stays
 /// authoritative for everything that needs the host (storage existence, whether a
 /// linked clone is possible, snapshot existence).
@@ -256,7 +259,8 @@ public sealed record ProxmoxLxcCloneRequest(
     [MaxLength(100)] string? TargetStorage = null,
     bool Full = true,
     [MaxLength(40)] string? SnapName = null,
-    [MaxLength(8192)] string? Description = null);
+    [MaxLength(8192)] string? Description = null,
+    [MaxLength(8)] string? Format = null);
 
 /// <summary>V8.0 — one LXC snapshot for the modal's Snapshots tab. <c>SnapTime</c>
 /// is a unix second; <c>Vmstate</c> is <c>true</c> when the snapshot captured the
@@ -268,11 +272,14 @@ public sealed record ProxmoxSnapshotResponse(
     string? Parent,
     bool Vmstate);
 
-/// <summary>V8.0 — take a snapshot (<c>POST …/lxc/{vmid}/snapshot</c>). An LXC
-/// snapshot has no running-memory option (unlike a QEMU VM snapshot).</summary>
+/// <summary>V8.0 / V8.2 — take a snapshot
+/// (<c>POST …/{lxc|qemu}/{vmid}/snapshot</c>). <c>Vmstate</c> saves the running
+/// memory (RAM) state and is <strong>QEMU-only</strong> — the LXC endpoint rejects
+/// it, so the controller ignores it on the LXC route.</summary>
 public sealed record ProxmoxSnapshotCreateRequest(
     [Required, MaxLength(40)] string Name,
-    [MaxLength(8192)] string? Description = null);
+    [MaxLength(8192)] string? Description = null,
+    bool Vmstate = false);
 
 /// <summary>V8.0 — one clone/snapshot audit row for the modal's Audit tab.
 /// <c>Action</c> is the lower-camel enum name (<c>clone</c> / <c>snapshotCreate</c>

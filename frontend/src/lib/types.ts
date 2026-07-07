@@ -816,7 +816,7 @@ export interface ProxmoxCreateSettings {
   enabled: boolean
 }
 
-/** V8.0 — app-wide clone/snapshot master switch, managed from Settings → Clone/snapshot LXC. */
+/** V8.0 — app-wide clone/snapshot master switch, managed from Settings → Clone/snapshot. */
 export interface ProxmoxCloneSettings {
   enabled: boolean
 }
@@ -1835,6 +1835,9 @@ export interface ProxmoxLxcClone {
   /** Clone from this source snapshot rather than the live state. */
   snapName?: string | null
   description?: string | null
+  /** V8.2 — QEMU-only optional full-clone disk format (`raw` / `qcow2` / `vmdk`);
+   *  ignored for an LXC clone. */
+  format?: string | null
 }
 
 /** V8.0 — one LXC snapshot for the modal's Snapshots tab. `snapTime` is a unix
@@ -1847,11 +1850,13 @@ export interface ProxmoxSnapshot {
   vmstate: boolean
 }
 
-/** V8.0 — take-a-snapshot payload (`POST …/lxc/{vmid}/snapshot`). An LXC snapshot
- *  has no running-memory option (unlike a QEMU VM snapshot). */
+/** V8.0 / V8.2 — take-a-snapshot payload (`POST …/{lxc|qemu}/{vmid}/snapshot`).
+ *  `vmstate` saves the running memory (RAM) state and is QEMU-only — the LXC endpoint
+ *  rejects it, so the server ignores it on the LXC route. */
 export interface ProxmoxSnapshotCreate {
   name: string
   description?: string | null
+  vmstate?: boolean
 }
 
 /** V8.0 — which clone/snapshot action an audit row records (serialized by the API's
