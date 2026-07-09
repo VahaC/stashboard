@@ -782,7 +782,7 @@ public class ProxmoxConnectionsController(
         if (!await destroySettings.IsEnabledAsync(cancellationToken))
             return StatusCode(StatusCodes.Status403Forbidden, new
             {
-                error = "Destroy is disabled on this server. Enable it on the Settings page (Settings → Destroy LXC).",
+                error = "Destroy is disabled on this server. Enable it on the Settings page (Settings → Destroy guest).",
             });
 
         var connection = await LoadOwnedAsync(id, tracking: false, cancellationToken);
@@ -1013,7 +1013,14 @@ public class ProxmoxConnectionsController(
     /// it only needs host ownership; the restore write below carries the gate.</summary>
     [HttpGet("{id:guid}/lxc/backups")]
     public Task<ActionResult<IReadOnlyList<ProxmoxBackup>>> GetBackups(Guid id, CancellationToken cancellationToken) =>
-        ReadNodeAsync(id, (p, ct) => apiClient.ListBackupsAsync(p, ct), cancellationToken);
+        ReadNodeAsync(id, (p, ct) => apiClient.ListBackupsAsync(p, qemu: false, ct), cancellationToken);
+
+    /// <summary>V8.3 — the restorable <em>VM</em> backup archives (<c>vzdump-qemu-*</c>)
+    /// across the node's backup-capable storages, for the VM restore form's archive
+    /// dropdown. The VM analogue of <see cref="GetBackups"/>.</summary>
+    [HttpGet("{id:guid}/qemu/backups")]
+    public Task<ActionResult<IReadOnlyList<ProxmoxBackup>>> GetQemuBackups(Guid id, CancellationToken cancellationToken) =>
+        ReadNodeAsync(id, (p, ct) => apiClient.ListBackupsAsync(p, qemu: true, ct), cancellationToken);
 
     /// <summary>
     /// V8.1 — <strong>restore</strong> an LXC from a vzdump backup archive
@@ -1030,15 +1037,47 @@ public class ProxmoxConnectionsController(
     /// failure. Needs the API token to hold <c>VM.Allocate</c> on the host.
     /// </summary>
     [HttpPost("{id:guid}/lxc/restore")]
-    public async Task<IActionResult> RestoreLxc(
-        Guid id, [FromBody] ProxmoxLxcRestoreRequest request, CancellationToken cancellationToken)
+    public Task<IActionResult> RestoreLxc(
+        Guid id, [FromBody] ProxmoxLxcRestoreRequest request, CancellationToken cancellationToken) =>
+        RestoreGuestAsync(id, qemu: false, request, cancellationToken);
+
+    /// <summary>
+    /// V8.3 — <strong>restore</strong> a QEMU/KVM VM from a vzdump backup archive
+    /// (<c>POST /nodes/{node}/qemu</c> with <c>archive=…</c>). The VM analogue of
+    /// <see cref="RestoreLxc"/>: same double gate (global switch + per-host opt-in),
+    /// same overwrite guard (the target must be a stopped guest + a UI double-confirm),
+    /// same audit row — routed to the QEMU restore endpoint, which takes the archive in
+    /// <c>archive=</c> instead of the LXC's <c>ostemplate=…</c> + <c>restore=1</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/qemu/restore")]
+    public Task<IActionResult> RestoreQemu(
+        Guid id, [FromBody] ProxmoxLxcRestoreRequest request, CancellationToken cancellationToken) =>
+        RestoreGuestAsync(id, qemu: true, request, cancellationToken);
+
+    /// <summary>
+    /// Shared restore handler for both guest kinds. Double-gated like create: the
+    /// global <c>Stashboard:AllowProxmoxRestore</c> switch and the per-host
+    /// <c>AllowRestore</c> opt-in (both deterministic 403s before any API call). A
+    /// non-overwrite restore is rejected (409) when the target vmid is already in the
+    /// host's last scan, mirroring create. An <strong>overwrite</strong> restore
+    /// (<c>force=1</c>) is destructive — it replaces that guest — so it is gated behind
+    /// the stopped-guest check (the target must exist and be stopped) and the UI
+    /// double-confirms naming the target. On success the host is re-scanned so the
+    /// restored card appears without waiting for the schedule, and the refreshed host
+    /// is returned. Every attempt that reaches the host is audited — success or
+    /// failure. Needs the API token to hold <c>VM.Allocate</c> on the host.
+    /// </summary>
+    private async Task<IActionResult> RestoreGuestAsync(
+        Guid id, bool qemu, ProxmoxLxcRestoreRequest request, CancellationToken cancellationToken)
     {
+        var noun = qemu ? "VM" : "CT";
+
         // Gate 1: the server-wide master switch. Deterministic 403 before any
         // host lookup or API call.
         if (!await restoreSettings.IsEnabledAsync(cancellationToken))
             return StatusCode(StatusCodes.Status403Forbidden, new
             {
-                error = "Restore is disabled on this server. Enable it on the Settings page (Settings → Restore LXC).",
+                error = "Restore is disabled on this server. Enable it on the Settings page (Settings → Restore guest).",
             });
 
         var connection = await LoadOwnedAsync(id, tracking: true, cancellationToken);
@@ -1055,7 +1094,7 @@ public class ProxmoxConnectionsController(
             request.VmId,
             request.BackupVolid.Trim(),
             string.IsNullOrWhiteSpace(request.Storage) ? string.Empty : request.Storage.Trim(),
-            RootfsSizeGib: 0,   // the archive defines the rootfs sizes
+            RootfsSizeGib: 0,   // the archive defines the disk sizes
             string.IsNullOrWhiteSpace(request.Hostname) ? null : request.Hostname.Trim(),
             Cores: request.Cores,
             MemoryMib: request.MemoryMib,
@@ -1066,7 +1105,7 @@ public class ProxmoxConnectionsController(
             Restore: true,
             Force: request.Force);
 
-        var problems = ProxmoxLxcRestoreValidator.Validate(spec);
+        var problems = ProxmoxLxcRestoreValidator.Validate(spec, qemu);
         if (problems.Count > 0)
             return BadRequest(new { error = string.Join(" ", problems) });
 
@@ -1078,9 +1117,9 @@ public class ProxmoxConnectionsController(
             // Overwrite: the target must exist and be stopped (Proxmox also refuses to
             // restore over a running guest; this 409 is deterministic and friendlier).
             if (existing is null || existing.GuestType == ProxmoxGuestType.Node)
-                return Conflict(new { error = $"VMID {request.VmId} is not an existing container on this host — clear 'overwrite' to restore to a new id." });
+                return Conflict(new { error = $"VMID {request.VmId} is not an existing {noun} on this host — clear 'overwrite' to restore to a new id." });
             if (existing.IsRunning)
-                return Conflict(new { error = $"Stop CT {request.VmId} before restoring over it." });
+                return Conflict(new { error = $"Stop {noun} {request.VmId} before restoring over it." });
         }
         else if (existing is not null)
         {
@@ -1091,14 +1130,15 @@ public class ProxmoxConnectionsController(
         var profile = mapper.BuildProfile(connection);
         try
         {
-            await apiClient.CreateLxcAsync(profile, spec, cancellationToken);
+            if (qemu) await apiClient.RestoreQemuAsync(profile, spec, cancellationToken);
+            else await apiClient.CreateLxcAsync(profile, spec, cancellationToken);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             db.ProxmoxRestoreAudits.Add(BuildRestoreAudit(connection, spec, success: false, ex.Message));
             await db.SaveChangesAsync(cancellationToken);
-            logger.LogWarning(ex, "LXC restore failed: host {ConnectionId}, CT {VmId}, backup {Backup}.",
-                connection.Id, spec.VmId, spec.OsTemplate);
+            logger.LogWarning(ex, "{Noun} restore failed: host {ConnectionId}, {Noun} {VmId}, backup {Backup}.",
+                noun, connection.Id, noun, spec.VmId, spec.OsTemplate);
             return StatusCode(502, new { error = $"Proxmox rejected the restore: {ex.Message}" });
         }
 
@@ -1106,10 +1146,10 @@ public class ProxmoxConnectionsController(
         await db.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
-            "LXC restored: user {UserId} → host {ConnectionId}, CT {VmId} from {Backup} (overwrite={Force}).",
-            UserId, connection.Id, spec.VmId, spec.OsTemplate, spec.Force);
+            "{Noun} restored: user {UserId} → host {ConnectionId}, {Noun} {VmId} from {Backup} (overwrite={Force}).",
+            noun, UserId, connection.Id, noun, spec.VmId, spec.OsTemplate, spec.Force);
 
-        // Re-scan so the restored container appears as a card immediately (the scan's
+        // Re-scan so the restored guest appears as a card immediately (the scan's
         // upsert adds / refreshes the guest), then return the refreshed host.
         await scanService.CheckConnectionAsync(connection, cancellationToken);
         return Ok(await ToResponseAsync(connection, await LoadGuestsAsync(id, cancellationToken), cancellationToken));

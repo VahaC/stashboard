@@ -66,4 +66,21 @@ public class ProxmoxLxcRestoreValidatorTests
         var errors = ProxmoxLxcRestoreValidator.Validate(Valid() with { SwapMib = -1 });
         Assert.Contains(errors, e => e.Contains("Swap"));
     }
+
+    // ── V8.3 — VM (qemu) restore: the kind flag swaps the expected archive marker ──
+
+    [Fact]
+    public void Qemu_ValidQemuArchive_HasNoErrors()
+    {
+        var spec = Valid() with { OsTemplate = "local:backup/vzdump-qemu-200-2026_01_01-00_00_00.vma.zst" };
+        Assert.Empty(ProxmoxLxcRestoreValidator.Validate(spec, qemu: true));
+    }
+
+    [Fact]
+    public void Qemu_LxcArchive_IsRejected()
+    {
+        // A vzdump-lxc archive is not a restorable VM archive.
+        var errors = ProxmoxLxcRestoreValidator.Validate(Valid(), qemu: true);
+        Assert.Contains(errors, e => e.Contains("VM backup archive"));
+    }
 }

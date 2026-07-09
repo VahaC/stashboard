@@ -12,7 +12,7 @@
 > and the V7.x visual Compose editor track (V7.0–V7.9) to [`HISTORY.md`](./HISTORY.md) §17,
 > once those phases all shipped; only V8.1+ remains in this file.
 >
-> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2) · ✅ V5.4 (Compose project grouping & bulk update, image 5.4.0) · ✅ V5.5 (image cleanup / prune, image 5.5.0) · ✅ V5.6 (health-check tuning page, image 5.6.0) · ✅ V5.7 (container exec, image 5.7.0) · ✅ V5.8 (session audit viewer, image 5.8.0) · ✅ V5.9 (Docker instances page redesign, image 5.9.0) · ✅ V6.0 (Proxmox LXC update monitoring, image 6.0.0) · ✅ V6.1 (Proxmox LXC detail modal + Docker-style cards, image 6.1.0) · ✅ V6.2 (LXC Config tab, image 6.2.0) · ✅ V6.3 (LXC Stats + Tasks tabs, image 6.3.0) · ✅ V6.4 (LXC lifecycle actions + real-time stats, image 6.4.0) · ✅ V6.5 (edit LXC parameters, image 6.5.0) · ✅ V6.6 (browser LXC console / Console tab, image 6.6.0) · ✅ V6.7 (per-LXC update monitoring toggle, image 6.7.0) · ✅ V6.7.1 (Proxmox one-click "Update now", image 6.7.1) · ✅ V6.8 (PVE node health card + node modal, image 6.8.0) · ✅ V6.8.1 (PVE node alerting, image 6.8.1) · ✅ V6.8.2 (PVE node deep telemetry / SSH collectors, image 6.8.2) · ✅ V6.9.0 (edit LXC network interfaces & mount points, image 6.9.0) · ✅ V6.10 (Proxmox page Docker-parity redesign, image 6.10.0) · ✅ V6.11 (bulk LXC monitoring & update operations + audit, image 6.11.0) · ✅ V6.12 (LXC live logs / Logs tab, image 6.12.0) · ✅ V6.13 (destroy / remove LXC, image 6.13.0) · ✅ V6.13.1 (create LXC, image 6.13.1) · ✅ V6.14 (VM / QEMU support, image 6.14.0) · ✅ V6.15 (Proxmox connections in backup/restore, image 6.15.0) · ✅ V7.0 (visual Compose viewer, image 7.0.0) · ✅ V7.1 (edit basic service fields, image 7.1.0) · ✅ V7.1.1 (Compose as a per-project modal, image 7.1.1) · ✅ V7.2 (resource constraints UI, image 7.2.0) · ✅ V7.2.1 (PBS disk/SMART fixes, image 7.2.1) · ✅ V7.3 (top-level resources, image 7.3.0) · ✅ V7.4 (create a new service, image 7.4.0) · ✅ V7.4.1 (create a whole project, image 7.4.1) · ✅ V7.5 (service templates, image 7.5.0) · ✅ V7.6 (diff / dry-run / apply, image 7.6.0) · ✅ V7.7 (dependency graph + linter, image 7.7.0) · ✅ V7.8 (container card icons, image 7.8.0) · ✅ V7.9 (link Proxmox guests to services + Docker↔Proxmox cross-link, image 7.9.0) · ✅ V8.0 (clone & snapshot LXC, image 8.0.0) · ✅ V8.1 (restore LXC from backup, image 8.1.0) · ✅ V8.2 (clone & snapshot VM / QEMU, image 8.2.0). Shipped V5.x phase detail now lives in [`HISTORY.md`](./HISTORY.md) §14, the V6.x Proxmox parity & LXC/VM phase detail in [`HISTORY.md`](./HISTORY.md) §16, and the V7.x visual Compose editor track in [`HISTORY.md`](./HISTORY.md) §17; V1–V4 historical detail is also in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
+> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2) · ✅ V5.4 (Compose project grouping & bulk update, image 5.4.0) · ✅ V5.5 (image cleanup / prune, image 5.5.0) · ✅ V5.6 (health-check tuning page, image 5.6.0) · ✅ V5.7 (container exec, image 5.7.0) · ✅ V5.8 (session audit viewer, image 5.8.0) · ✅ V5.9 (Docker instances page redesign, image 5.9.0) · ✅ V6.0 (Proxmox LXC update monitoring, image 6.0.0) · ✅ V6.1 (Proxmox LXC detail modal + Docker-style cards, image 6.1.0) · ✅ V6.2 (LXC Config tab, image 6.2.0) · ✅ V6.3 (LXC Stats + Tasks tabs, image 6.3.0) · ✅ V6.4 (LXC lifecycle actions + real-time stats, image 6.4.0) · ✅ V6.5 (edit LXC parameters, image 6.5.0) · ✅ V6.6 (browser LXC console / Console tab, image 6.6.0) · ✅ V6.7 (per-LXC update monitoring toggle, image 6.7.0) · ✅ V6.7.1 (Proxmox one-click "Update now", image 6.7.1) · ✅ V6.8 (PVE node health card + node modal, image 6.8.0) · ✅ V6.8.1 (PVE node alerting, image 6.8.1) · ✅ V6.8.2 (PVE node deep telemetry / SSH collectors, image 6.8.2) · ✅ V6.9.0 (edit LXC network interfaces & mount points, image 6.9.0) · ✅ V6.10 (Proxmox page Docker-parity redesign, image 6.10.0) · ✅ V6.11 (bulk LXC monitoring & update operations + audit, image 6.11.0) · ✅ V6.12 (LXC live logs / Logs tab, image 6.12.0) · ✅ V6.13 (destroy / remove LXC, image 6.13.0) · ✅ V6.13.1 (create LXC, image 6.13.1) · ✅ V6.14 (VM / QEMU support, image 6.14.0) · ✅ V6.15 (Proxmox connections in backup/restore, image 6.15.0) · ✅ V7.0 (visual Compose viewer, image 7.0.0) · ✅ V7.1 (edit basic service fields, image 7.1.0) · ✅ V7.1.1 (Compose as a per-project modal, image 7.1.1) · ✅ V7.2 (resource constraints UI, image 7.2.0) · ✅ V7.2.1 (PBS disk/SMART fixes, image 7.2.1) · ✅ V7.3 (top-level resources, image 7.3.0) · ✅ V7.4 (create a new service, image 7.4.0) · ✅ V7.4.1 (create a whole project, image 7.4.1) · ✅ V7.5 (service templates, image 7.5.0) · ✅ V7.6 (diff / dry-run / apply, image 7.6.0) · ✅ V7.7 (dependency graph + linter, image 7.7.0) · ✅ V7.8 (container card icons, image 7.8.0) · ✅ V7.9 (link Proxmox guests to services + Docker↔Proxmox cross-link, image 7.9.0) · ✅ V8.0 (clone & snapshot LXC, image 8.0.0) · ✅ V8.1 (restore LXC from backup, image 8.1.0) · ✅ V8.2 (clone & snapshot VM / QEMU, image 8.2.0) · ✅ V8.3 (restore VM from backup, image 8.3.0). Shipped V5.x phase detail now lives in [`HISTORY.md`](./HISTORY.md) §14, the V6.x Proxmox parity & LXC/VM phase detail in [`HISTORY.md`](./HISTORY.md) §16, and the V7.x visual Compose editor track in [`HISTORY.md`](./HISTORY.md) §17; V1–V4 historical detail is also in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
 
 ## 14. Post-V4 backlog (V5+) — deferred Docker features
 
@@ -171,51 +171,142 @@ See the [CHANGELOG](./CHANGELOG.md).
 
 ---
 
-### Phase V8.3 — Restore VM from backup (vzdump)
+### Phase V8.3 — Restore VM from backup (vzdump) ✅ Shipped (8.3.0)
 
-**Complexity:** Medium–High
-**Value:** The VM analogue of V8.1 — re-create a QEMU/KVM virtual machine from an
-existing `vzdump` backup archive (the Proxmox **Restore** button for VMs). Together
-with V8.1 (LXC restore) it covers the disaster-recovery leg for both guest kinds, so
-every "make a guest" path in the Proxmox UI — create, clone, restore — is mirrored
-for VMs as well as containers. Reuses V8.1's restore gating, audit entity, settings
-switch, overwrite-confirm dialog, and backup-discovery plumbing.
+**Shipped in 8.3.0.** The VM analogue of V8.1 — re-create a QEMU/KVM virtual machine
+from an existing `vzdump` backup archive (the Proxmox **Restore** button for VMs).
+Together with V8.1 (LXC restore) it covers the disaster-recovery leg for both guest
+kinds, so every "make a guest" path in the Proxmox UI — create, clone, restore — is
+mirrored for VMs as well as containers. Reuses V8.1's restore gating
+(`Stashboard:AllowProxmoxRestore` + per-host `AllowRestore`, both off by default),
+`ProxmoxRestoreAuditEntity` (no new table — it records vmid/archive irrespective of
+kind), settings switch, and overwrite-confirm pattern rather than a parallel system.
+`ListBackupsAsync` became **kind-aware** (a `qemu` flag selecting `vzdump-qemu-*` vs
+`vzdump-lxc-*`); a new `RestoreQemuAsync` POSTs **`archive=<volid>`** (+ `force=1` only
+when overwriting, optional `storage=` / `name=`) to `POST /nodes/{node}/qemu` and polls
+the task UPID — the QEMU restore shape, distinct from the LXC's `ostemplate=…` +
+`restore=1`. The controller routes both kinds through a shared `qemu`-flag
+`RestoreGuestAsync` handler with a `/qemu/restore` + `/qemu/backups` route pair
+(mirroring the V8.2 clone/snapshot routing); the kind-aware `ProxmoxLxcRestoreValidator`
+checks the expected archive marker. The frontend threads `kind` through
+`useProxmoxBackups` / the restore hook and reuses `LxcRestoreModal` via an `isVm` prop
+(VM wording, `vzdump-qemu-*` list, `images` storage, **Name** vs Hostname, the LXC-only
+**unprivileged** option hidden) behind a **Restore VM** host-menu item; the Audit tab is
+generalised to **Guest restore** (CT/VM derived from the archive name).
+Out of scope (deferred): restoring from **Proxmox Backup Server** datastores (`pbs:`
+volumes need PBS auth/namespaces); bandwidth/`--bwlimit` tuning; live-restore (same
+exclusions as V8.1).
+See the [CHANGELOG](./CHANGELOG.md).
+
+---
+
+### Phase V8.4 — Create a VM (QEMU) from scratch
+
+**Complexity:** High
+**Value:** Completes the "make a guest" matrix — **create** finally works for VMs as it
+already does for LXC (V6.13.1). Today a VM can only enter Stashboard by **clone** (V8.2)
+or **restore** (V8.3), both of which need an existing VM or backup to start from; this
+phase provisions a **brand-new** VM from nothing — define its hardware and attach an
+install ISO — so create / clone / restore are all mirrored for VMs as well as
+containers. Reuses V6.13.1's create gating, audit entity, and modal styling rather than
+a parallel system.
 
 **Scope:**
 
-- **Backup discovery (VM):** extend `ListBackupsAsync` to be kind-aware — for VMs,
-  filter the backup-capable storages' content to **`vzdump-qemu-*`** volumes (vs
-  `vzdump-lxc-*` for V8.1) — surfaced in the restore modal's dropdown with the
-  backup's vmid / timestamp / size.
-- **Restore (VM)** wired to `POST /nodes/{node}/qemu` with **`archive=<backup volid>`**
-  (the QEMU restore shape — `archive` rather than the LXC `ostemplate=…` + `restore=1`),
-  a `Force` option for restoring **over** an existing vmid, target `vmid` (default
-  next-free, or the archive's original), and target **storage**. Task UPID →
-  `PollTaskAsync`.
-- **Overwrite guard:** restoring over an existing vmid (`force=1`) replaces that VM —
-  gate it behind the **stopped-guest** check + an explicit double-confirm naming the
-  target, reusing the V6.13 destroy-dialog / V8.1 restore-confirm pattern.
-- **Discovery + gating + audit:** `Check now` re-scan on success; the **same**
-  `Stashboard:AllowProxmoxRestore` master switch (**Settings → Restore guest**) +
-  per-host `ProxmoxConnection.AllowRestore` from V8.1, both off by default; a
-  `ProxmoxRestoreAudit` row (who / when / host / node / vmid / backup volid /
-  overwrote? / success / error) on the restore Audit surface — the entity records the
-  vmid / archive irrespective of guest kind, so no new table.
+- **ISO discovery:** a kind-aware media listing (mirroring `ListTemplatesAsync` /
+  `ListBackupsAsync`) over the storages whose content advertises `iso`, via
+  `GET /nodes/{node}/storage/{storage}/content?content=iso`, surfaced in the create
+  modal's **Installation media** dropdown.
+- **VM create** wired to `POST /nodes/{node}/qemu`. Unlike the LXC's single `ostemplate`,
+  a VM is **hardware**: `vmid`, `name`, `cores` / `sockets`, `memory`, a primary disk
+  (`scsi0` = `<storage>:<sizeGiB>` with `scsihw=virtio-scsi-pci`), a NIC
+  (`net0=virtio,bridge=vmbr0`), `ostype`, `bios` (SeaBIOS / OVMF), `machine` (q35), a
+  CD-ROM with the install ISO (`ide2=<storage>:iso/<file>,media=cdrom`), boot order, and
+  the `agent` / `onboot` / `start` toggles. A new `CreateQemuAsync` +
+  `ProxmoxQemuCreate` spec + `ProxmoxQemuCreateValidator`; the task UPID →
+  `PollTaskAsync` (real success/failure, not "request accepted").
+- **Gating + audit reuse:** the **same** `Stashboard:AllowProxmoxCreate` master switch
+  (generalised to **Settings → Create guest**) + per-host `AllowCreate`, both off by
+  default; the existing `ProxmoxCreateAuditEntity` records the new vmid / name (no new
+  table — it stays guest-kind-agnostic). A **New VM** host-menu item next to **New LXC**;
+  on success the host re-scans so the card appears immediately.
+- **Frontend:** a `QemuCreateModal` (or `LxcCreateModal` extended with an `isVm` mode,
+  per the V8.3 restore pattern) reusing the `container-modal-*` / `service-modal-*`
+  styling — resources, disk storage + size, NIC bridge, install ISO, BIOS / machine /
+  OS type — with client-side guards mirroring the server validator.
 
-**Out of scope:** restoring from **Proxmox Backup Server** datastores (`pbs:` volumes
-need PBS auth/namespaces — a later phase); bandwidth/`--bwlimit` tuning; live-restore
-(same exclusions as V8.1).
+**Out of scope:** PCI / USB passthrough, multiple disks / NICs at create time (add later
+via edit), cloud-init drives, EFI / TPM state disks beyond the OVMF default, and
+importing an existing disk image. Installing the guest OS itself is the user's job —
+this provisions the VM and boots it to the installer.
 
-**Tests:** `ListBackupsAsync` for `qemu` reads only `vzdump-qemu-*` volumes; the VM
-restore POSTs `archive=` (+ `force=1` only when overwriting) to `…/qemu` and polls the
-task; gate failures return deterministic 403 before any API call; an overwrite is
-double-confirmed and refused for a running target; each attempt writes an audit row; a
-Proxmox rejection surfaces as a 502 with the host's message.
+**Tests:** ISO discovery reads only `iso`-capable storages; create POSTs the expected
+`scsi0` / `ide2` / `net0` form to `…/qemu` and polls the task; gate failures return a
+deterministic 403 before any API call; a vmid already on the host ⇒ 409; a malformed
+spec ⇒ 400; every attempt writes an audit row; a Proxmox rejection surfaces as a 502
+with the host's message.
 
-**Acceptance bar:** with the flag + per-host opt-in enabled, a user can restore a VM
-from a `vzdump` archive — to a new vmid or (with an explicit double-confirm) over an
-existing stopped one — entirely from the Stashboard UI, the result appears after the
-auto-scan, and the action is audited.
+**Acceptance bar:** with the create flag + per-host opt-in enabled, a user can define a
+new VM (name, cores / RAM, a disk on a chosen storage, a NIC, an install ISO) and create
+it entirely from the Stashboard UI; the VM appears after the auto-scan ready to boot into
+its installer, and the action is audited.
+
+---
+
+### Phase V8.5 — Browser VM console (noVNC) — *feasibility-gated*
+
+**Complexity:** High
+**Value:** The VM analogue of the V6.6 LXC console, closing the last LXC-only diagnostic
+gap (the console is currently LXC-only — see the V6.14 notes). A VM has **no `pct exec`**
+and no guaranteed SSH / guest-agent, so the V6.6 SSH-`pct exec` PTY transport **cannot**
+be reused; the only universal VM console is Proxmox's built-in **VNC** — the same screen
+the Proxmox web UI opens — rendered in the browser with **noVNC**.
+
+**Feasibility (the "if at all possible" this phase is gated on): yes, with one real
+caveat.** Proxmox exposes a VNC websocket proxy — `POST /nodes/{node}/qemu/{vmid}/vncproxy`
+(`websocket=1`) returns a one-time `ticket` + `port`, then a websocket to
+`…/qemu/{vmid}/vncwebsocket?port=&vncticket=` carries the raw **RFB (VNC)** stream. The
+caveat is auth: that websocket wants cookie/ticket auth and **API-token acceptance varies
+by PVE version**, and exposing the Proxmox token to the browser would be unacceptable
+regardless. So Stashboard **relays it server-side**, exactly like the V6.6 console: an
+authenticated `POST ticket` mints a single-use Stashboard ticket (gated), the browser
+opens a Stashboard `…/qemu/{vmid}/console/ws`, and the **backend** opens the Proxmox
+`vncwebsocket` (token kept server-side, TLS to the host) and pumps RFB bytes both ways.
+This reuses the V6.6 ticket / ws / gating / concurrency / audit scaffold verbatim — only
+the transport behind it changes (a Proxmox VNC relay instead of an SSH PTY) and the
+client renders **noVNC** instead of xterm.
+
+**Scope:**
+
+- A `qemu/{vmid}/console` controller pair (`POST ticket` + `GET ws`) reusing the V6.6
+  ticket service / session registry / audit (`ProxmoxConsoleSessionEntity`, already
+  guest-kind-agnostic).
+- A **backend VNC relay**: call `vncproxy`, open the Proxmox `vncwebsocket`, and bridge
+  it to the browser socket **binary, byte-for-byte** (no transformation).
+- **Gating:** the **same** triple gate generalised — the global console switch
+  (**Settings → Guest console**) + per-host `AllowConsole`; for a VM the SSH-configured
+  requirement is **dropped** (VNC uses the API token, not SSH).
+- **Frontend:** a **noVNC** canvas in the VM modal's **Console** tab, opened the same way
+  as the LXC console, with keyboard / mouse capture and a fit-to-window resize.
+
+**Out of scope:** **SPICE** (needs a native client / `virt-viewer` — not browser-native),
+audio / clipboard / USB redirection, and the serial console (`termproxy`) for VMs without
+a VGA device. **Hard feasibility fallback:** if a target PVE version refuses
+token-auth `vncwebsocket` relay, that host shows a clear *"console unavailable on this
+host"* message instead of a broken canvas, and a login-ticket (`PVEAuthCookie`) fallback
+is evaluated as a follow-up rather than blocking the phase.
+
+**Tests:** the relay forwards RFB bytes verbatim (faked Proxmox `vncwebsocket`, mirroring
+the V6.6 console tests); gate failures return 403 before any host call; an unsupported /
+refused transport surfaces a clean error rather than a hung socket; each session writes
+start + end audit rows; the concurrency caps are enforced.
+
+**Acceptance bar:** with the console flag + per-host opt-in enabled, a user can open a
+**running** VM's **Console** tab in Stashboard and interact with its VNC screen
+(keyboard / mouse) without leaving the dashboard **and without the Proxmox token ever
+reaching the browser**; the session is audited exactly like the LXC console. The phase is
+explicitly feasibility-gated: if token-auth vncwebsocket relay proves unavailable on
+supported PVE versions, it ships with the login-ticket fallback or is held until it can.
 
 ---
 

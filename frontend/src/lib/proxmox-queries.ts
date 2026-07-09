@@ -82,8 +82,10 @@ export const proxmoxQk = {
   // V6.13.1 — create form.
   nextId: (id: string) => ['proxmox', 'connections', id, 'lxc', 'nextid'] as const,
   templates: (id: string) => ['proxmox', 'connections', id, 'lxc', 'templates'] as const,
-  // V8.1 — restore form's backup-archive dropdown.
-  backups: (id: string) => ['proxmox', 'connections', id, 'lxc', 'backups'] as const,
+  // V8.1 — restore form's backup-archive dropdown. V8.3 — keyed by guest kind
+  // (lxc / qemu) so the LXC and VM restore forms never share an archive list.
+  backups: (id: string, kind: ProxmoxGuestKind = 'lxc') =>
+    ['proxmox', 'connections', id, kind, 'backups'] as const,
   // V8.0 — snapshots + clone/snapshot audit (modal tabs). V8.2 — keyed by guest
   // kind so an LXC and a VM never share a cache entry.
   snapshots: (id: string, vmId: number, kind: ProxmoxGuestKind = 'lxc') =>
@@ -477,26 +479,27 @@ export const useCreateProxmoxLxc = (connectionId: string) => {
   })
 }
 
-/** V8.1 — restorable LXC backup archives across the node's backup-capable storages,
- *  for the restore form's archive dropdown. */
-export const useProxmoxBackups = (connectionId: string, enabled = true) =>
+/** V8.1 — restorable backup archives across the node's backup-capable storages, for
+ *  the restore form's archive dropdown. V8.3 — `kind` routes to the LXC
+ *  (`vzdump-lxc-*`) or QEMU (`vzdump-qemu-*`) backup list. */
+export const useProxmoxBackups = (connectionId: string, enabled = true, kind: ProxmoxGuestKind = 'lxc') =>
   useQuery({
-    queryKey: proxmoxQk.backups(connectionId),
+    queryKey: proxmoxQk.backups(connectionId, kind),
     queryFn: async (): Promise<ProxmoxBackup[]> =>
-      (await api.get<ProxmoxBackup[]>(`/api/proxmox/connections/${connectionId}/lxc/backups`)).data,
+      (await api.get<ProxmoxBackup[]>(`/api/proxmox/connections/${connectionId}/${kind}/backups`)).data,
     enabled,
     staleTime: 30_000,
   })
 
-/** V8.1 — restore a new LXC from a vzdump backup archive. Gated server-side (global
+/** V8.1 — restore a new guest from a vzdump backup archive. Gated server-side (global
  *  switch + per-host opt-in); an overwrite restore double-confirms. On success the
  *  host is re-scanned server-side and the refreshed host returned, so the restored
- *  card appears immediately. */
-export const useRestoreProxmoxLxc = (connectionId: string) => {
+ *  card appears immediately. V8.3 — `kind` routes to the LXC or QEMU restore endpoint. */
+export const useRestoreProxmoxLxc = (connectionId: string, kind: ProxmoxGuestKind = 'lxc') => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (spec: ProxmoxLxcRestore) =>
-      (await api.post<ProxmoxConnection>(`/api/proxmox/connections/${connectionId}/lxc/restore`, spec)).data,
+      (await api.post<ProxmoxConnection>(`/api/proxmox/connections/${connectionId}/${kind}/restore`, spec)).data,
     onSuccess: (updated) => {
       qc.setQueryData<ProxmoxConnection[]>(proxmoxQk.connections, (prev) =>
         prev ? prev.map((c) => (c.id === updated.id ? updated : c)) : prev)

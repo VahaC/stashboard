@@ -1498,6 +1498,147 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         Assert.Contains("archive corrupt", row.Error);
     }
 
+    // ── V8.3 — restore VM from backup (same double gate + overwrite guard + audit) ──
+
+    private static ProxmoxLxcRestoreRequest RestoreVmReq(int vmId = 250, bool force = false) =>
+        new(vmId, "local:backup/vzdump-qemu-200-2026_01_01-00_00_00.vma.zst", Storage: "local-lvm", Force: force);
+
+    [Fact]
+    public async Task RestoreQemu_GlobalDisabled_Returns403_WithoutTouchingHost()
+    {
+        _restoreSettingsMock.Setup(s => s.IsEnabledAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RestoreQemu(conn.Id, RestoreVmReq(), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        _apiMock.Verify(a => a.RestoreQemuAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxLxcCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(await _db.ProxmoxRestoreAudits.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task RestoreQemu_PerHostDisabled_Returns403_WithoutTouchingHost()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: false);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RestoreQemu(conn.Id, RestoreVmReq(), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+        _apiMock.Verify(a => a.RestoreQemuAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxLxcCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RestoreQemu_LxcArchive_Returns400_WithoutTouchingHost()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        var ctrl = BuildController();
+
+        // A vzdump-lxc archive is not a restorable VM archive — the kind-aware validator rejects it.
+        var bad = new ProxmoxLxcRestoreRequest(250, "local:backup/vzdump-lxc-101-2026_01_01-00_00_00.tar.zst");
+
+        var result = await ctrl.RestoreQemu(conn.Id, bad, CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        _apiMock.Verify(a => a.RestoreQemuAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxLxcCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RestoreQemu_NewVmid_RestoresViaQemuEndpoint_ScansAndAudits()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RestoreQemu(conn.Id, RestoreVmReq(vmId: 250), CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        // The VM restore goes through the QEMU restore endpoint (not the LXC create path).
+        _apiMock.Verify(a => a.RestoreQemuAsync(
+            It.IsAny<ProxmoxConnectionProfile>(),
+            It.Is<ProxmoxLxcCreate>(s => s.VmId == 250 && s.Restore && !s.Force
+                && s.OsTemplate == "local:backup/vzdump-qemu-200-2026_01_01-00_00_00.vma.zst"),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _apiMock.Verify(a => a.CreateLxcAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxLxcCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+        _scanMock.Verify(s => s.CheckConnectionAsync(
+            It.Is<ProxmoxConnectionEntity>(c => c.Id == conn.Id), It.IsAny<CancellationToken>()), Times.Once);
+
+        var row = await _db.ProxmoxRestoreAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.Equal(250, row.VmId);
+        Assert.False(row.Overwrote);
+        Assert.True(row.Success);
+        Assert.Equal("local:backup/vzdump-qemu-200-2026_01_01-00_00_00.vma.zst", row.BackupVolid);
+    }
+
+    [Fact]
+    public async Task RestoreQemu_Overwrite_RunningTarget_Returns409_WithoutTouchingHost()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        await SeedGuestAsync(conn.Id, vmId: 250, pendingUpdates: null, monitoringEnabled: true,
+            guestType: ProxmoxGuestType.Qemu, isRunning: true);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RestoreQemu(conn.Id, RestoreVmReq(vmId: 250, force: true), CancellationToken.None);
+
+        Assert.IsType<ConflictObjectResult>(result);
+        _apiMock.Verify(a => a.RestoreQemuAsync(
+            It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxLxcCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RestoreQemu_Overwrite_StoppedTarget_RestoresWithForce()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        await SeedGuestAsync(conn.Id, vmId: 250, pendingUpdates: null, monitoringEnabled: true,
+            guestType: ProxmoxGuestType.Qemu, isRunning: false);
+        var ctrl = BuildController();
+
+        var result = await ctrl.RestoreQemu(conn.Id, RestoreVmReq(vmId: 250, force: true), CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        _apiMock.Verify(a => a.RestoreQemuAsync(
+            It.IsAny<ProxmoxConnectionProfile>(),
+            It.Is<ProxmoxLxcCreate>(s => s.VmId == 250 && s.Restore && s.Force),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        var row = await _db.ProxmoxRestoreAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.True(row.Overwrote);
+        Assert.True(row.Success);
+    }
+
+    [Fact]
+    public async Task RestoreQemu_HostRejects_Returns502_AndAuditsFailure()
+    {
+        EnableRestore();
+        var conn = await SeedConnectionAsync(_userId, allowRestore: true);
+        _apiMock.Setup(a => a.RestoreQemuAsync(
+                It.IsAny<ProxmoxConnectionProfile>(), It.IsAny<ProxmoxLxcCreate>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Proxmox returned 500: unable to restore VM — archive corrupt"));
+        var ctrl = BuildController();
+
+        var result = await ctrl.RestoreQemu(conn.Id, RestoreVmReq(vmId: 250), CancellationToken.None);
+
+        var obj = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(502, obj.StatusCode);
+        _scanMock.Verify(s => s.CheckConnectionAsync(
+            It.IsAny<ProxmoxConnectionEntity>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        var row = await _db.ProxmoxRestoreAudits.AsNoTracking().SingleAsync(r => r.ProxmoxConnectionId == conn.Id);
+        Assert.False(row.Success);
+        Assert.Contains("archive corrupt", row.Error);
+    }
+
     // ── V8.0 — clone & snapshot ────────────────────────────────────────────────
 
     private static ProxmoxLxcCloneRequest CloneReq(int newVmId = 160) =>

@@ -806,7 +806,7 @@ export interface ProxmoxUpdateApplySettings {
   enabled: boolean
 }
 
-/** V6.13 — app-wide destroy-LXC master switch, managed from Settings → Destroy LXC. */
+/** V6.13 — app-wide destroy master switch (LXC + VM), managed from Settings → Destroy guest. */
 export interface ProxmoxDestroySettings {
   enabled: boolean
 }
@@ -821,7 +821,7 @@ export interface ProxmoxCloneSettings {
   enabled: boolean
 }
 
-/** V8.1 — app-wide restore-LXC master switch, managed from Settings → Restore LXC. */
+/** V8.1 — app-wide restore master switch (LXC + VM), managed from Settings → Restore guest. */
 export interface ProxmoxRestoreSettings {
   enabled: boolean
 }

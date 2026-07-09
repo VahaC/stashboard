@@ -762,6 +762,100 @@ public class ProxmoxApiClientTests
         Assert.Equal("tar.zst", only.Format);
     }
 
+    // ── V8.3 — restore VM from backup ─────────────────────────────────────────
+
+    [Fact]
+    public async Task RestoreQemu_PostsArchive_NoLxcFields_ThenPollsTask()
+    {
+        string? path = null;
+        string? body = null;
+        var statusPolls = 0;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+            {
+                statusPolls++;
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            }
+            path = req.RequestUri!.AbsolutePath;
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json("""{"data":"UPID:pve:0000:qemu-restore::root@pam:"}""");
+        });
+
+        await client.RestoreQemuAsync(Profile(), new ProxmoxLxcCreate(
+            VmId: 250,
+            OsTemplate: "local:backup/vzdump-qemu-200-2026_01_01-00_00_00.vma.zst",
+            RootfsStorage: "local-lvm",
+            RootfsSizeGib: 0,
+            Hostname: "web-restored",
+            Start: true,
+            Restore: true));
+
+        Assert.Equal("/api2/json/nodes/pve/qemu", path);     // the QEMU create endpoint
+        Assert.NotNull(body);
+        Assert.Contains("vmid=250", body);
+        Assert.Contains("archive=local%3Abackup", body);     // archive= (not ostemplate=)
+        Assert.Contains("storage=local-lvm", body);          // the default-storage override
+        Assert.Contains("name=web-restored", body);          // VM name rides in name=
+        Assert.DoesNotContain("ostemplate=", body);          // LXC-only
+        Assert.DoesNotContain("restore=1", body);            // LXC-only flag
+        Assert.DoesNotContain("force=", body);               // not an overwrite
+        Assert.DoesNotContain("unprivileged=", body);        // LXC-only
+        Assert.True(statusPolls >= 1);
+    }
+
+    [Fact]
+    public async Task RestoreQemu_Overwrite_EmitsForceFlag()
+    {
+        string? body = null;
+        var client = BuildClient(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/status"))
+                return Json("""{"data":{"status":"stopped","exitstatus":"OK"}}""");
+            body = req.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Json("""{"data":"UPID:pve:0000:qemu-restore::root@pam:"}""");
+        });
+
+        await client.RestoreQemuAsync(Profile(), new ProxmoxLxcCreate(
+            250, "local:backup/vzdump-qemu-200-2026_01_01-00_00_00.vma.zst", "", 0,
+            Restore: true, Force: true));
+
+        Assert.NotNull(body);
+        Assert.Contains("archive=local%3Abackup", body);
+        Assert.Contains("force=1", body);
+        Assert.DoesNotContain("storage=", body);   // blank override ⇒ not sent
+    }
+
+    [Fact]
+    public async Task ListBackups_Qemu_ReadsBackupStoragesOnly_FiltersQemuArchives()
+    {
+        var client = BuildClient(req =>
+        {
+            var path = req.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/storage"))
+                return Json("""
+                    {"data":[
+                      {"storage":"local","content":"vztmpl,backup,iso","type":"dir","enabled":1,"active":1},
+                      {"storage":"pbs-store","content":"backup","type":"pbs","enabled":1,"active":1}
+                    ]}
+                    """);
+            Assert.Contains("/storage/local/content", path);
+            return Json("""
+                {"data":[
+                  {"volid":"local:backup/vzdump-lxc-101-2026_01_01-00_00_00.tar.zst","ctime":1767225600,"size":12345,"format":"tar.zst","subtype":"lxc","vmid":101},
+                  {"volid":"local:backup/vzdump-qemu-200-2026_01_01-00_00_00.vma.zst","ctime":1767312000,"size":999,"format":"vma.zst","subtype":"qemu","vmid":200}
+                ]}
+                """);
+        });
+
+        var backups = await client.ListBackupsAsync(Profile(), qemu: true);
+
+        var only = Assert.Single(backups);   // the lxc archive + the PBS store are excluded
+        Assert.Equal("local:backup/vzdump-qemu-200-2026_01_01-00_00_00.vma.zst", only.Volid);
+        Assert.Equal(200, only.VmId);
+        Assert.Equal("vma.zst", only.Format);
+    }
+
     // ── V8.0 — clone & snapshot ──────────────────────────────────────────────
 
     [Fact]

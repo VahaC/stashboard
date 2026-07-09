@@ -40,8 +40,8 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'pmupdates', label: 'Proxmox updates' },
   { key: 'pmmonitoring', label: 'LXC monitoring' },
   { key: 'pmcreate', label: 'LXC create' },
-  { key: 'pmrestore', label: 'LXC restore' },
-  { key: 'pmdestroy', label: 'LXC destroy' },
+  { key: 'pmrestore', label: 'Guest restore' },
+  { key: 'pmdestroy', label: 'Guest destroy' },
   { key: 'compose', label: 'Compose changes' },
   { key: 'updates', label: 'Update attempts' },
   { key: 'prune', label: 'Image prune' },
@@ -295,14 +295,14 @@ function ProxmoxDestroyTable({ connectionId }: { connectionId: string | null }) 
     queryFn: () => auditApi.getProxmoxDestroyAudits({ connectionId }),
   })
   if (isLoading) return <StateMessage>Loading…</StateMessage>
-  if (isError) return <StateMessage>Failed to load LXC destroys.</StateMessage>
-  if (!data || data.length === 0) return <StateMessage>No LXC destroys recorded yet.</StateMessage>
+  if (isError) return <StateMessage>Failed to load destroys.</StateMessage>
+  if (!data || data.length === 0) return <StateMessage>No destroys recorded yet.</StateMessage>
   return (
     <div className="audit-table-wrap">
       <table className="audit-table">
         <thead>
           <tr>
-            <th>Host / node</th><th>Container</th><th>Result</th><th>When</th>
+            <th>Host / node</th><th>Guest</th><th>Result</th><th>When</th>
           </tr>
         </thead>
         <tbody>
@@ -312,7 +312,8 @@ function ProxmoxDestroyTable({ connectionId }: { connectionId: string | null }) 
                 {r.connectionName ?? '(deleted)'}
                 <div className="audit-sub">{r.nodeName ?? ''}</div>
               </td>
-              <td>{r.guestName ? `${r.guestName} (CT ${r.vmId})` : `CT ${r.vmId}`}</td>
+              {/* The destroy audit row carries no guest kind, so present it neutrally. */}
+              <td>{r.guestName ? `${r.guestName} (VMID ${r.vmId})` : `VMID ${r.vmId}`}</td>
               <td>{r.success ? 'Destroyed' : 'Failed'}<ErrorLine error={r.error} /></td>
               <td>{formatTimestamp(r.destroyedUtc)}</td>
             </tr>
@@ -364,14 +365,14 @@ function ProxmoxRestoreTable({ connectionId }: { connectionId: string | null }) 
     queryFn: () => auditApi.getProxmoxRestoreAudits({ connectionId }),
   })
   if (isLoading) return <StateMessage>Loading…</StateMessage>
-  if (isError) return <StateMessage>Failed to load LXC restores.</StateMessage>
-  if (!data || data.length === 0) return <StateMessage>No LXC restores recorded yet.</StateMessage>
+  if (isError) return <StateMessage>Failed to load restores.</StateMessage>
+  if (!data || data.length === 0) return <StateMessage>No restores recorded yet.</StateMessage>
   return (
     <div className="audit-table-wrap">
       <table className="audit-table">
         <thead>
           <tr>
-            <th>Host / node</th><th>Container</th><th>Backup</th><th>Mode</th><th>Result</th><th>When</th>
+            <th>Host / node</th><th>Guest</th><th>Backup</th><th>Mode</th><th>Result</th><th>When</th>
           </tr>
         </thead>
         <tbody>
@@ -381,7 +382,8 @@ function ProxmoxRestoreTable({ connectionId }: { connectionId: string | null }) 
                 {r.connectionName ?? '(deleted)'}
                 <div className="audit-sub">{r.nodeName ?? ''}</div>
               </td>
-              <td>CT {r.vmId}</td>
+              {/* The audit row is guest-kind-agnostic; derive CT/VM from the archive name. */}
+              <td>{r.backupVolid?.includes('vzdump-qemu-') ? 'VM' : 'CT'} {r.vmId}</td>
               <td><code>{r.backupVolid ?? '—'}</code></td>
               <td>{r.overwrote ? 'Overwrite' : 'New'}</td>
               <td>{r.success ? 'Restored' : 'Failed'}<ErrorLine error={r.error} /></td>

@@ -497,6 +497,47 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
         return form;
     }
 
+    public async Task RestoreQemuAsync(
+        ProxmoxConnectionProfile profile, ProxmoxLxcCreate spec, CancellationToken cancellationToken = default)
+    {
+        var form = BuildQemuRestoreForm(spec);
+
+        // Like CreateLxcAsync, the POST returns a task UPID; poll it to a terminal
+        // state so the caller reports real success/failure (Proxmox restores async).
+        var upid = await PostFormReadUpidAsync(profile, $"nodes/{profile.NodeName}/qemu", form, cancellationToken);
+        if (!string.IsNullOrEmpty(upid))
+            await PollTaskAsync(profile, upid, cancellationToken);
+    }
+
+    /// <summary>V8.3 — builds the QEMU restore-from-archive form. Unlike the LXC
+    /// restore (<c>ostemplate=…</c> + <c>restore=1</c>), the QEMU create endpoint takes
+    /// the archive volid in <c>archive=</c>; the VM's disks and config come from it, so
+    /// we send only <c>storage=</c> (the default-storage override, when set) rather than
+    /// a disk spec, and skip the LXC-only fields (unprivileged / swap / rootfs).
+    /// <c>force=1</c> overwrites an existing vmid (the controller has already confirmed
+    /// the target is stopped); the new <c>name=</c> rides along when the user renamed it.</summary>
+    private static List<KeyValuePair<string, string>> BuildQemuRestoreForm(ProxmoxLxcCreate spec)
+    {
+        var form = new List<KeyValuePair<string, string>>
+        {
+            new("vmid", spec.VmId.ToString()),
+            new("archive", spec.OsTemplate),
+            new("onboot", spec.Onboot ? "1" : "0"),
+            new("start", spec.Start ? "1" : "0"),
+        };
+        if (spec.Force) form.Add(new("force", "1"));
+        // The default storage for volumes the archive doesn't pin elsewhere; blank ⇒
+        // restore each volume onto the storage it was backed up from.
+        if (!string.IsNullOrWhiteSpace(spec.RootfsStorage)) form.Add(new("storage", spec.RootfsStorage.Trim()));
+        // The VM name rides in name= (the QEMU analogue of the LXC's hostname=).
+        if (!string.IsNullOrWhiteSpace(spec.Hostname)) form.Add(new("name", spec.Hostname.Trim()));
+        if (!string.IsNullOrWhiteSpace(spec.Description)) form.Add(new("description", spec.Description.Trim()));
+        if (!string.IsNullOrWhiteSpace(spec.Tags)) form.Add(new("tags", spec.Tags.Trim()));
+        if (spec.Cores is { } cores) form.Add(new("cores", cores.ToString()));
+        if (spec.MemoryMib is { } mem) form.Add(new("memory", mem.ToString()));
+        return form;
+    }
+
     public async Task AddHaResourceAsync(
         ProxmoxConnectionProfile profile, int vmId, CancellationToken cancellationToken = default)
     {
@@ -550,8 +591,12 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
     }
 
     public async Task<IReadOnlyList<ProxmoxBackup>> ListBackupsAsync(
-        ProxmoxConnectionProfile profile, CancellationToken cancellationToken = default)
+        ProxmoxConnectionProfile profile, bool qemu = false, CancellationToken cancellationToken = default)
     {
+        // The two guest kinds tag their archives differently — a VM backup is
+        // subtype="qemu" / vzdump-qemu-*, an LXC backup subtype="lxc" / vzdump-lxc-*.
+        var (wantSubtype, wantMarker) = qemu ? ("qemu", "vzdump-qemu-") : ("lxc", "vzdump-lxc-");
+
         // First find the storages that can hold backups (their content list
         // advertises "backup"), then read each one's backup content. PBS datastores
         // need their own auth/namespace surface (out of scope), so we skip pbs:.
@@ -575,14 +620,14 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
                 var volid = item.TryGetProperty("volid", out var v) ? ReadString(v) : null;
                 if (string.IsNullOrEmpty(volid)) continue;
 
-                // Only LXC archives are restorable here — a VM backup (vzdump-qemu-*)
-                // restores to a QEMU VM, which is a different endpoint. Proxmox tags
-                // the row with subtype="lxc"; fall back to the volid filename for older
+                // Keep only the requested guest kind's archives — an LXC archive and a
+                // VM archive restore through different endpoints. Proxmox tags the row
+                // with subtype="lxc"/"qemu"; fall back to the volid filename for older
                 // hosts that omit it.
                 var subtype = item.TryGetProperty("subtype", out var st) ? ReadString(st) : null;
-                var isLxc = string.Equals(subtype, "lxc", StringComparison.OrdinalIgnoreCase)
-                    || (subtype is null && volid.Contains("vzdump-lxc-", StringComparison.OrdinalIgnoreCase));
-                if (!isLxc) continue;
+                var matchesKind = string.Equals(subtype, wantSubtype, StringComparison.OrdinalIgnoreCase)
+                    || (subtype is null && volid.Contains(wantMarker, StringComparison.OrdinalIgnoreCase));
+                if (!matchesKind) continue;
 
                 result.Add(new ProxmoxBackup(
                     volid,
