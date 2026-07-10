@@ -235,6 +235,39 @@ public sealed record ProxmoxLxcCreateRequest(
     bool AddToHa = false);
 
 /// <summary>
+/// V8.4 — create one QEMU/KVM VM from scratch (<c>POST /nodes/{node}/qemu</c>). The
+/// VM analogue of <see cref="ProxmoxLxcCreateRequest"/>, but a VM is hardware: a
+/// primary disk (<see cref="DiskStorage"/> + <see cref="DiskSizeGib"/>), a NIC
+/// (<see cref="Bridge"/> + optional VLAN / MAC / firewall), firmware
+/// (<see cref="Bios"/>) + chipset (<see cref="Machine"/>), an OS-type hint
+/// (<see cref="OsType"/>), and an optional install ISO (<see cref="IsoVolid"/>) mounted
+/// as a CD-ROM. Locally-checkable guards (vmid range, positive sizes, known bios /
+/// ostype, valid MAC / VLAN) are validated up front; Proxmox stays authoritative for
+/// everything that needs the host (storage / ISO existence, vmid collisions it owns).
+/// </summary>
+public sealed record ProxmoxQemuCreateRequest(
+    [Range(100, 999_999_999)] int VmId,
+    [Required, MaxLength(100)] string DiskStorage,
+    [Range(1, 131072)] int DiskSizeGib,
+    [MaxLength(255)] string? Name = null,
+    [Range(1, 8192)] int? Cores = 1,
+    [Range(1, 4)] int? Sockets = 1,
+    [Range(16, 4194304)] long? MemoryMib = 2048,
+    [MaxLength(100)] string Bridge = "vmbr0",
+    [Range(1, 4094)] int? VlanTag = null,
+    [MaxLength(17)] string? MacAddr = null,
+    bool NetFirewall = false,
+    [MaxLength(20)] string OsType = "l26",
+    [MaxLength(10)] string Bios = "seabios",
+    [MaxLength(10)] string? Machine = "q35",
+    [MaxLength(512)] string? IsoVolid = null,
+    bool Agent = true,
+    bool Onboot = false,
+    bool Start = false,
+    [MaxLength(8192)] string? Description = null,
+    [MaxLength(1024)] string? Tags = null);
+
+/// <summary>
 /// V8.0 — app-wide clone/snapshot master switch, managed from the Settings page.
 /// This is the global gate; a per-host opt-in (<c>AllowClone</c>) is also required,
 /// and a snapshot rollback / delete additionally needs a UI double confirmation.

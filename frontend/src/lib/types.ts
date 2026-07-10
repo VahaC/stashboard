@@ -1759,6 +1759,14 @@ export interface ProxmoxNextId {
   vmId: number
 }
 
+/** V8.4 — one installable ISO image (an `iso` volume) for the VM create form's
+ *  Installation media dropdown. `volid` is passed back as `ProxmoxQemuCreate.isoVolid`. */
+export interface ProxmoxIso {
+  volid: string
+  storage: string
+  size: number | null
+}
+
 /** V8.1 — one restorable LXC backup archive (a `vzdump-lxc-*` volume) for the
  *  restore form's archive dropdown. `volid` is passed back as
  *  `ProxmoxLxcRestore.backupVolid`; `vmId` is the guest the archive was taken from
@@ -1821,6 +1829,38 @@ export interface ProxmoxLxcCreate {
   searchDomain?: string | null
   /** Register the new container with the cluster HA manager after create. */
   addToHa: boolean
+}
+
+/** V8.4 — create-one-VM-from-scratch payload (`POST …/qemu`). The VM analogue of
+ *  `ProxmoxLxcCreate`, but a VM is hardware: a primary disk (`diskStorage` +
+ *  `diskSizeGib`), a NIC (`bridge` + optional VLAN / MAC / firewall), firmware
+ *  (`bios`) + chipset (`machine`), an OS-type hint (`osType`), and an optional install
+ *  ISO (`isoVolid`) mounted as a CD-ROM. */
+export interface ProxmoxQemuCreate {
+  vmId: number
+  diskStorage: string
+  diskSizeGib: number
+  name?: string | null
+  cores?: number | null
+  sockets?: number | null
+  memoryMib?: number | null
+  bridge: string
+  vlanTag?: number | null
+  macAddr?: string | null
+  netFirewall: boolean
+  osType: string
+  /** `seabios` or `ovmf` (UEFI). */
+  bios: string
+  /** Chipset (`q35` / `i440fx`); null ⇒ Proxmox default. */
+  machine?: string | null
+  /** Install-media volume id mounted as the `ide2` CD-ROM; null ⇒ no CD-ROM. */
+  isoVolid?: string | null
+  /** Enable the QEMU guest agent (`agent=1`). */
+  agent: boolean
+  onboot: boolean
+  start: boolean
+  description?: string | null
+  tags?: string | null
 }
 
 /** V8.0 — clone-one-LXC payload (`POST …/lxc/{vmid}/clone`). Validation mirrors

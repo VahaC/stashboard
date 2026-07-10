@@ -435,7 +435,7 @@ export function ProxmoxConnectionModal({
                   <PermRow checked={allowDestroy} onChange={setAllowDestroy} label="Allow destroy"
                     hint="Adds a Destroy button to a stopped guest's Lifecycle section (LXC or VM — removes the guest and its disk(s)). Needs Settings → Destroy guest + an explicit double confirmation." />
                   <PermRow checked={allowCreate} onChange={setAllowCreate} label="Allow create"
-                    hint="Adds a New LXC button to this host's header that provisions a container from a template. Needs Settings → Create LXC." />
+                    hint="Adds New LXC + New VM buttons to this host's header that provision a container from a template or a QEMU VM from hardware + an install ISO. Needs Settings → Create guest." />
                   <PermRow checked={allowClone} onChange={setAllowClone} label="Allow clone/snapshot"
                     hint="Adds a Clone button + a Snapshots tab to a guest (LXC or VM) — duplicate it and take / roll back / delete snapshots. Needs Settings → Clone/snapshot; rollback / delete double-confirm." />
                   <PermRow checked={allowRestore} onChange={setAllowRestore} label="Allow restore"

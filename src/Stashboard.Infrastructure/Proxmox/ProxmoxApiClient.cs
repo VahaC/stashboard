@@ -538,6 +538,72 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
         return form;
     }
 
+    public async Task CreateQemuAsync(
+        ProxmoxConnectionProfile profile, ProxmoxQemuCreate spec, CancellationToken cancellationToken = default)
+    {
+        var form = BuildQemuCreateForm(spec);
+
+        // Like CreateLxcAsync, the POST returns a task UPID; poll it to a terminal
+        // state so the caller reports real success/failure (Proxmox provisions async).
+        var upid = await PostFormReadUpidAsync(profile, $"nodes/{profile.NodeName}/qemu", form, cancellationToken);
+        if (!string.IsNullOrEmpty(upid))
+            await PollTaskAsync(profile, upid, cancellationToken);
+    }
+
+    /// <summary>V8.4 — builds the create-from-scratch QEMU form. Unlike the LXC's
+    /// single <c>ostemplate</c>, a VM is hardware: a primary SCSI disk on a virtio-scsi
+    /// controller, a virtio NIC, the firmware / chipset, an OS-type hint, an optional
+    /// install CD-ROM, and a boot order. The shorthand <c>storage:sizeInGiB</c> creates
+    /// a fresh disk. When the firmware is OVMF an EFI vars disk (<c>efidisk0</c>) is
+    /// provisioned on the same storage (the OVMF default) so the VM can actually boot.</summary>
+    private static List<KeyValuePair<string, string>> BuildQemuCreateForm(ProxmoxQemuCreate spec)
+    {
+        var bridge = string.IsNullOrWhiteSpace(spec.Bridge) ? "vmbr0" : spec.Bridge.Trim();
+        // net0 = virtio[,bridge][,tag][,firewall]; a set MAC rides as "virtio=<MAC>".
+        var net0 = string.IsNullOrWhiteSpace(spec.MacAddr) ? "virtio" : $"virtio={spec.MacAddr.Trim()}";
+        net0 += $",bridge={bridge}";
+        if (spec.VlanTag is { } tag) net0 += $",tag={tag}";
+        if (spec.NetFirewall) net0 += ",firewall=1";
+
+        var form = new List<KeyValuePair<string, string>>
+        {
+            new("vmid", spec.VmId.ToString()),
+            new("scsihw", "virtio-scsi-pci"),
+            // The shorthand "storage:sizeInGiB" creates a new primary disk on the
+            // chosen storage at the requested size.
+            new("scsi0", $"{spec.DiskStorage}:{spec.DiskSizeGib}"),
+            new("net0", net0),
+            new("ostype", spec.OsType),
+            new("bios", spec.Bios),
+            new("onboot", spec.Onboot ? "1" : "0"),
+            new("start", spec.Start ? "1" : "0"),
+        };
+        if (!string.IsNullOrWhiteSpace(spec.Name)) form.Add(new("name", spec.Name.Trim()));
+        if (spec.Cores is { } cores) form.Add(new("cores", cores.ToString()));
+        if (spec.Sockets is { } sockets) form.Add(new("sockets", sockets.ToString()));
+        if (spec.MemoryMib is { } mem) form.Add(new("memory", mem.ToString()));
+        if (!string.IsNullOrWhiteSpace(spec.Machine)) form.Add(new("machine", spec.Machine.Trim()));
+        // OVMF (UEFI) needs an EFI vars disk to boot — provision the default on the
+        // same storage as the system disk. (TPM / secure-boot keys are out of scope.)
+        if (string.Equals(spec.Bios, "ovmf", StringComparison.OrdinalIgnoreCase))
+            form.Add(new("efidisk0", $"{spec.DiskStorage}:1,efitype=4m"));
+        // The install ISO mounts as a CD-ROM on ide2; boot the disk first, then the
+        // CD (an empty fresh disk falls through to the installer), then the NIC.
+        if (!string.IsNullOrWhiteSpace(spec.IsoVolid))
+        {
+            form.Add(new("ide2", $"{spec.IsoVolid.Trim()},media=cdrom"));
+            form.Add(new("boot", "order=scsi0;ide2;net0"));
+        }
+        else
+        {
+            form.Add(new("boot", "order=scsi0;net0"));
+        }
+        if (spec.Agent) form.Add(new("agent", "1"));
+        if (!string.IsNullOrWhiteSpace(spec.Description)) form.Add(new("description", spec.Description.Trim()));
+        if (!string.IsNullOrWhiteSpace(spec.Tags)) form.Add(new("tags", spec.Tags.Trim()));
+        return form;
+    }
+
     public async Task AddHaResourceAsync(
         ProxmoxConnectionProfile profile, int vmId, CancellationToken cancellationToken = default)
     {
@@ -563,19 +629,36 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
     public async Task<IReadOnlyList<ProxmoxTemplate>> ListTemplatesAsync(
         ProxmoxConnectionProfile profile, CancellationToken cancellationToken = default)
     {
-        // First find the storages that can hold container templates (their content
-        // list advertises "vztmpl"), then read each one's vztmpl content.
+        var items = await ListStorageContentAsync(profile, "vztmpl", cancellationToken);
+        return items.Select(i => new ProxmoxTemplate(i.Volid, i.Storage, i.Size)).ToList();
+    }
+
+    public async Task<IReadOnlyList<ProxmoxIso>> ListIsoImagesAsync(
+        ProxmoxConnectionProfile profile, CancellationToken cancellationToken = default)
+    {
+        var items = await ListStorageContentAsync(profile, "iso", cancellationToken);
+        return items.Select(i => new ProxmoxIso(i.Volid, i.Storage, i.Size)).ToList();
+    }
+
+    /// <summary>V6.13.1 / V8.4 — lists one content kind (<c>vztmpl</c> / <c>iso</c>)
+    /// across the node's storages that advertise it: first find the storages whose
+    /// content list contains <paramref name="content"/>, then read each one's
+    /// <c>…/content?content={content}</c>. Shared by <see cref="ListTemplatesAsync"/>
+    /// and <see cref="ListIsoImagesAsync"/> — they differ only in the content tag.</summary>
+    private async Task<List<(string Volid, string Storage, long? Size)>> ListStorageContentAsync(
+        ProxmoxConnectionProfile profile, string content, CancellationToken cancellationToken)
+    {
         var storages = await GetNodeStoragesAsync(profile, cancellationToken);
-        var templateStorages = storages
+        var capableStorages = storages
             .Where(s => s.Content?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Any(c => string.Equals(c, "vztmpl", StringComparison.OrdinalIgnoreCase)) ?? false)
+                .Any(c => string.Equals(c, content, StringComparison.OrdinalIgnoreCase)) ?? false)
             .Select(s => s.Storage);
 
-        var result = new List<ProxmoxTemplate>();
-        foreach (var storage in templateStorages)
+        var result = new List<(string Volid, string Storage, long? Size)>();
+        foreach (var storage in capableStorages)
         {
             using var doc = await GetJsonAsync(
-                profile, $"nodes/{profile.NodeName}/storage/{Uri.EscapeDataString(storage)}/content?content=vztmpl",
+                profile, $"nodes/{profile.NodeName}/storage/{Uri.EscapeDataString(storage)}/content?content={content}",
                 cancellationToken);
             if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
                 continue;
@@ -583,7 +666,7 @@ internal sealed class ProxmoxApiClient(IHttpClientFactory httpClientFactory) : I
             {
                 var volid = item.TryGetProperty("volid", out var v) ? ReadString(v) : null;
                 if (string.IsNullOrEmpty(volid)) continue;
-                result.Add(new ProxmoxTemplate(volid, storage, ReadLong(item, "size")));
+                result.Add((volid, storage, ReadLong(item, "size")));
             }
         }
         result.Sort((a, b) => string.CompareOrdinal(a.Volid, b.Volid));

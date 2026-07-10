@@ -9,10 +9,12 @@ import { parseApiErrors } from '@/lib/utils'
 import '@/styles/account-page.css'
 
 /**
- * V6.13.1 — Settings → Create LXC. The app-wide master switch for provisioning a
- * container from a template (`POST /nodes/{node}/lxc`). Like the destroy / updates
- * pages, it leads with what the action does and spells out every condition
- * required before the New LXC button appears.
+ * V6.13.1 / V8.4 — Settings → Create guest. The app-wide master switch for
+ * provisioning a guest from scratch — an LXC container from a template
+ * (`POST /nodes/{node}/lxc`) or a QEMU/KVM VM from hardware + an install ISO
+ * (`POST /nodes/{node}/qemu`). Like the destroy / updates pages, it leads with what
+ * the action does and spells out every condition required before the New LXC / New VM
+ * buttons appear.
  */
 export function ProxmoxCreateSettings() {
   const queryClient = useQueryClient()
@@ -40,7 +42,7 @@ export function ProxmoxCreateSettings() {
       setMessage({ kind: 'ok', text: enabled ? 'Create enabled server-wide.' : 'Create disabled.' })
     } catch (error: unknown) {
       const { globalError } = parseApiErrors(error)
-      setMessage({ kind: 'err', text: globalError ?? 'Failed to save create-LXC setting.' })
+      setMessage({ kind: 'err', text: globalError ?? 'Failed to save create-guest setting.' })
     } finally {
       setSaving(false)
     }
@@ -48,26 +50,27 @@ export function ProxmoxCreateSettings() {
 
   return (
     <div className="account-page account-stack">
-      <h1 className="text-2xl font-semibold">Create LXC (Proxmox)</h1>
+      <h1 className="text-2xl font-semibold">Create guest (Proxmox)</h1>
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5" /> Create LXC
+            <Plus className="h-5 w-5" /> Create guest
           </CardTitle>
           <CardDescription>
-            Adds a <strong>New LXC</strong> button to a Proxmox host's header on the Proxmox page — provision a container
-            from an existing template without leaving Stashboard. It calls
-            <code> POST /nodes/&#123;node&#125;/lxc</code> on the Proxmox API, which creates the container and its root disk.
+            Adds <strong>New LXC</strong> and <strong>New VM</strong> buttons to a Proxmox host's header on the Proxmox
+            page — provision a container from a template, or a QEMU/KVM VM from hardware + an install ISO, without
+            leaving Stashboard. It calls <code>POST /nodes/&#123;node&#125;/lxc</code> or
+            <code> POST /nodes/&#123;node&#125;/qemu</code> on the Proxmox API, which creates the guest and its disk.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="host-shell-settings-warning">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <div>
-              <strong>This provisions real storage and network on the host.</strong> A new container consumes disk on the
+              <strong>This provisions real storage and network on the host.</strong> A new guest consumes disk on the
               chosen storage and attaches to the chosen bridge. It is off by default — leave it off unless you want
-              operators to be able to create containers from the dashboard.
+              operators to be able to create guests from the dashboard.
             </div>
           </div>
 
@@ -79,7 +82,7 @@ export function ProxmoxCreateSettings() {
                 disabled={!loaded}
                 onChange={(event) => setEnabled(event.target.checked)}
               />
-              Enable create LXC server-wide
+              Enable create guest server-wide
             </label>
 
             {message && (
@@ -94,8 +97,8 @@ export function ProxmoxCreateSettings() {
           <section className="host-shell-settings-section">
             <h3>What turning this on does — and doesn't — allow</h3>
             <p>
-              This switch is only the <em>global gate</em>. Even with it on, the New LXC button appears for a host only
-              when <strong>both</strong> of these hold:
+              This switch is only the <em>global gate</em>. Even with it on, the New LXC / New VM buttons appear for a host
+              only when <strong>both</strong> of these hold:
             </p>
             <ol className="host-shell-settings-conditions">
               <li><strong>This setting is on</strong> (server-wide master switch — what you toggle above).</li>
@@ -113,13 +116,13 @@ export function ProxmoxCreateSettings() {
           <section className="host-shell-settings-section">
             <h3>Guardrails (always enforced)</h3>
             <ul className="host-shell-settings-conditions">
-              <li><strong>Validated.</strong> The VMID range, network (CIDR / MAC / VLAN) and sizes are checked before the request leaves Stashboard; a VMID already in use is rejected.</li>
-              <li><strong>Proxmox is authoritative.</strong> A storage that can't hold a rootfs, a missing template, or any other host rejection is surfaced verbatim — nothing is silently swallowed.</li>
-              <li><strong>Audited.</strong> Every attempt records who triggered it, when, against which host / node / vmid / hostname / template, and the result — on the Audit page's <strong>LXC create</strong> tab.</li>
+              <li><strong>Validated.</strong> The VMID range, network (CIDR / MAC / VLAN), firmware / OS type and sizes are checked before the request leaves Stashboard; a VMID already in use is rejected.</li>
+              <li><strong>Proxmox is authoritative.</strong> A storage that can't hold the disk, a missing template / ISO, or any other host rejection is surfaced verbatim — nothing is silently swallowed.</li>
+              <li><strong>Audited.</strong> Every attempt records who triggered it, when, against which host / node / vmid / name / source, and the result — on the Audit page's <strong>Create</strong> tab.</li>
             </ul>
             <p className="host-shell-settings-note">
-              Cloning, restoring from a backup, and advanced multi-mount rootfs layouts are out of scope — create the
-              container, then edit it from its Config tab.
+              Passthrough, extra disks / NICs, and cloud-init are out of scope — create the guest, then edit it from its
+              Config tab. Installing a VM's OS is up to you: this boots it into the installer.
             </p>
           </section>
         </CardContent>

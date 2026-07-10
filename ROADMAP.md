@@ -12,7 +12,7 @@
 > and the V7.x visual Compose editor track (V7.0–V7.9) to [`HISTORY.md`](./HISTORY.md) §17,
 > once those phases all shipped; only V8.1+ remains in this file.
 >
-> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2) · ✅ V5.4 (Compose project grouping & bulk update, image 5.4.0) · ✅ V5.5 (image cleanup / prune, image 5.5.0) · ✅ V5.6 (health-check tuning page, image 5.6.0) · ✅ V5.7 (container exec, image 5.7.0) · ✅ V5.8 (session audit viewer, image 5.8.0) · ✅ V5.9 (Docker instances page redesign, image 5.9.0) · ✅ V6.0 (Proxmox LXC update monitoring, image 6.0.0) · ✅ V6.1 (Proxmox LXC detail modal + Docker-style cards, image 6.1.0) · ✅ V6.2 (LXC Config tab, image 6.2.0) · ✅ V6.3 (LXC Stats + Tasks tabs, image 6.3.0) · ✅ V6.4 (LXC lifecycle actions + real-time stats, image 6.4.0) · ✅ V6.5 (edit LXC parameters, image 6.5.0) · ✅ V6.6 (browser LXC console / Console tab, image 6.6.0) · ✅ V6.7 (per-LXC update monitoring toggle, image 6.7.0) · ✅ V6.7.1 (Proxmox one-click "Update now", image 6.7.1) · ✅ V6.8 (PVE node health card + node modal, image 6.8.0) · ✅ V6.8.1 (PVE node alerting, image 6.8.1) · ✅ V6.8.2 (PVE node deep telemetry / SSH collectors, image 6.8.2) · ✅ V6.9.0 (edit LXC network interfaces & mount points, image 6.9.0) · ✅ V6.10 (Proxmox page Docker-parity redesign, image 6.10.0) · ✅ V6.11 (bulk LXC monitoring & update operations + audit, image 6.11.0) · ✅ V6.12 (LXC live logs / Logs tab, image 6.12.0) · ✅ V6.13 (destroy / remove LXC, image 6.13.0) · ✅ V6.13.1 (create LXC, image 6.13.1) · ✅ V6.14 (VM / QEMU support, image 6.14.0) · ✅ V6.15 (Proxmox connections in backup/restore, image 6.15.0) · ✅ V7.0 (visual Compose viewer, image 7.0.0) · ✅ V7.1 (edit basic service fields, image 7.1.0) · ✅ V7.1.1 (Compose as a per-project modal, image 7.1.1) · ✅ V7.2 (resource constraints UI, image 7.2.0) · ✅ V7.2.1 (PBS disk/SMART fixes, image 7.2.1) · ✅ V7.3 (top-level resources, image 7.3.0) · ✅ V7.4 (create a new service, image 7.4.0) · ✅ V7.4.1 (create a whole project, image 7.4.1) · ✅ V7.5 (service templates, image 7.5.0) · ✅ V7.6 (diff / dry-run / apply, image 7.6.0) · ✅ V7.7 (dependency graph + linter, image 7.7.0) · ✅ V7.8 (container card icons, image 7.8.0) · ✅ V7.9 (link Proxmox guests to services + Docker↔Proxmox cross-link, image 7.9.0) · ✅ V8.0 (clone & snapshot LXC, image 8.0.0) · ✅ V8.1 (restore LXC from backup, image 8.1.0) · ✅ V8.2 (clone & snapshot VM / QEMU, image 8.2.0) · ✅ V8.3 (restore VM from backup, image 8.3.0). Shipped V5.x phase detail now lives in [`HISTORY.md`](./HISTORY.md) §14, the V6.x Proxmox parity & LXC/VM phase detail in [`HISTORY.md`](./HISTORY.md) §16, and the V7.x visual Compose editor track in [`HISTORY.md`](./HISTORY.md) §17; V1–V4 historical detail is also in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
+> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2) · ✅ V5.4 (Compose project grouping & bulk update, image 5.4.0) · ✅ V5.5 (image cleanup / prune, image 5.5.0) · ✅ V5.6 (health-check tuning page, image 5.6.0) · ✅ V5.7 (container exec, image 5.7.0) · ✅ V5.8 (session audit viewer, image 5.8.0) · ✅ V5.9 (Docker instances page redesign, image 5.9.0) · ✅ V6.0 (Proxmox LXC update monitoring, image 6.0.0) · ✅ V6.1 (Proxmox LXC detail modal + Docker-style cards, image 6.1.0) · ✅ V6.2 (LXC Config tab, image 6.2.0) · ✅ V6.3 (LXC Stats + Tasks tabs, image 6.3.0) · ✅ V6.4 (LXC lifecycle actions + real-time stats, image 6.4.0) · ✅ V6.5 (edit LXC parameters, image 6.5.0) · ✅ V6.6 (browser LXC console / Console tab, image 6.6.0) · ✅ V6.7 (per-LXC update monitoring toggle, image 6.7.0) · ✅ V6.7.1 (Proxmox one-click "Update now", image 6.7.1) · ✅ V6.8 (PVE node health card + node modal, image 6.8.0) · ✅ V6.8.1 (PVE node alerting, image 6.8.1) · ✅ V6.8.2 (PVE node deep telemetry / SSH collectors, image 6.8.2) · ✅ V6.9.0 (edit LXC network interfaces & mount points, image 6.9.0) · ✅ V6.10 (Proxmox page Docker-parity redesign, image 6.10.0) · ✅ V6.11 (bulk LXC monitoring & update operations + audit, image 6.11.0) · ✅ V6.12 (LXC live logs / Logs tab, image 6.12.0) · ✅ V6.13 (destroy / remove LXC, image 6.13.0) · ✅ V6.13.1 (create LXC, image 6.13.1) · ✅ V6.14 (VM / QEMU support, image 6.14.0) · ✅ V6.15 (Proxmox connections in backup/restore, image 6.15.0) · ✅ V7.0 (visual Compose viewer, image 7.0.0) · ✅ V7.1 (edit basic service fields, image 7.1.0) · ✅ V7.1.1 (Compose as a per-project modal, image 7.1.1) · ✅ V7.2 (resource constraints UI, image 7.2.0) · ✅ V7.2.1 (PBS disk/SMART fixes, image 7.2.1) · ✅ V7.3 (top-level resources, image 7.3.0) · ✅ V7.4 (create a new service, image 7.4.0) · ✅ V7.4.1 (create a whole project, image 7.4.1) · ✅ V7.5 (service templates, image 7.5.0) · ✅ V7.6 (diff / dry-run / apply, image 7.6.0) · ✅ V7.7 (dependency graph + linter, image 7.7.0) · ✅ V7.8 (container card icons, image 7.8.0) · ✅ V7.9 (link Proxmox guests to services + Docker↔Proxmox cross-link, image 7.9.0) · ✅ V8.0 (clone & snapshot LXC, image 8.0.0) · ✅ V8.1 (restore LXC from backup, image 8.1.0) · ✅ V8.2 (clone & snapshot VM / QEMU, image 8.2.0) · ✅ V8.3 (restore VM from backup, image 8.3.0) · ✅ V8.4 (create VM / QEMU from scratch, image 8.4.0). Shipped V5.x phase detail now lives in [`HISTORY.md`](./HISTORY.md) §14, the V6.x Proxmox parity & LXC/VM phase detail in [`HISTORY.md`](./HISTORY.md) §16, and the V7.x visual Compose editor track in [`HISTORY.md`](./HISTORY.md) §17; V1–V4 historical detail is also in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
 
 ## 14. Post-V4 backlog (V5+) — deferred Docker features
 
@@ -200,7 +200,20 @@ See the [CHANGELOG](./CHANGELOG.md).
 
 ---
 
-### Phase V8.4 — Create a VM (QEMU) from scratch
+### Phase V8.4 — Create a VM (QEMU) from scratch ✅ Shipped (8.4.0)
+
+**Shipped in 8.4.0.** Completes the "make a guest" matrix — **create** now works for VMs
+exactly as it does for LXC (V6.13.1). A **New VM** item joins **New LXC** in a host's
+actions menu (gated by the same create switch + per-host opt-in); it provisions a
+brand-new QEMU/KVM VM from hardware — a SCSI system disk on a chosen storage, a virtio
+NIC, the firmware (SeaBIOS / OVMF) + chipset (q35), an OS-type hint, and an install ISO
+mounted as a CD-ROM — then boots it into the installer. A new `ListIsoImagesAsync`
+(iso-capable storages, the VM analogue of `ListTemplatesAsync`), `CreateQemuAsync` +
+`ProxmoxQemuCreate` spec + `ProxmoxQemuCreateValidator`, and a `QemuCreateModal` reusing
+the `container-modal-*` / `service-modal-*` shell. The create audit (`ProxmoxCreateAudits`)
+stays guest-kind-agnostic, so VM and LXC creates share one history. With clone (V8.2) and
+restore (V8.3) already mirrored, create / clone / restore are now complete for both guest
+kinds.
 
 **Complexity:** High
 **Value:** Completes the "make a guest" matrix — **create** finally works for VMs as it
@@ -253,7 +266,58 @@ its installer, and the action is audited.
 
 ---
 
-### Phase V8.5 — Browser VM console (noVNC) — *feasibility-gated*
+### Phase V8.5 — Edit VM (QEMU) parameters
+
+**Complexity:** High
+**Value:** The VM analogue of the LXC config editor (V6.5 scalars + V6.9 structured
+network / mounts). Today a VM's **Config** tab is **read-only** (V6.14) — every guest-
+config change beyond create / clone / restore still means opening the Proxmox web UI.
+This phase makes the VM's editable surface writable from the **same** modal, reusing the
+LXC edit scaffolding — the per-field "null = leave untouched" merge, the structured
+network change model, `PUT …/config`, and the change-audit — rather than a parallel
+system. With this, the VM Config tab stops being a dead end and the day-to-day "tweak a
+guest" loop works for VMs as it does for containers.
+
+**Scope:**
+
+- **Scalars** — name, cores, sockets, memory (+ optional balloon minimum), `onboot`,
+  `ostype`, the QEMU **guest-agent** toggle, boot order, and description / tags — written
+  via `PUT /nodes/{node}/qemu/{vmid}/config`, sending only the keys the user changed (the
+  V6.5 posture). A new `ProxmoxQemuConfigUpdate` spec + `UpdateQemuConfigAsync` +
+  `ProxmoxQemuConfigValidator`.
+- **NICs** — `net<n>` structured **add / update / remove** (model virtio / e1000 / …,
+  bridge, VLAN tag, MAC, firewall, rate), reusing the V6.9 intentful-change model with a
+  QEMU net codec alongside the LXC one (the create modal's NIC row already formats this).
+- **CD-ROM / ISO** — swap or eject the `ide2` install media, reusing the V8.4 ISO
+  dropdown.
+- **Disks** — **grow** an existing disk (`PUT …/resize`, grow-only — shrink is unsafe),
+  toggle the safe flags (discard / ssd / cache), and **move** a disk to another storage
+  (`…/move_disk`, task-polled like clone). Adding / removing a disk is the heavier
+  sub-step and may split out (see the parity breakdown below).
+- **Frontend** — the read-only Config tab gains the same edit affordances the LXC modal
+  has (V6.5 / V6.9): inline editing, a single **Save** that commits the changed keys, and
+  client-side guards mirroring the server validator. No second Save button, no auto-apply.
+
+**Out of scope:** changing `bios` / `machine` on an existing VM (EFI-vars / boot
+implications), PCI / USB passthrough, cloud-init drives, CPU type / NUMA / topology beyond
+cores / sockets, and hot-plug semantics (Proxmox decides what applies live vs. on next
+boot — the UI relays its message). Proxmox stays authoritative; any host rejection is
+surfaced verbatim and every change is audited (mirroring the LXC config-edit audit).
+
+**Tests:** a scalar-only edit PUTs only the changed keys; a `net<n>` add/update/remove
+emits the expected structured line / `delete=`; a disk grow / move posts the expected
+`resize` / `move_disk` and polls the task; gate / ownership failures are deterministic;
+a malformed spec ⇒ 400; a host rejection ⇒ 502 verbatim; every applied change writes an
+audit row.
+
+**Acceptance bar:** a user can change a VM's cores / memory / name / boot order, edit or
+add a NIC, swap its install ISO, and grow / move its primary disk — entirely from the VM
+modal's Config tab — and the changes apply on the host (live or on next boot, per
+Proxmox) and are audited, with no parallel edit surface.
+
+---
+
+### Phase V8.6 — Browser VM console (noVNC) — *feasibility-gated*
 
 **Complexity:** High
 **Value:** The VM analogue of the V6.6 LXC console, closing the last LXC-only diagnostic
@@ -346,7 +410,11 @@ fans *events* out to chat services.
 - **A background publisher** (`MqttPublisherService`, an `IHostedService` holding one
   long-lived broker connection) that publishes **retained** HA Discovery config
   topics (`<prefix>/<component>/<node>/<object>/config`) with a stable `unique_id`,
-  grouping each host's entities under one HA **device**, and retained **state**
+  grouping entities into **one HA device per real object** — each container / guest /
+  node / service is its **own** device with a handful of entities, linked by
+  `via_device` to a single **Stashboard** hub device (which also carries the V9.1 estate
+  roll-ups), so HA renders a tidy device tree (`Stashboard → host → container`, ~5–10
+  entities each) instead of one monolithic 500-entity device — and retained **state**
   topics the entities point at. **Every published entity is prefixed with the
   configured entity prefix** (default `stashboard`) — the discovery node id, the
   `object_id`/`name`, and the `unique_id` all start with `<prefix>_`
@@ -376,11 +444,23 @@ fans *events* out to chat services.
 
 **Out of scope:** **control / command topics** (start/stop/restart a container or
 guest from HA) — deferred to a follow-up phase because it introduces an
-externally-driven action surface needing its own gating/auth/ACL story; CPU/RAM/disk
-**telemetry** sensors (state + update + health only for the MVP); per-entity
+externally-driven action surface needing its own gating/auth/ACL story; raw CPU/RAM/disk
+**resource-telemetry** sensors (deliberately off the roadmap — see the note after V9.1;
+V9.0 publishes state + update + health only); per-entity
 selection of *which* containers/services publish (V9.0 publishes all the user's
 monitored entities); running an MQTT broker (the user points Stashboard at their
 existing Mosquitto).
+
+**Transport rationale (MQTT, not a HACS integration):** container / guest / service state
+is **sparse and event-driven** — one thing goes down, one retained message flips one
+entity — which is precisely MQTT's sweet spot, and HA MQTT Discovery needs **zero HA-side
+code** (no Python integration to maintain against HA's fast-moving API, no second
+language / repo / release cadence). The estate is large, so entities are deliberately
+**not** grouped under one device: per-object `device.identifiers` + `via_device` build a
+tidy tree of small devices under a single Stashboard hub (see the publisher bullet above),
+so the count stays navigable without a monster device. A HACS **polling** integration is
+reconsidered only for the deferred **bidirectional-control** surface, where a coordinator +
+`services` / `buttons` genuinely win — not for publishing state.
 
 **Tests:** a discovery config message is published (retained) with the expected
 `unique_id`, device grouping, `state_topic`, and `availability_topic`; every
@@ -399,6 +479,77 @@ auto-discovers one device per host exposing a `binary_sensor` for each container
 running state, each Docker container's update-available, and each monitored service's
 online/offline status — values update within one check cycle, all entities go
 `unavailable` when Stashboard stops, and no manual HA YAML is required.
+
+---
+
+### Phase V9.1 — Derived-signal sensors over MQTT
+
+**Complexity:** Medium
+**Value:** Publishes the signals Stashboard **computes** (not raw telemetry) into Home
+Assistant — pending-update counts, the V6.8.1 node-alert verdicts, backup freshness, and
+whole-estate roll-ups — so HA can automate over Stashboard's own *conclusions* rather than
+re-deriving them ("notify when any node raises a crit alert", "warn if a VM hasn't been
+backed up in 7 days", "remind me on Sunday if updates are pending"). All of it is already
+on hand from the existing checkers / evaluators; **pure publish, no new collection**.
+
+**Scope:** builds on the V9.0 publisher verbatim (same broker, discovery + entity
+prefixes, per-object **device** tree, retained topics, shared availability / LWT,
+lifecycle cleanup):
+
+1. **Update counts** — a numeric `sensor` for pending updates per Docker host, per
+   Proxmox node (apt), and per monitored LXC, sourced from `DockerUpdateChecker` and the
+   Proxmox per-guest + node counts already on the cards. (V9.0 ships the boolean "update
+   available"; this adds the **number**.)
+2. **Node alerts** — a `binary_sensor` (`device_class: problem`) per PVE / PBS node
+   carrying the V6.8.1 `ProxmoxNodeAlertEvaluator` verdict (`off` = clear, `on` =
+   warn / crit), with the per-category breakdown (CPU / memory / storage / thermal /
+   SMART / network) and the worst active severity as attributes — Stashboard's own
+   alerting logic surfaced to HA.
+3. **Backup freshness** — a `sensor` per guest for the **age** (timestamp) of its most
+   recent vzdump archive, from `ListBackupsAsync` (ctime), `device_class: timestamp` so HA
+   renders "x days ago" and can alert on a stale backup.
+4. **Estate roll-ups** — a single **"Stashboard" HA device** with summary `sensor`s:
+   containers running / total, guests running / total, services online / total, hosts
+   reachable, and total updates pending across everything — the one-glance + single-trigger
+   surface.
+
+**Out of scope:** raw resource telemetry (deliberately off the roadmap — see the note
+below); control / command topics (still deferred); TLS-certificate expiry (Stashboard
+doesn't collect it yet — needs its own collection first).
+
+**Transport rationale:** derived signals are the **most** event-driven of all — an alert
+raises, an update count ticks, a backup completes — which is the strongest case for MQTT's
+push model over polling (a coordinator would re-fetch unchanged values every cycle). The
+estate **roll-up** sensors live on the **Stashboard hub device** (the `via_device` root),
+while per-node alert and per-guest backup-age entities attach to their **existing** node /
+guest devices from V9.0 — so this phase adds signals without spawning new devices or
+inflating any one of them.
+
+**Tests:** an update-count sensor publishes the expected number and refreshes on a check
+cycle; the node-alert binary_sensor flips `on` with the category attributes when the
+evaluator raises warn / crit and clears when it resolves; a guest's backup-age sensor
+reflects the newest archive's ctime; the roll-up device's counts match the underlying
+entities; every entity references the shared availability topic and clears its retained
+topics when the host / guest / service disappears.
+
+**Acceptance bar:** with the V9.0 integration on, HA additionally exposes per-host /
+per-guest pending-update counts, a per-node alert `problem` sensor reflecting the V6.8.1
+verdict, a per-guest backup-age sensor, and a single Stashboard roll-up device — all
+auto-discovered, updated within a check cycle, and going `unavailable` when Stashboard
+stops.
+
+---
+
+> **Note — raw resource telemetry is deliberately *not* on the roadmap.** Publishing
+> per-node and per-container metrics (CPU / RAM / swap / storage / temperatures / SMART /
+> network / container stats) to Home Assistant was scoped and **dropped**: the value is
+> marginal — HA users who want host / container graphs already run the tools built for it
+> (Glances, Prometheus + node-exporter / cAdvisor, the official Proxmox integration) —
+> while the cost is real: **hundreds of high-churn entities hammering the HA recorder**
+> (disk writes), a fiddly per-object device tree, and recorder-exclude documentation just
+> to keep it sane. Stashboard publishes **state + derived signals** (V9.0 / V9.1) —
+> sparse, event-driven, high-signal — and leaves raw metric graphing to the purpose-built
+> tools.
 
 ---
 

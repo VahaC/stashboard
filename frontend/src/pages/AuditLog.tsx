@@ -39,7 +39,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'console', label: 'LXC console' },
   { key: 'pmupdates', label: 'Proxmox updates' },
   { key: 'pmmonitoring', label: 'LXC monitoring' },
-  { key: 'pmcreate', label: 'LXC create' },
+  { key: 'pmcreate', label: 'Create' },
   { key: 'pmrestore', label: 'Guest restore' },
   { key: 'pmdestroy', label: 'Guest destroy' },
   { key: 'compose', label: 'Compose changes' },
@@ -330,14 +330,14 @@ function ProxmoxCreateTable({ connectionId }: { connectionId: string | null }) {
     queryFn: () => auditApi.getProxmoxCreateAudits({ connectionId }),
   })
   if (isLoading) return <StateMessage>Loading…</StateMessage>
-  if (isError) return <StateMessage>Failed to load LXC creates.</StateMessage>
-  if (!data || data.length === 0) return <StateMessage>No LXC creates recorded yet.</StateMessage>
+  if (isError) return <StateMessage>Failed to load guest creates.</StateMessage>
+  if (!data || data.length === 0) return <StateMessage>No guest creates recorded yet.</StateMessage>
   return (
     <div className="audit-table-wrap">
       <table className="audit-table">
         <thead>
           <tr>
-            <th>Host / node</th><th>Container</th><th>Template</th><th>Result</th><th>When</th>
+            <th>Host / node</th><th>Guest</th><th>Source</th><th>Result</th><th>When</th>
           </tr>
         </thead>
         <tbody>
@@ -347,7 +347,7 @@ function ProxmoxCreateTable({ connectionId }: { connectionId: string | null }) {
                 {r.connectionName ?? '(deleted)'}
                 <div className="audit-sub">{r.nodeName ?? ''}</div>
               </td>
-              <td>{r.hostname ? `${r.hostname} (CT ${r.vmId})` : `CT ${r.vmId}`}</td>
+              <td>{r.hostname ? `${r.hostname} (#${r.vmId})` : `#${r.vmId}`}</td>
               <td><code>{r.template ?? '—'}</code></td>
               <td>{r.success ? 'Created' : 'Failed'}<ErrorLine error={r.error} /></td>
               <td>{formatTimestamp(r.createdAtUtc)}</td>
