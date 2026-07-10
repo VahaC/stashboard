@@ -249,7 +249,13 @@ public sealed class OciRegistryClient(
 
                 var raw = part[(start + 1)..end].Trim();
                 if (raw.Length == 0) continue;
-                if (Uri.TryCreate(raw, UriKind.Absolute, out var abs)) return abs.ToString();
+                // Uri.TryCreate(..., UriKind.Absolute) on Linux treats a root-relative
+                // path (starting with '/') as a local file path and silently drops the
+                // query string, so only trust the parse when it actually yielded an
+                // http(s) scheme — otherwise resolve it against apiHost ourselves.
+                if (Uri.TryCreate(raw, UriKind.Absolute, out var abs)
+                    && (abs.Scheme == Uri.UriSchemeHttp || abs.Scheme == Uri.UriSchemeHttps))
+                    return abs.ToString();
                 return $"https://{apiHost}{(raw.StartsWith('/') ? raw : "/" + raw)}";
             }
         }
