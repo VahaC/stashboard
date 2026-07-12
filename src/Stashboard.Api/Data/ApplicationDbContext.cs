@@ -47,6 +47,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<ProxmoxCreateAuditEntity> ProxmoxCreateAudits => Set<ProxmoxCreateAuditEntity>();
     public DbSet<ProxmoxCloneAuditEntity> ProxmoxCloneAudits => Set<ProxmoxCloneAuditEntity>();
     public DbSet<ProxmoxRestoreAuditEntity> ProxmoxRestoreAudits => Set<ProxmoxRestoreAuditEntity>();
+    public DbSet<ProxmoxConfigAuditEntity> ProxmoxConfigAudits => Set<ProxmoxConfigAuditEntity>();
     public DbSet<ProxmoxNodeAlertSettingsEntity> ProxmoxNodeAlertSettings => Set<ProxmoxNodeAlertSettingsEntity>();
     public DbSet<ProxmoxNodeAlertStateEntity> ProxmoxNodeAlertStates => Set<ProxmoxNodeAlertStateEntity>();
 
@@ -602,6 +603,27 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .HasForeignKey(s => s.ProxmoxConnectionId)
                 .OnDelete(DeleteBehavior.SetNull);
             // Owner cascade — deleting a user removes their restore history.
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.InitiatedByUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ProxmoxConfigAuditEntity>(e =>
+        {
+            // V8.5 — audit log for guest config edits (LXC + VM). Same shape and
+            // conventions as the V6.13.1 create audit table: per-user history and
+            // per-host / per-guest history (newest first applied at query time).
+            e.HasIndex(s => new { s.InitiatedByUserId, s.CreatedAtUtc });
+            e.HasIndex(s => new { s.ProxmoxConnectionId, s.VmId, s.CreatedAtUtc });
+            // Keep the audit row when the host is deleted — the host details are
+            // denormalised onto the row precisely so the history survives. SetNull
+            // mirrors the create / clone / restore-audit convention.
+            e.HasOne<ProxmoxConnectionEntity>()
+                .WithMany()
+                .HasForeignKey(s => s.ProxmoxConnectionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            // Owner cascade — deleting a user removes their config-edit history.
             e.HasOne<UserEntity>()
                 .WithMany()
                 .HasForeignKey(s => s.InitiatedByUserId)

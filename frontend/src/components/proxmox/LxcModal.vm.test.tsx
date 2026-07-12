@@ -25,10 +25,18 @@ const vmDetail: ProxmoxLxcDetail = {
   mounts: [{ key: 'scsi0', value: 'local-lvm:vm-200-disk-0,size=64G' }],
   cpuFraction: 0.1, memUsedBytes: 100, memMaxBytes: 8 * 1024 * 1024 * 1024,
   diskUsedBytes: 1, diskMaxBytes: 64 * 1024 * 1024 * 1024, uptimeSeconds: 100,
+  // V8.5 — VM-editable fields.
+  sockets: 1, agent: true, bootOrder: 'scsi0;ide2;net0', description: null, tags: null, balloonBytes: null,
 }
 
 function renderModal(initialTab: 'overview' | 'config' = 'overview') {
-  mockApi.get.mockResolvedValue({ data: vmDetail })
+  // Route reads by path: the config tab fetches the detail, while the VM editor's
+  // ISO / storage dropdowns expect arrays.
+  mockApi.get.mockImplementation((url: string) => {
+    if (url.includes('/config')) return Promise.resolve({ data: vmDetail })
+    if (url.includes('/isos') || url.includes('/node/storage')) return Promise.resolve({ data: [] })
+    return Promise.resolve({ data: [] })
+  })
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
   return render(
     <QueryClientProvider client={qc}>
@@ -81,14 +89,40 @@ describe('LxcModal — QEMU VM variant (V6.14)', () => {
     )
   })
 
-  it('reads the VM config from the qemu endpoint and is read-only (no Edit)', async () => {
+  it('reads the VM config from the qemu endpoint and is now editable (V8.5)', async () => {
     renderModal('config')
     // The Config tab fetches from the qemu/* path, not lxc/*.
     await screen.findByText('Disks')
     expect(mockApi.get).toHaveBeenCalledWith(
       expect.stringContaining('/qemu/200/config'),
     )
-    // VM config is read-only — no Edit affordance.
-    expect(screen.queryByRole('button', { name: /Edit/ })).toBeNull()
+    // V8.5 — the VM Config tab is now writable: an Edit affordance is present.
+    expect(screen.getByRole('button', { name: /Edit/ })).toBeInTheDocument()
+  })
+
+  it('opens the VM config editor and PUTs only the changed keys to the qemu config endpoint', async () => {
+    mockApi.put.mockResolvedValue({ data: {} })
+    renderModal('config')
+    await screen.findByText('Disks')
+
+    fireEvent.click(screen.getByRole('button', { name: /Edit/ }))
+    // Change just the cores-per-socket value.
+    const cores = await screen.findByPlaceholderText('e.g. 2')
+    fireEvent.change(cores, { target: { value: '8' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /Review changes/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Apply/ }))
+
+    await waitFor(() =>
+      expect(mockApi.put).toHaveBeenCalledWith(
+        expect.stringContaining('/qemu/200/config'),
+        expect.objectContaining({ cores: 8 }),
+      ),
+    )
+    // Only the changed key is sent — memory / name / sockets are untouched.
+    const body = mockApi.put.mock.calls[0][1]
+    expect(body.memoryMib).toBeUndefined()
+    expect(body.name).toBeUndefined()
+    expect(body.sockets).toBeUndefined()
   })
 })

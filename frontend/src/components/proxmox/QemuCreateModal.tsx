@@ -16,26 +16,12 @@ import {
   useProxmoxNodeStorage,
 } from '@/lib/proxmox-queries'
 import type { ProxmoxConnection, ProxmoxQemuCreate } from '@/lib/types'
+import { OS_TYPES } from '@/lib/proxmox-qemu-config'
 import { getApiErrorMessage } from '@/lib/utils'
 // Reuse the Docker container modal's styles verbatim so the create modal is the
 // same surface as the LXC create / restore / clone modals, not a parallel one.
 import '@/styles/docker-instances.css'  // .container-modal-* shell
 import '@/styles/service-modal.css'     // .service-modal-* form fields
-
-/** Curated QEMU OS-type hints (Proxmox `ostype`), friendly label → value. Mirrors
- *  the set the Proxmox web UI offers; the value is what `POST …/qemu` accepts. */
-const OS_TYPES: { value: string; label: string }[] = [
-  { value: 'l26', label: 'Linux (6.x / 5.x / 4.x / 3.x / 2.6 kernel)' },
-  { value: 'l24', label: 'Linux 2.4 kernel' },
-  { value: 'win11', label: 'Windows 11 / 2022 / 2025' },
-  { value: 'win10', label: 'Windows 10 / 2016 / 2019' },
-  { value: 'win8', label: 'Windows 8 / 2012 / 2012r2' },
-  { value: 'win7', label: 'Windows 7 / 2008r2' },
-  { value: 'wvista', label: 'Windows Vista / 2008' },
-  { value: 'wxp', label: 'Windows XP / 2003' },
-  { value: 'solaris', label: 'Solaris / OpenIndiana' },
-  { value: 'other', label: 'Other' },
-]
 
 /**
  * V8.4 — New VM. Opened from the Proxmox page's per-host header, this modal

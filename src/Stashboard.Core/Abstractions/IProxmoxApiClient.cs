@@ -112,6 +112,84 @@ public sealed record ProxmoxLxcRootfsChange(
     string? MountOptions = null,
     string? Extra = null);
 
+/// <summary>V8.5 — the editable subset of a QEMU/KVM VM's config, written via
+/// <c>PUT …/qemu/{vmid}/config</c>. The VM analogue of
+/// <see cref="ProxmoxLxcConfigUpdate"/>: every scalar is nullable (a <c>null</c>
+/// means "leave this key untouched", so only the changed keys are sent), and the
+/// structured <see cref="Networks"/> / <see cref="Disks"/> / <see cref="Cdrom"/>
+/// edits are intentful add/update/remove operations (a <c>null</c> list means "no
+/// changes here", never "clear everything"). Memory / balloon are in MiB (Proxmox's
+/// native config unit). Disk <em>resize</em> and <em>move</em> are not here — they go
+/// through dedicated endpoints (<see cref="IProxmoxApiClient.ResizeQemuDiskAsync"/> /
+/// <see cref="IProxmoxApiClient.MoveQemuDiskAsync"/>); the <see cref="Disks"/> list
+/// only re-emits a disk line to toggle the safe flags (discard / ssd / cache).</summary>
+public sealed record ProxmoxQemuConfigUpdate(
+    string? Name = null,
+    int? Cores = null,
+    int? Sockets = null,
+    long? MemoryMib = null,
+    /// <summary>Balloon minimum (<c>balloon</c>) in MiB; <c>0</c> disables
+    /// ballooning. <c>null</c> ⇒ leave untouched.</summary>
+    long? BalloonMib = null,
+    bool? Onboot = null,
+    string? OsType = null,
+    /// <summary>The QEMU guest-agent toggle (<c>agent</c>).</summary>
+    bool? Agent = null,
+    /// <summary>Boot order as a semicolon-separated device list (e.g.
+    /// <c>scsi0;ide2;net0</c>); written as <c>boot=order=…</c>. <c>null</c> ⇒
+    /// leave untouched.</summary>
+    string? BootOrder = null,
+    string? Description = null,
+    string? Tags = null,
+    IReadOnlyList<ProxmoxQemuNetChange>? Networks = null,
+    IReadOnlyList<ProxmoxQemuDiskChange>? Disks = null,
+    ProxmoxQemuCdromChange? Cdrom = null);
+
+/// <summary>V8.5 — one intentful change to a QEMU <c>net&lt;n&gt;</c> interface.
+/// Mirrors <see cref="ProxmoxLxcNetChange"/> but a VM NIC is shaped differently: the
+/// first token is the device <see cref="Model"/> (<c>virtio</c> / <c>e1000</c> / …)
+/// carrying the optional <see cref="MacAddr"/> as its value
+/// (<c>virtio=AA:BB:CC:DD:EE:FF</c>), and a VM has no in-config IP (the guest owns
+/// that). <see cref="Key"/> empty ⇒ add (next free <c>net&lt;n&gt;</c>);
+/// <see cref="Remove"/> ⇒ <c>delete=net&lt;n&gt;</c>. Set <see cref="Raw"/> for the
+/// advanced verbatim path; <see cref="Extra"/> preserves unmodelled options.</summary>
+public sealed record ProxmoxQemuNetChange(
+    string Key,
+    bool Remove = false,
+    string? Raw = null,
+    string? Model = null,     // virtio / e1000 / e1000e / rtl8139 / vmxnet3 …
+    string? MacAddr = null,
+    string? Bridge = null,
+    int? Tag = null,          // VLAN tag
+    bool? Firewall = null,
+    int? Rate = null,         // MB/s
+    int? Mtu = null,
+    int? Queues = null,
+    bool? LinkDown = null,
+    string? Extra = null);
+
+/// <summary>V8.5 — a flag-only edit to an existing VM disk (<c>scsi&lt;n&gt;</c> /
+/// <c>virtio&lt;n&gt;</c> / <c>sata&lt;n&gt;</c> / …). The disk line is re-emitted
+/// preserving its <see cref="Volume"/> + <see cref="Size"/> with only the safe flags
+/// toggled — <em>growing</em> the disk and <em>moving</em> it to another storage are
+/// out of band (dedicated endpoints). Set <see cref="Raw"/> for the advanced verbatim
+/// path; <see cref="Extra"/> preserves unmodelled options.</summary>
+public sealed record ProxmoxQemuDiskChange(
+    string Key,
+    string? Raw = null,
+    string? Volume = null,    // positional volid (preserved, never rewritten here)
+    string? Size = null,      // size= (preserved; grow is via ResizeQemuDiskAsync)
+    bool? Discard = null,     // discard=on
+    bool? Ssd = null,         // ssd=1
+    string? Cache = null,     // cache=none / writeback / writethrough / …
+    string? Extra = null);
+
+/// <summary>V8.5 — swap or eject the VM's install CD-ROM (<c>ide2</c>). A non-empty
+/// <see cref="Volid"/> mounts that ISO (<c>ide2=&lt;volid&gt;,media=cdrom</c>); a
+/// <c>null</c> / empty <see cref="Volid"/> ejects the media but keeps the drive
+/// (<c>ide2=none,media=cdrom</c>). Reuses the V8.4 ISO dropdown for the volid.</summary>
+public sealed record ProxmoxQemuCdromChange(string? Volid = null);
+
 /// <summary>
 /// V6.13.1 — the minimum-viable spec for <strong>creating</strong> an LXC via
 /// <c>POST /nodes/{node}/lxc</c>. Everything the create form collects, decoupled
@@ -309,7 +387,17 @@ public sealed record ProxmoxLxcDetail(
     long? MemMaxBytes,
     long? DiskUsedBytes,
     long? DiskMaxBytes,
-    long? UptimeSeconds);
+    long? UptimeSeconds,
+    // ── V8.5 — QEMU-only editable fields (null for an LXC). For a VM
+    //    <see cref="Cores"/> carries the cores-<em>per-socket</em> value and
+    //    <see cref="Sockets"/> the socket count (vCPU = cores × sockets); for an
+    //    LXC <see cref="Cores"/> is the whole vCPU count and these stay null. ──
+    int? Sockets = null,
+    bool? Agent = null,
+    string? BootOrder = null,
+    string? Description = null,
+    string? Tags = null,
+    long? BalloonBytes = null);
 
 /// <summary>V6.3 — one RRD sample for an LXC (<c>GET …/lxc/{vmid}/rrddata</c>).
 /// <paramref name="Time"/> is a unix second; the rate fields are bytes/s
@@ -749,6 +837,37 @@ public interface IProxmoxApiClient
     /// <paramref name="update"/> is set the call is a no-op.</summary>
     Task UpdateLxcConfigAsync(
         ProxmoxConnectionProfile profile, int vmId, ProxmoxLxcConfigUpdate update, CancellationToken cancellationToken = default);
+
+    /// <summary>V8.5 — writes the editable subset of a QEMU/KVM VM's config via
+    /// <c>PUT …/qemu/{vmid}/config</c>. The VM analogue of
+    /// <see cref="UpdateLxcConfigAsync"/>: only the non-null scalars and the supplied
+    /// network / disk-flag / CD-ROM operations on <paramref name="update"/> are sent
+    /// (Proxmox merges them; untouched keys stay as-is). A network <em>add</em> (empty
+    /// key) is assigned the next free <c>net&lt;n&gt;</c> after reading the current
+    /// config; removes are emitted as a single <c>delete=</c> list. Needs the API
+    /// token to hold <c>VM.Config.*</c> on the host. When nothing on
+    /// <paramref name="update"/> is set the call is a no-op.</summary>
+    Task UpdateQemuConfigAsync(
+        ProxmoxConnectionProfile profile, int vmId, ProxmoxQemuConfigUpdate update, CancellationToken cancellationToken = default);
+
+    /// <summary>V8.5 — grows an existing VM disk via
+    /// <c>PUT …/qemu/{vmid}/resize</c>. <paramref name="size"/> is a grow increment
+    /// (<c>+8G</c>) — the resize endpoint is grow-only (shrinking is unsafe), and the
+    /// <c>+</c> form makes that structural. A host rejection surfaces its message as an
+    /// <see cref="HttpRequestException"/>. Needs <c>VM.Config.Disk</c>.</summary>
+    Task ResizeQemuDiskAsync(
+        ProxmoxConnectionProfile profile, int vmId, string disk, string size, CancellationToken cancellationToken = default);
+
+    /// <summary>V8.5 — moves a VM disk to another storage via
+    /// <c>POST …/qemu/{vmid}/move_disk</c>, then polls the returned task UPID to a
+    /// terminal state (Proxmox copies asynchronously, like a clone). When
+    /// <paramref name="deleteSource"/> is <c>true</c> the source volume is removed once
+    /// the copy completes (a real move); otherwise it's kept as an unused volume.
+    /// A host rejection surfaces its message as an <see cref="HttpRequestException"/>.
+    /// Needs <c>VM.Config.Disk</c> + storage access.</summary>
+    Task MoveQemuDiskAsync(
+        ProxmoxConnectionProfile profile, int vmId, string disk, string storage, string? format,
+        bool deleteSource, CancellationToken cancellationToken = default);
 
     // ── V6.8 — PVE node card ─────────────────────────────────────────────────
 

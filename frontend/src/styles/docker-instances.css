@@ -1429,7 +1429,10 @@
 .container-modal-edit-grid .proxmox-select {
   display: block;
   width: 100%;
-  margin-top: 0.25rem;
+  /* margin-top: 0.25rem; */
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  background: var(--background);
 }
 
 /* V6.13.1 — the create form's "Template & root filesystem" row: Template should

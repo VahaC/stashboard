@@ -5,6 +5,44 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [8.5.0] — 2026-06-22
+
+### Added
+- **Edit a VM's parameters (V8.5).** The VM analogue of the LXC config editor (V6.5
+  scalars + V6.9 structured network). The VM **Config** tab — read-only since V6.14 — is
+  now **writable**, reusing the LXC edit scaffolding (the per-field "null = leave
+  untouched" merge, the structured row editors, a single **Save** that commits only the
+  changed keys, `PUT …/config`, and a change-audit) rather than a parallel system.
+- **QEMU config write (V8.5).** A new `ProxmoxQemuConfigUpdate` spec +
+  `UpdateQemuConfigAsync` (`PUT /nodes/{node}/qemu/{vmid}/config`, sending only changed
+  keys + a single `delete=` list) + `ProxmoxQemuConfigValidator`. Covers the scalars
+  (name, cores / sockets, memory + optional balloon minimum, `onboot`, `ostype`, the QEMU
+  **guest-agent** toggle, boot order, description / tags), structured `net<n>`
+  **add / update / remove** via a new **QEMU net codec** (`ProxmoxQemuConfigCodec`,
+  alongside the LXC one — a VM NIC's first token is the device model carrying the MAC),
+  and an `ide2` **CD-ROM** swap / eject reusing the V8.4 ISO list.
+- **Disk grow & move (V8.5).** `ResizeQemuDiskAsync` (`PUT …/qemu/{vmid}/resize`,
+  grow-only — the size is a `+NG` increment so a shrink can't reach the host) and
+  `MoveQemuDiskAsync` (`POST …/qemu/{vmid}/move_disk`, task-polled like a clone), plus the
+  safe disk flags (discard / SSD / cache) re-emitted on the Config Save. Adding / removing
+  a whole disk is deferred.
+- **Guest config-edit audit (V8.5).** A new `ProxmoxConfigAuditEntity` /
+  `ProxmoxConfigAudits` table records every applied config edit / resize / move (who,
+  when, host, node, vmid, guest kind, what changed, result), surfaced on the Audit page's
+  new **Guest config** tab (`GET /api/proxmox/config/sessions`).
+- **Writable VM Config tab (V8.5).** The read-only tab gains the same edit affordances the
+  LXC modal has — inline scalar editing, a structured NIC row editor (the QEMU net codec),
+  the ide2 ISO dropdown, and per-disk grow / move / flag controls — with client-side
+  guards mirroring the server validator. No second Save button, no auto-apply.
+
+### Changed
+- **LXC config edit now audited (V8.5).** The V6.5 / V6.9 LXC config write was retrofitted
+  to write to the shared `ProxmoxConfigAudits` trail, so container and VM config edits
+  share one history (real parity, fulfilling the "mirroring the LXC config-edit audit"
+  goal — the LXC edit previously wrote no audit row). A VM's read model
+  (`GetQemuDetailAsync`) now surfaces the editable scalars (raw cores-per-socket +
+  sockets, agent, boot order, balloon, description, tags).
+
 ## [8.4.0] — 2026-06-21
 
 ### Added
