@@ -46,7 +46,7 @@ export function LxcLogsPanel({
     return (
       <DisabledState
         title="LXC logs are disabled on this server"
-        hint="An operator must enable the LXC console at Settings → LXC console. The live log tail uses the same SSH channel, so it shares that switch."
+        hint="An operator must enable the guest console at Settings → Guest console. The live log tail uses the same SSH channel, so it shares that switch."
       />
     )
   }
@@ -54,7 +54,7 @@ export function LxcLogsPanel({
     return (
       <DisabledState
         title="LXC logs are not enabled for this host"
-        hint="Turn on 'Allow LXC console' in this Proxmox host's settings (Edit host) to tail its containers' journals."
+        hint="Turn on 'Allow guest console' in this Proxmox host's settings (Edit host) to tail its containers' journals."
       />
     )
   }

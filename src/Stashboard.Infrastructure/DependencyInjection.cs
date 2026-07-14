@@ -181,6 +181,10 @@ public static class DependencyInjection
         services.AddSingleton<IProxmoxUpdateChecker, ProxmoxUpdateChecker>();
         // V6.7.1 — one-click "Update now" applier (streams apt over SSH).
         services.AddSingleton<IProxmoxUpdateApplier, ProxmoxSshUpdateApplier>();
+        // V8.6 — server-side VNC relay for the browser VM console: mints the
+        // vncproxy session and bridges the raw RFB vncwebsocket to the browser,
+        // keeping the API token server-side.
+        services.AddSingleton<IProxmoxVncRelay, ProxmoxVncRelay>();
         // V6.11 — webhook-triggered scan queue (the Proxmox analogue of the
         // Docker webhook check queue). Singleton process-local buffer; the
         // webhook token reuses the Docker token generator above.

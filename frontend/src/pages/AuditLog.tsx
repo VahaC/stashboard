@@ -37,7 +37,7 @@ type TabKey = 'host' | 'exec' | 'console' | 'pmupdates' | 'pmmonitoring' | 'pmcr
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'host', label: 'Host terminal' },
   { key: 'exec', label: 'Container exec' },
-  { key: 'console', label: 'LXC console' },
+  { key: 'console', label: 'Guest console' },
   { key: 'pmupdates', label: 'Proxmox updates' },
   { key: 'pmmonitoring', label: 'LXC monitoring' },
   { key: 'pmcreate', label: 'Create' },

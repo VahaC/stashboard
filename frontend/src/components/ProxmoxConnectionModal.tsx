@@ -419,10 +419,10 @@ export function ProxmoxConnectionModal({
               <PermRow
                 checked={allowConsole}
                 onChange={setAllowConsole}
-                label={isPbs ? 'Allow node console' : 'Allow LXC console'}
+                label={isPbs ? 'Allow node console' : 'Allow guest console'}
                 hint={isPbs
-                  ? 'Opens a browser shell on the node itself (Console tab) over SSH. Needs the SSH credentials above + Settings → LXC console.'
-                  : 'Opens a browser shell inside a container (Console tab) by SSHing to the host and running pct exec. Needs the SSH credentials above + Settings → LXC console.'}
+                  ? 'Opens a browser shell on the node itself (Console tab) over SSH. Needs the SSH credentials above + Settings → Guest console.'
+                  : 'Opens a browser console from a guest\'s Console tab — an LXC shell (SSH + pct exec, needs the SSH credentials above) or a VM\'s VNC screen (no SSH; relayed over the API token). Needs Settings → Guest console.'}
               />
               <PermRow
                 checked={allowUpdates}

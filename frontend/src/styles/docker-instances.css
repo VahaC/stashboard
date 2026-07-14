@@ -1787,6 +1787,73 @@
   justify-content: center;
 }
 
+/* V8.6 — VM console enlarge modes. Two buttons:
+   • "Fill the window" maximises the whole modal to the viewport — done on the
+     dialog element itself (a `position:fixed` child can't escape the dialog's
+     centring `transform`, so we neutralise that transform on the ancestor).
+   • "Full screen" uses the real Fullscreen API on the panel (which ignores
+     ancestor transforms).
+   In both, the noVNC viewport grows to take the space left under the toolbar. */
+.container-modal-content.container-modal-content--vnc-max {
+  left: 0;
+  top: 0;
+  transform: none;
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+}
+
+/* Fill-window shows ONLY the console panel (like the Fullscreen API does) — hide
+   the modal header, the tab nav and the close button. The un-maximise button in
+   the panel toolbar is the way back. */
+.container-modal-content--vnc-max > .ui-dialog-header,
+.container-modal-content--vnc-max > .container-modal-tabs,
+.container-modal-content--vnc-max > .ui-dialog-close {
+  display: none;
+}
+
+.container-modal-content--vnc-max .container-modal-body {
+  padding: 0.75rem;
+}
+
+/* Chain flex from the maximised modal body down to the noVNC viewport so it fills
+   exactly the space under the header / tabs / toolbar — no magic-number gap. The
+   active tab wrapper (the seenConsole `<div>`, which has no class) is made a flex
+   column too. */
+.container-modal-content--vnc-max .container-modal-body,
+.container-modal-content--vnc-max .container-modal-body > div:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.container-modal-content--vnc-max .host-terminal-panel--expanded {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.container-modal-content--vnc-max .host-terminal-panel--expanded .host-terminal-viewport {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+.host-terminal-panel:fullscreen {
+  width: 100vw;
+  height: 100dvh;
+  padding: 0.75rem;
+  background: var(--background);
+}
+
+.host-terminal-panel:fullscreen .host-terminal-viewport {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
 .host-terminal-disabled {
   display: flex;
   flex-direction: column;

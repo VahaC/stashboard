@@ -230,7 +230,7 @@ public class ProxmoxLogsController(
         if (!globalEnabled)
             return StatusCode(StatusCodes.Status403Forbidden, new
             {
-                error = "LXC logs are disabled on this server. Enable the LXC console on the Settings page (Settings → LXC console).",
+                error = "LXC logs are disabled on this server. Enable the guest console on the Settings page (Settings → Guest console).",
             });
 
         if (connection is null)
@@ -239,7 +239,7 @@ public class ProxmoxLogsController(
         if (!connection.AllowConsole)
             return StatusCode(StatusCodes.Status403Forbidden, new
             {
-                error = "LXC logs are not enabled for this host. Turn on 'Allow LXC console' in the host settings.",
+                error = "LXC logs are not enabled for this host. Turn on 'Allow guest console' in the host settings.",
             });
 
         return null;

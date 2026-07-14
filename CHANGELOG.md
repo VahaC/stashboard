@@ -5,6 +5,37 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [8.6.0] — 2026-06-23
+
+### Added
+- **Browser VM console (V8.6).** The VM analogue of the V6.6 LXC console, closing the
+  last LXC-only diagnostic gap. A QEMU/KVM VM has no `pct exec` and no guaranteed SSH /
+  guest-agent, so the SSH-PTY transport can't be reused; instead a VM's **Console** tab
+  now renders the VM's **built-in VNC screen** with **noVNC** — the same screen the
+  Proxmox web UI opens — with full keyboard / mouse control and a fit-to-window canvas.
+- **Server-side VNC relay (token never reaches the browser).** Stashboard calls
+  `POST /nodes/{node}/qemu/{vmid}/vncproxy` (`websocket=1`) server-side, then opens the
+  Proxmox `vncwebsocket` from the backend (API token in the `Authorization` header, TLS
+  to the host) and bridges the raw **RFB** stream to the browser **byte-for-byte**. The
+  browser only ever receives the ephemeral, one-time *vncproxy* ticket (the RFB password
+  the guest's VNC server challenges for) — **never the Proxmox API token**.
+- **Reuses the V6.6 console scaffold verbatim.** Same DB-backed global switch
+  (**Settings → LXC console**), same per-host **Allow LXC console** opt-in, same
+  single-use ticket / WebSocket-upgrade dance, same shared concurrency caps and idle
+  timeout (`STASHBOARD_Stashboard__ProxmoxConsole__*`), and the same audit table
+  (`ProxmoxConsoleSessions`, Audit page → Console tab) — VM VNC sessions are recorded
+  exactly like LXC shell sessions (who / when / host / node / guest / bytes / why it
+  ended). For a VM the **SSH-configured requirement is dropped** (VNC uses the API token,
+  not SSH); the gate is the global switch + per-host opt-in + a **running** VM.
+
+### Notes
+- **Feasibility-gated, with a clean fallback.** If a host's Proxmox version refuses
+  token-authenticated `vncwebsocket` relay (or the VM has no VGA console), the Console tab
+  shows a clear *"console unavailable on this host"* message instead of a hung canvas — it
+  never leaves a broken socket open.
+- **Out of scope:** SPICE (needs a native `virt-viewer`), audio / clipboard / USB
+  redirection, and the serial (`termproxy`) console for VMs without a VGA device.
+
 ## [8.5.0] — 2026-06-22
 
 ### Added
