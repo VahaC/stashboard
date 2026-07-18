@@ -20,6 +20,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<ProxmoxCloneSettingsEntity> ProxmoxCloneSettings => Set<ProxmoxCloneSettingsEntity>();
     public DbSet<ProxmoxRestoreSettingsEntity> ProxmoxRestoreSettings => Set<ProxmoxRestoreSettingsEntity>();
     public DbSet<HealthCheckSettingsEntity> HealthCheckSettings => Set<HealthCheckSettingsEntity>();
+    public DbSet<MqttSettingsEntity> MqttSettings => Set<MqttSettingsEntity>();
 
     public DbSet<WebResourceEntity> WebResources => Set<WebResourceEntity>();
     public DbSet<CredentialEntity> Credentials => Set<CredentialEntity>();
@@ -93,6 +94,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         // V5.6 — single-row, app-wide health-check tuning (see HealthCheckSettingsEntity.SingletonId).
         builder.Entity<HealthCheckSettingsEntity>();
+
+        // V9.0 — single-row, app-wide MQTT / Home Assistant integration config (see MqttSettingsEntity.SingletonId).
+        builder.Entity<MqttSettingsEntity>();
 
         builder.Entity<RefreshTokenEntity>(e =>
         {

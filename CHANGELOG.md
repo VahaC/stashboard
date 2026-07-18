@@ -5,6 +5,50 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [9.0.0] — 2026-06-24
+
+### Added
+- **MQTT publisher + Home Assistant Discovery (V9.0).** Stashboard can now publish the
+  signals it already collects to your existing MQTT broker (e.g. Mosquitto) as Home
+  Assistant **auto-discovered** entities — no HA YAML, no HACS add-on. Three
+  `binary_sensor` families ship: each Docker container's and Proxmox guest's **running**
+  state, each Docker container's **image-update available**, and each monitored service's
+  **online/offline** health. This is **publish-only** (read): Home Assistant observes, it
+  can't control anything.
+- **App-wide MQTT settings (Settings → Home Assistant).** Mirrors the editable-SMTP model:
+  broker host / port, TLS toggle (+ accept-untrusted-cert), username + password, a client
+  id, a configurable **discovery prefix** (default `homeassistant`) and **entity prefix**
+  (default `stashboard`) — DB-backed, the password **encrypted at rest** and never returned
+  (presence flag only). A master switch, **off by default**. Changes apply without a
+  restart. A **Test connection** button verifies the broker is reachable.
+- **A background publisher** (`MqttPublisherService`) holding one long-lived broker
+  connection. It publishes **retained** HA-Discovery config topics + retained state topics,
+  grouping entities into **one HA device per real object** (each Docker container, Proxmox
+  guest and service is its own device — a container and an LXC sharing a name stay
+  separate), linked by `via_device` to a single **Stashboard** hub device. A service's
+  health sensor joins the device of the container/guest it is **linked** to, so a service's
+  running + update + health sit together.
+- **Prefixed, collision-proof entities.** Every entity's discovery node id, object_id and
+  unique_id start with the configured entity prefix (e.g.
+  `binary_sensor.stashboard_jellyfin_running`), so they're trivial to spot, group and filter
+  in Home Assistant and never collide with other MQTT producers. Changing the prefix
+  re-publishes everything under the new ids and clears the old retained topics.
+- **Availability / Last Will.** A single availability topic is registered as the broker
+  **Last Will** and referenced by every entity, so all entities flip to `unavailable` the
+  moment Stashboard stops or the connection drops. Lifecycle cleanup clears the retained
+  discovery + state topics of a container / guest / service that disappears, so HA removes
+  the entity rather than leaving an orphan.
+- **Event-driven + periodic publishing.** State is republished on a status transition and
+  not spammed on an unchanged tick; a periodic full refresh keeps a long-lived HA in sync,
+  and because state topics are retained, HA gets the last value immediately on (re)connect.
+  The publisher reconnects after a broker drop.
+- **Backup/restore.** The MQTT config (password encrypted) is included in
+  `BackupService` export/import and its round-trip test.
+
+### Changed
+- `BackupService` export/import now carries the app-wide MQTT integration config
+  (password decrypted on export, re-encrypted on import — portable across instances).
+
 ## [8.6.0] — 2026-06-23
 
 ### Added

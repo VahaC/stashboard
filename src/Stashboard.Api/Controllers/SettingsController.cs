@@ -5,8 +5,10 @@ using Stashboard.Api.Services.ContainerExec;
 using Stashboard.Api.Services.HealthCheckSettings;
 using Stashboard.Api.Services.HostShell;
 using Stashboard.Api.Services.ImagePrune;
+using Stashboard.Api.Services.Mqtt;
 using Stashboard.Api.Services.Proxmox;
 using Stashboard.Api.Services.ProxmoxConsole;
+using Stashboard.Core.Abstractions;
 
 namespace Stashboard.Api.Controllers;
 
@@ -33,7 +35,9 @@ public class SettingsController(
     IProxmoxCloneSettingsService proxmoxClone,
     IProxmoxRestoreSettingsService proxmoxRestore,
     IImagePruneSettingsService imagePrune,
-    IHealthCheckSettingsService healthCheck) : ControllerBase
+    IHealthCheckSettingsService healthCheck,
+    IMqttSettingsService mqtt,
+    IMqttBrokerClient mqttBroker) : ControllerBase
 {
     /// <summary>The host-terminal master switch (the global gate for V5.3).</summary>
     [HttpGet("host-shell")]
@@ -165,5 +169,50 @@ public class SettingsController(
         if (!ModelState.IsValid) return ValidationProblem(ModelState);
         await healthCheck.UpdateAsync(request, cancellationToken);
         return NoContent();
+    }
+
+    /// <summary>V9.0 — the app-wide MQTT / Home Assistant integration settings. The
+    /// broker password is never returned (presence flag only).</summary>
+    [HttpGet("mqtt")]
+    public async Task<ActionResult<MqttSettingsResponse>> GetMqtt(CancellationToken cancellationToken)
+        => Ok(await mqtt.GetAsync(cancellationToken));
+
+    [HttpPut("mqtt")]
+    public async Task<IActionResult> UpdateMqtt(
+        [FromBody] UpdateMqttSettingsRequest request, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid) return ValidationProblem(ModelState);
+        await mqtt.UpdateAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V9.0 — verifies Stashboard can reach the configured broker (a quick
+    /// connect/disconnect with the saved credentials), so the user gets immediate
+    /// feedback rather than waiting on the background publisher's next cycle.</summary>
+    [HttpPost("mqtt/test")]
+    public async Task<ActionResult<MqttTestResponse>> TestMqtt(CancellationToken cancellationToken)
+    {
+        var settings = await mqtt.GetResolvedAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(settings.Host))
+            return Ok(new MqttTestResponse(false, "No broker host configured."));
+
+        var availability = MqttDiscoveryBuilder.AvailabilityTopic(settings.EntityPrefix);
+        var connection = new MqttConnectionSettings(
+            settings.Host, settings.Port, settings.UseTls, settings.AllowUntrustedTls,
+            string.IsNullOrEmpty(settings.Username) ? null : settings.Username,
+            string.IsNullOrEmpty(settings.Password) ? null : settings.Password,
+            // A distinct client id so the probe never disconnects the live publisher.
+            $"{settings.ClientId}-test", availability,
+            MqttDiscoveryBuilder.OnlinePayload, MqttDiscoveryBuilder.OfflinePayload);
+        try
+        {
+            await mqttBroker.ConnectAsync(connection, cancellationToken);
+            await mqttBroker.DisconnectAsync(cancellationToken);
+            return Ok(new MqttTestResponse(true, null));
+        }
+        catch (Exception ex)
+        {
+            return Ok(new MqttTestResponse(false, ex.Message));
+        }
     }
 }

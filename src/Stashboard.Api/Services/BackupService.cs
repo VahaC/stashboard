@@ -55,6 +55,10 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
     public async Task<byte[]> ExportAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        // V9.0 — app-wide MQTT / Home Assistant integration config (singleton, password
+        // encrypted at rest). Included so a restore brings the integration back.
+        var mqtt = await db.MqttSettings.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == MqttSettingsEntity.SingletonId, cancellationToken);
         var categories = await db.Categories.AsNoTracking().Where(c => c.UserId == userId).ToListAsync(cancellationToken);
         var tags = await db.Tags.AsNoTracking().Where(t => t.UserId == userId).ToListAsync(cancellationToken);
         var connections = await db.DockerConnections.AsNoTracking().Where(c => c.UserId == userId).ToListAsync(cancellationToken);
@@ -149,7 +153,10 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             ServiceProxmoxLinks: serviceProxmoxLinks
                 .Select(l => new WebResourceProxmoxGuestLinkDto(l.WebResourceId, l.ProxmoxConnectionId, l.VmId)).ToList(),
             ContainerProxmoxLinks: containerProxmoxLinks
-                .Select(l => new ContainerProxmoxLinkDto(l.DockerConnectionId, l.ContainerName, l.ProxmoxConnectionId, l.VmId)).ToList());
+                .Select(l => new ContainerProxmoxLinkDto(l.DockerConnectionId, l.ContainerName, l.ProxmoxConnectionId, l.VmId)).ToList(),
+            Mqtt: mqtt is null ? null : new MqttDto(
+                mqtt.Enabled, mqtt.Host, mqtt.Port, mqtt.UseTls, mqtt.AllowUntrustedTls,
+                mqtt.Username, Dec(mqtt.PasswordEncrypted), mqtt.ClientId, mqtt.DiscoveryPrefix, mqtt.EntityPrefix));
 
         return JsonSerializer.SerializeToUtf8Bytes(dto, JsonOpts);
     }
@@ -175,6 +182,30 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 user.TelegramChatId = settings.TelegramChatId;
                 user.TelegramNotificationsEnabled = settings.TelegramNotificationsEnabled;
             }
+        }
+
+        // ── V9.0 — app-wide MQTT integration config (singleton upsert) ──
+        // Re-encrypted on import so it's portable across instances with different
+        // encryption keys, mirroring every other secret in this service.
+        if (dto.Mqtt is { } m)
+        {
+            var mqtt = await db.MqttSettings.FirstOrDefaultAsync(x => x.Id == MqttSettingsEntity.SingletonId, cancellationToken);
+            if (mqtt is null)
+            {
+                mqtt = new MqttSettingsEntity { Id = MqttSettingsEntity.SingletonId };
+                db.MqttSettings.Add(mqtt);
+            }
+            mqtt.Enabled = m.Enabled;
+            mqtt.Host = m.Host;
+            mqtt.Port = m.Port;
+            mqtt.UseTls = m.UseTls;
+            mqtt.AllowUntrustedTls = m.AllowUntrustedTls;
+            mqtt.Username = m.Username;
+            mqtt.PasswordEncrypted = Enc(m.Password);
+            mqtt.ClientId = m.ClientId;
+            mqtt.DiscoveryPrefix = m.DiscoveryPrefix;
+            mqtt.EntityPrefix = m.EntityPrefix;
+            mqtt.UpdatedUtc = DateTime.UtcNow;
         }
 
         // ── Categories / Tags (merge by name) ──
@@ -518,7 +549,14 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         List<DockerWatchDto>? DockerWatches,
         List<ProxmoxConnectionDto>? ProxmoxConnections = null,
         List<WebResourceProxmoxGuestLinkDto>? ServiceProxmoxLinks = null,
-        List<ContainerProxmoxLinkDto>? ContainerProxmoxLinks = null);
+        List<ContainerProxmoxLinkDto>? ContainerProxmoxLinks = null,
+        MqttDto? Mqtt = null);
+
+    // V9.0 — app-wide MQTT integration config. Password is decrypted on export and
+    // re-encrypted on import (portable across instances), like every other secret here.
+    private sealed record MqttDto(
+        bool Enabled, string Host, int Port, bool UseTls, bool AllowUntrustedTls,
+        string Username, string? Password, string ClientId, string DiscoveryPrefix, string EntityPrefix);
 
     private sealed record UserSettingsDto(
         string? DisplayName, string Theme, string DashboardSortMode, bool DashboardGroupByCategory,

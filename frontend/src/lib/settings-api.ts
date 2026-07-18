@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { ContainerExecSettings, HealthCheckSettings, HostShellSettings, ImagePruneSettings, ProxmoxCloneSettings, ProxmoxConsoleSettings, ProxmoxCreateSettings, ProxmoxDestroySettings, ProxmoxRestoreSettings, ProxmoxUpdateApplySettings } from './types'
+import type { ContainerExecSettings, HealthCheckSettings, HostShellSettings, ImagePruneSettings, MqttSettings, MqttSettingsUpdate, MqttTestResult, ProxmoxCloneSettings, ProxmoxConsoleSettings, ProxmoxCreateSettings, ProxmoxDestroySettings, ProxmoxRestoreSettings, ProxmoxUpdateApplySettings } from './types'
 
 /** V5.3 — app-wide operational settings managed from the Settings page. */
 export const settingsApi = {
@@ -52,4 +52,12 @@ export const settingsApi = {
     api.get<HealthCheckSettings>('/api/settings/health-check').then((r) => r.data),
   updateHealthCheckSettings: (settings: HealthCheckSettings) =>
     api.put('/api/settings/health-check', settings),
+  /** V9.0 — MQTT / Home Assistant integration settings (broker password never returned). */
+  getMqttSettings: () =>
+    api.get<MqttSettings>('/api/settings/mqtt').then((r) => r.data),
+  updateMqttSettings: (settings: MqttSettingsUpdate) =>
+    api.put('/api/settings/mqtt', settings),
+  /** V9.0 — verify the configured broker is reachable. */
+  testMqttSettings: () =>
+    api.post<MqttTestResult>('/api/settings/mqtt/test').then((r) => r.data),
 }

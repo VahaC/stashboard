@@ -840,6 +840,41 @@ export interface HealthCheckSettings {
   retryDelayMs: number
 }
 
+/** V9.0 — app-wide MQTT / Home Assistant integration settings (broker password never returned). */
+export interface MqttSettings {
+  enabled: boolean
+  host: string
+  port: number
+  useTls: boolean
+  allowUntrustedTls: boolean
+  username: string
+  hasPassword: boolean
+  clientId: string
+  discoveryPrefix: string
+  entityPrefix: string
+}
+
+/** V9.0 — update payload for the MQTT integration; `password` is the tri-state secret. */
+export interface MqttSettingsUpdate {
+  enabled: boolean
+  host: string
+  port: number
+  useTls: boolean
+  allowUntrustedTls: boolean
+  username: string
+  /** Tri-state secret — `null` keeps the stored password. */
+  password: SecretValueUpsert | null
+  clientId: string
+  discoveryPrefix: string
+  entityPrefix: string
+}
+
+/** V9.0 — outcome of the MQTT "Test connection" button. */
+export interface MqttTestResult {
+  reachable: boolean
+  error: string | null
+}
+
 /** V5.5 — trigger that kicked off a prune run. Mirrors the backend enum. */
 export type DockerPruneTrigger = 'Scheduled' | 'Manual'
 

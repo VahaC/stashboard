@@ -217,10 +217,22 @@ public class Program
         // console's session registry, settings switch and audit table; only the
         // single-use ticket store is VM-specific (it binds the minted VNC session).
         builder.Services.AddSingleton<IProxmoxVncTicketService, ProxmoxVncTicketService>();
+        // V9.0 — MQTT / Home Assistant integration. The settings live in the DB
+        // (single row, password encrypted) and are editable from the Settings page;
+        // the bound MqttOptions only seeds the row on first access. The publisher is
+        // a hosted service holding one long-lived broker connection that republishes
+        // retained HA-Discovery + state topics; the broker transport itself
+        // (IMqttBrokerClient over MQTTnet) is registered in Infrastructure.
+        builder.Services.Configure<Services.Mqtt.MqttOptions>(builder.Configuration.GetSection(Services.Mqtt.MqttOptions.SectionName));
+        builder.Services.AddScoped<Services.Mqtt.IMqttSettingsService, Services.Mqtt.MqttSettingsService>();
+        builder.Services.AddScoped<Services.Mqtt.IMqttEntityStateProvider, Services.Mqtt.MqttEntityStateProvider>();
+        builder.Services.AddSingleton<Services.Mqtt.MqttPublishReconciler>();
+
         builder.Services.AddHostedService<HealthCheckBackgroundService>();
         builder.Services.AddHostedService<DockerUpdateBackgroundService>();
         builder.Services.AddHostedService<DockerImagePruneBackgroundService>();
         builder.Services.AddHostedService<ProxmoxUpdateBackgroundService>();
+        builder.Services.AddHostedService<Services.Mqtt.MqttPublisherService>();
 
         // CORS — allow the Vite dev server (5173) in development.
         builder.Services.AddCors(o => o.AddDefaultPolicy(p => p

@@ -75,6 +75,8 @@ public abstract class DatabaseTestBase : IAsyncLifetime
         await db.ProxmoxCloneSettings.ExecuteDeleteAsync();
         // V8.1 — same for the restore-LXC master-switch singleton.
         await db.ProxmoxRestoreSettings.ExecuteDeleteAsync();
+        // V9.0 — same for the MQTT integration singleton.
+        await db.MqttSettings.ExecuteDeleteAsync();
     }
 
     private static string BuildTestConnectionString()

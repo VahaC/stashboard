@@ -29,6 +29,7 @@ const ProxmoxCloneSettings = lazy(() => import('./pages/settings/ProxmoxCloneSet
 const ProxmoxRestoreSettings = lazy(() => import('./pages/settings/ProxmoxRestoreSettings').then((m) => ({ default: m.ProxmoxRestoreSettings })))
 const ImageCleanupSettings = lazy(() => import('./pages/settings/ImageCleanupSettings').then((m) => ({ default: m.ImageCleanupSettings })))
 const HealthCheckSettings = lazy(() => import('./pages/settings/HealthCheckSettings').then((m) => ({ default: m.HealthCheckSettings })))
+const MqttSettings = lazy(() => import('./pages/settings/MqttSettings').then((m) => ({ default: m.MqttSettings })))
 const AuditLog = lazy(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })))
 const Help = lazy(() => import('./pages/Help').then((m) => ({ default: m.Help })))
 const HelpProxmoxApi = lazy(() => import('./pages/help/HelpProxmoxApi').then((m) => ({ default: m.HelpProxmoxApi })))
@@ -88,6 +89,7 @@ export default function App() {
                   <Route path="proxmox-restore" element={<ProxmoxRestoreSettings />} />
                   <Route path="image-cleanup" element={<ImageCleanupSettings />} />
                   <Route path="health-checks" element={<HealthCheckSettings />} />
+                  <Route path="home-assistant" element={<MqttSettings />} />
                   <Route path="backup" element={<Backup />} />
                   <Route path="account" element={<Account />} />
                 </Route>

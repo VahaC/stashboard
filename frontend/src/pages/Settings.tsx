@@ -1,6 +1,6 @@
 import { useState, type JSX } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { Bell, TerminalSquare, SquareChevronRight, Server, RefreshCw, HardDrive, Activity, Database, UserCog, Menu, X, Trash2, Plus, Copy, ArchiveRestore } from 'lucide-react'
+import { Bell, TerminalSquare, SquareChevronRight, Server, RefreshCw, HardDrive, Activity, Database, UserCog, Menu, X, Trash2, Plus, Copy, ArchiveRestore, HomeIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import '@/styles/settings-page.css'
 
@@ -18,6 +18,7 @@ const settingsNavItems = [
   { to: '/settings/proxmox-restore', label: 'Restore guest', group: 'Proxmox', icon: ArchiveRestore },
   { to: '/settings/proxmox-destroy', label: 'Destroy guest', group: 'Proxmox', icon: Trash2 },
   { to: '/settings/health-checks', label: 'Health checks', group: 'Services', icon: Activity },
+  { to: '/settings/home-assistant', label: 'Home Assistant', group: 'Integrations', icon: HomeIcon },
 ]
 
 export function Settings() {

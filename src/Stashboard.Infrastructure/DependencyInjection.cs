@@ -190,6 +190,12 @@ public static class DependencyInjection
         // webhook token reuses the Docker token generator above.
         services.AddSingleton<IProxmoxScanQueue, ProxmoxScanQueue>();
 
+        // V9.0 — MQTT broker transport for the Home Assistant integration. Wraps
+        // a single long-lived MQTTnet client; the publisher (registered in the
+        // Api project) owns its connection lifecycle. Transient so the hosted
+        // publisher gets its own client instance.
+        services.AddTransient<IMqttBrokerClient, Services.MqttNetBrokerClient>();
+
         return services;
     }
 }

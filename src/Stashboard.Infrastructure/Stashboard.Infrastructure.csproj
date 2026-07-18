@@ -7,6 +7,7 @@
   <ItemGroup>
     <PackageReference Include="Docker.DotNet" Version="3.*" />
     <PackageReference Include="Docker.DotNet.X509" Version="3.*" />
+    <PackageReference Include="MQTTnet" Version="5.0.1.1416" />
     <PackageReference Include="SSH.NET" Version="2024.2.0" />
     <PackageReference Include="YamlDotNet" Version="16.*" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.0" />
