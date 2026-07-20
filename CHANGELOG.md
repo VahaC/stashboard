@@ -5,6 +5,37 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [9.1.0] — 2026-06-25
+
+### Added
+- **Derived-signal MQTT sensors (V9.1).** Building on the V9.0 publisher (same broker,
+  discovery + entity prefixes, per-object device tree, retained topics, shared
+  availability / Last Will, lifecycle cleanup), Stashboard now also publishes the signals
+  it **computes** — not just raw state:
+  - **Pending-update counts** as numeric `sensor`s — per **Docker host** (a new
+    `Docker host` device), per **Proxmox node** (apt), and per **monitored LXC** — the
+    number behind the V9.0 boolean "update available".
+  - **Node-alert verdict** as a `binary_sensor` (`device_class: problem`) per PVE/PBS
+    node, reflecting the V6.8.1 `ProxmoxNodeAlertEvaluator` (`on` = warn/crit, `off` =
+    clear), with the per-category breakdown (CPU / memory / storage / thermal / SMART /
+    network) and the worst active severity carried as JSON attributes.
+  - **Backup freshness** as a `timestamp` `sensor` per guest — the creation time of the
+    most recent vzdump archive — so Home Assistant renders "x days ago" and can alert on a
+    stale backup.
+  - **Estate roll-ups** on the single **Stashboard** hub device: containers running /
+    total, guests running / total, services online / total, hosts reachable, and total
+    updates pending across everything — the one-glance + single-trigger surface.
+
+  All of it is **pure publish** (read-only, no new collection); per-node and per-guest
+  entities attach to their node / guest devices, while roll-ups ride the hub. Entities go
+  `unavailable` when Stashboard stops and clear their retained topics when the underlying
+  host / guest / service disappears.
+- **Custom hub device name + manufacturer (V9.1).** Two new fields on **Settings → Home
+  Assistant** let you rebrand how the integration appears in Home Assistant: the **hub
+  device name** (the device every entity nests under, default `Stashboard`) and the
+  **manufacturer** stamped on every published device (default `Stashboard`). Both round-trip
+  through backup/restore.
+
 ## [9.0.0] — 2026-06-24
 
 ### Added

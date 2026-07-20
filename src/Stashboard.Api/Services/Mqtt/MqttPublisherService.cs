@@ -110,7 +110,8 @@ public sealed class MqttPublisherService(
         var sources = await provider.GetEntitiesAsync(cancellationToken);
 
         await reconciler.ReconcileAsync(
-            broker, sources, settings.DiscoveryPrefix, settings.EntityPrefix, fullRefresh, cancellationToken);
+            broker, sources, settings.DiscoveryPrefix, settings.EntityPrefix, fullRefresh, cancellationToken,
+            settings.DeviceName, settings.Manufacturer);
     }
 
     private static string ConnectionSignature(MqttConnectionSettings s) =>

@@ -852,6 +852,10 @@ export interface MqttSettings {
   clientId: string
   discoveryPrefix: string
   entityPrefix: string
+  /** V9.1 — name of the Home Assistant hub device the entities nest under. */
+  deviceName: string
+  /** V9.1 — `manufacturer` string stamped on every published HA device. */
+  manufacturer: string
 }
 
 /** V9.0 — update payload for the MQTT integration; `password` is the tri-state secret. */
@@ -867,6 +871,8 @@ export interface MqttSettingsUpdate {
   clientId: string
   discoveryPrefix: string
   entityPrefix: string
+  deviceName: string
+  manufacturer: string
 }
 
 /** V9.0 — outcome of the MQTT "Test connection" button. */

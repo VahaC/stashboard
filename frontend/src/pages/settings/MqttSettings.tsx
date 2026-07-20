@@ -38,16 +38,20 @@ export function MqttSettings() {
           <CardDescription>
             Publishes the signals Stashboard already collects — each Docker container's and Proxmox
             guest's <strong>running</strong> state, each Docker container's <strong>update-available</strong>,
-            and each monitored service's <strong>online/offline</strong> health — to your existing MQTT broker
-            (e.g. Mosquitto) as Home Assistant <strong>auto-discovered</strong> entities. No HA YAML, no HACS
-            add-on: turn it on, point it at your broker, and the entities appear in Home Assistant within a check
-            cycle. This is <strong>publish-only</strong> — Home Assistant observes, it can't control anything.
-            Off by default.
+            and each monitored service's <strong>online/offline</strong> health — plus the signals it
+            <strong> computes</strong>: <strong>pending-update counts</strong> (per Docker host, Proxmox node
+            and LXC), the per-node <strong>alert verdict</strong> (a <code>problem</code> sensor with the
+            CPU / memory / storage / thermal / SMART / network breakdown), each guest's <strong>backup
+            freshness</strong>, and a <strong>Stashboard</strong> roll-up device (containers / guests /
+            services / hosts / updates at a glance) — all to your existing MQTT broker (e.g. Mosquitto) as
+            Home Assistant <strong>auto-discovered</strong> entities. No HA YAML, no HACS add-on: turn it on,
+            point it at your broker, and the entities appear in Home Assistant within a check cycle. This is
+            <strong> publish-only</strong> — Home Assistant observes, it can't control anything. Off by default.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <MqttSettingsForm
-            key={`${settings?.enabled ?? false}|${settings?.host ?? ''}|${settings?.username ?? ''}|${settings?.hasPassword ?? false}|${settings?.entityPrefix ?? ''}`}
+            key={`${settings?.enabled ?? false}|${settings?.host ?? ''}|${settings?.username ?? ''}|${settings?.hasPassword ?? false}|${settings?.entityPrefix ?? ''}|${settings?.deviceName ?? ''}|${settings?.manufacturer ?? ''}`}
             initial={settings}
             onSaved={() => setReload((value) => value + 1)}
           />
@@ -86,6 +90,8 @@ export function MqttSettingsForm({ initial, onSaved }: { initial: MqttSettingsMo
   const [clientId, setClientId] = useState(initial?.clientId ?? 'stashboard')
   const [discoveryPrefix, setDiscoveryPrefix] = useState(initial?.discoveryPrefix ?? 'homeassistant')
   const [entityPrefix, setEntityPrefix] = useState(initial?.entityPrefix ?? 'stashboard')
+  const [deviceName, setDeviceName] = useState(initial?.deviceName ?? 'Stashboard')
+  const [manufacturer, setManufacturer] = useState(initial?.manufacturer ?? 'Stashboard')
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
@@ -108,6 +114,8 @@ export function MqttSettingsForm({ initial, onSaved }: { initial: MqttSettingsMo
         clientId,
         discoveryPrefix,
         entityPrefix,
+        deviceName,
+        manufacturer,
       })
       setMessage({ kind: 'ok', text: 'MQTT settings saved.' })
       onSaved()
@@ -236,6 +244,24 @@ export function MqttSettingsForm({ initial, onSaved }: { initial: MqttSettingsMo
         <p className="host-shell-settings-note">
           Prefixes every published entity (e.g. <code>binary_sensor.stashboard_jellyfin_running</code>). Changing
           it re-publishes everything under the new ids and clears the old ones.
+        </p>
+      </div>
+
+      <div className="account-field">
+        <Label>Hub device name</Label>
+        <Input value={deviceName} onChange={(event) => setDeviceName(event.target.value)} placeholder="Stashboard" />
+        <p className="host-shell-settings-note">
+          Name of the single Home Assistant <strong>hub device</strong> every entity nests under (the group label in
+          HA's device list). Default <code>Stashboard</code>.
+        </p>
+      </div>
+
+      <div className="account-field">
+        <Label>Manufacturer</Label>
+        <Input value={manufacturer} onChange={(event) => setManufacturer(event.target.value)} placeholder="Stashboard" />
+        <p className="host-shell-settings-note">
+          The <strong>manufacturer</strong> shown on every published device in Home Assistant. Default
+          <code> Stashboard</code>.
         </p>
       </div>
 

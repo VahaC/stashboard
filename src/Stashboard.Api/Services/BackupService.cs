@@ -156,7 +156,8 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 .Select(l => new ContainerProxmoxLinkDto(l.DockerConnectionId, l.ContainerName, l.ProxmoxConnectionId, l.VmId)).ToList(),
             Mqtt: mqtt is null ? null : new MqttDto(
                 mqtt.Enabled, mqtt.Host, mqtt.Port, mqtt.UseTls, mqtt.AllowUntrustedTls,
-                mqtt.Username, Dec(mqtt.PasswordEncrypted), mqtt.ClientId, mqtt.DiscoveryPrefix, mqtt.EntityPrefix));
+                mqtt.Username, Dec(mqtt.PasswordEncrypted), mqtt.ClientId, mqtt.DiscoveryPrefix, mqtt.EntityPrefix,
+                mqtt.DeviceName, mqtt.Manufacturer));
 
         return JsonSerializer.SerializeToUtf8Bytes(dto, JsonOpts);
     }
@@ -205,6 +206,9 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             mqtt.ClientId = m.ClientId;
             mqtt.DiscoveryPrefix = m.DiscoveryPrefix;
             mqtt.EntityPrefix = m.EntityPrefix;
+            // V9.1 fields — default for backups taken before they existed.
+            mqtt.DeviceName = string.IsNullOrWhiteSpace(m.DeviceName) ? "Stashboard" : m.DeviceName;
+            mqtt.Manufacturer = string.IsNullOrWhiteSpace(m.Manufacturer) ? "Stashboard" : m.Manufacturer;
             mqtt.UpdatedUtc = DateTime.UtcNow;
         }
 
@@ -556,7 +560,9 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
     // re-encrypted on import (portable across instances), like every other secret here.
     private sealed record MqttDto(
         bool Enabled, string Host, int Port, bool UseTls, bool AllowUntrustedTls,
-        string Username, string? Password, string ClientId, string DiscoveryPrefix, string EntityPrefix);
+        string Username, string? Password, string ClientId, string DiscoveryPrefix, string EntityPrefix,
+        // V9.1 — nullable so a pre-V9.1 backup still deserializes; defaulted on import.
+        string? DeviceName = null, string? Manufacturer = null);
 
     private sealed record UserSettingsDto(
         string? DisplayName, string Theme, string DashboardSortMode, bool DashboardGroupByCategory,

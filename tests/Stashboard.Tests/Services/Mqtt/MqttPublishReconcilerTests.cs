@@ -107,4 +107,58 @@ public class MqttPublishReconcilerTests
         Assert.Contains(client.Published, p => p.Topic.Contains("/running/config"));
         Assert.Contains(client.Published, p => p.Topic.EndsWith("_running/state"));
     }
+
+    // ── V9.1 derived signals ────────────────────────────────────────────────────
+
+    private static List<MqttSourceEntity> NodeAlert(bool on, string worst) => new()
+    {
+        new(MqttEntityKind.NodeAlert, "node:p1", "pve", "Proxmox node", IsOn: on,
+            Attributes: new Dictionary<string, object?> { ["worst_severity"] = worst, ["cpu"] = worst }),
+    };
+
+    [Fact]
+    public async Task UpdateCount_RefreshesOnAChangedTick()
+    {
+        var two = new List<MqttSourceEntity> { new(MqttEntityKind.UpdateCount, "dockerhost:c1", "den", "Docker host", Number: 2) };
+        var (client, reconciler) = await SeedAsync(two);
+        Assert.Contains(client.Published, p => p.Topic.EndsWith("_updates/state") && p.Payload == "2");
+        client.ClearLog();
+
+        var five = new List<MqttSourceEntity> { new(MqttEntityKind.UpdateCount, "dockerhost:c1", "den", "Docker host", Number: 5) };
+        await reconciler.ReconcileAsync(client, five, "homeassistant", "stashboard", forceFullRefresh: false);
+
+        var state = client.Published.Single(p => p.Topic.EndsWith("_updates/state"));
+        Assert.Equal("5", state.Payload);
+        Assert.DoesNotContain(client.Published, p => p.Topic.Contains("/config")); // count-only change
+    }
+
+    [Fact]
+    public async Task NodeAlert_FlipsOn_PublishesStateAndAttributes()
+    {
+        var (client, reconciler) = await SeedAsync(NodeAlert(on: false, worst: "ok"));
+        client.ClearLog();
+
+        await reconciler.ReconcileAsync(client, NodeAlert(on: true, worst: "crit"), "homeassistant", "stashboard", forceFullRefresh: false);
+
+        Assert.Equal("ON", client.Published.Single(p => p.Topic.EndsWith("_alert/state")).Payload);
+        var attrs = client.Published.Single(p => p.Topic.EndsWith("_alert/attributes"));
+        Assert.Contains("crit", attrs.Payload);
+        Assert.True(attrs.Retain);
+    }
+
+    [Fact]
+    public async Task NodeAlert_Disappears_ClearsStateAndAttributes()
+    {
+        var (client, reconciler) = await SeedAsync(NodeAlert(on: true, worst: "warn"));
+        client.ClearLog();
+
+        // Host removed — only the hub remains desired.
+        await reconciler.ReconcileAsync(client, new List<MqttSourceEntity>(), "homeassistant", "stashboard", forceFullRefresh: false);
+
+        var cleared = client.Published.Where(p => p.Payload == "" && p.Retain).ToList();
+        Assert.Contains(cleared, p => p.Topic.EndsWith("/alert/config"));
+        Assert.Contains(cleared, p => p.Topic.EndsWith("_alert/state"));
+        Assert.Contains(cleared, p => p.Topic.EndsWith("_alert/attributes"));
+        Assert.DoesNotContain(client.Retained.Keys, k => k.Contains("_alert"));
+    }
 }

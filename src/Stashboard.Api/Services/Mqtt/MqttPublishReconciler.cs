@@ -13,7 +13,9 @@ namespace Stashboard.Api.Services.Mqtt;
 /// </summary>
 public sealed class MqttPublishReconciler
 {
-    private sealed record Tracked(string DiscoveryTopic, string StateTopic, string DiscoveryPayload, string? StatePayload);
+    private sealed record Tracked(
+        string DiscoveryTopic, string StateTopic, string DiscoveryPayload, string? StatePayload,
+        string? AttributesTopic, string? AttributesPayload);
 
     private readonly Dictionary<string, Tracked> _published = new(StringComparer.Ordinal);
 
@@ -35,9 +37,11 @@ public sealed class MqttPublishReconciler
         string discoveryPrefix,
         string entityPrefix,
         bool forceFullRefresh,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string hubDeviceName = "Stashboard",
+        string manufacturer = "Stashboard")
     {
-        var desired = MqttDiscoveryBuilder.BuildDesired(sources, discoveryPrefix, entityPrefix);
+        var desired = MqttDiscoveryBuilder.BuildDesired(sources, discoveryPrefix, entityPrefix, hubDeviceName, manufacturer);
         var desiredById = new Dictionary<string, MqttDesiredEntity>(StringComparer.Ordinal);
         foreach (var d in desired)
             desiredById[d.ObjectId] = d; // last-writer-wins de-dupe on a stable id
@@ -47,6 +51,8 @@ public sealed class MqttPublishReconciler
         {
             await client.PublishAsync(stale.Value.DiscoveryTopic, "", retain: true, cancellationToken);
             await client.PublishAsync(stale.Value.StateTopic, "", retain: true, cancellationToken);
+            if (stale.Value.AttributesTopic is { } attrTopic)
+                await client.PublishAsync(attrTopic, "", retain: true, cancellationToken);
             _published.Remove(stale.Key);
         }
 
@@ -65,7 +71,18 @@ public sealed class MqttPublishReconciler
             if (d.StatePayload is not null && (stateChanged || forceFullRefresh))
                 await client.PublishAsync(d.StateTopic, d.StatePayload, retain: true, cancellationToken);
 
-            _published[d.ObjectId] = new Tracked(d.DiscoveryTopic, d.StateTopic, d.DiscoveryPayload, d.StatePayload);
+            // Attributes (the node-alert category breakdown) ride their own retained
+            // topic, diffed the same way as state.
+            if (d.AttributesTopic is { } attrTopic && d.AttributesPayload is { } attrPayload)
+            {
+                var attrChanged = prev is null || prev.AttributesPayload != attrPayload;
+                if (attrChanged || forceFullRefresh)
+                    await client.PublishAsync(attrTopic, attrPayload, retain: true, cancellationToken);
+            }
+
+            _published[d.ObjectId] = new Tracked(
+                d.DiscoveryTopic, d.StateTopic, d.DiscoveryPayload, d.StatePayload,
+                d.AttributesTopic, d.AttributesPayload);
         }
     }
 }

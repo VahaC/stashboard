@@ -26,7 +26,8 @@ public class MqttSettingsServiceTests : DatabaseTestBase
 
     private static UpdateMqttSettingsRequest Update(bool enabled = true, string host = "mqtt.lan",
         SecretValueUpsert? password = null, string entityPrefix = "stashboard") =>
-        new(enabled, host, 1883, false, false, "user", password, "stashboard", "homeassistant", entityPrefix);
+        new(enabled, host, 1883, false, false, "user", password, "stashboard", "homeassistant", entityPrefix,
+            "Stashboard", "Stashboard");
 
     [Fact]
     public async Task FirstAccess_SeedsFromOptions()
@@ -82,11 +83,13 @@ public class MqttSettingsServiceTests : DatabaseTestBase
     public async Task BlankPrefixes_FallBackToDefaults()
     {
         var svc = Build();
-        await svc.UpdateAsync(new UpdateMqttSettingsRequest(true, "h", 1883, false, false, "", null, "", "", ""));
+        await svc.UpdateAsync(new UpdateMqttSettingsRequest(true, "h", 1883, false, false, "", null, "", "", "", "", ""));
 
         var resolved = await svc.GetResolvedAsync();
         Assert.Equal("stashboard", resolved.ClientId);
         Assert.Equal("homeassistant", resolved.DiscoveryPrefix);
         Assert.Equal("stashboard", resolved.EntityPrefix);
+        Assert.Equal("Stashboard", resolved.DeviceName);
+        Assert.Equal("Stashboard", resolved.Manufacturer);
     }
 }

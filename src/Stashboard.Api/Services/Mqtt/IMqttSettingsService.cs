@@ -17,7 +17,9 @@ public sealed record ResolvedMqttSettings(
     string Password,
     string ClientId,
     string DiscoveryPrefix,
-    string EntityPrefix);
+    string EntityPrefix,
+    string DeviceName,
+    string Manufacturer);
 
 /// <summary>
 /// Reads and writes the single app-wide MQTT-settings row. The row is created on

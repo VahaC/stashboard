@@ -16,7 +16,7 @@ public class MqttPublisherServiceTests
     private sealed class FakeSettings : IMqttSettingsService
     {
         public ResolvedMqttSettings Resolved { get; set; } =
-            new(true, "mqtt.lan", 1883, false, false, "", "", "stashboard", "homeassistant", "stashboard");
+            new(true, "mqtt.lan", 1883, false, false, "", "", "stashboard", "homeassistant", "stashboard", "Stashboard", "Stashboard");
         public Task<ResolvedMqttSettings> GetResolvedAsync(CancellationToken ct = default) => Task.FromResult(Resolved);
         public Task<MqttSettingsResponse> GetAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task UpdateAsync(UpdateMqttSettingsRequest r, CancellationToken ct = default) => throw new NotSupportedException();

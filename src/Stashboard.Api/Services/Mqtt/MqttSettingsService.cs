@@ -32,7 +32,9 @@ public sealed class MqttSettingsService(
             password,
             NormalizePrefix(entity.ClientId, "stashboard"),
             NormalizePrefix(entity.DiscoveryPrefix, "homeassistant"),
-            NormalizePrefix(entity.EntityPrefix, "stashboard"));
+            NormalizePrefix(entity.EntityPrefix, "stashboard"),
+            NormalizePrefix(entity.DeviceName, "Stashboard"),
+            NormalizePrefix(entity.Manufacturer, "Stashboard"));
     }
 
     public async Task<MqttSettingsResponse> GetAsync(CancellationToken cancellationToken = default)
@@ -48,7 +50,9 @@ public sealed class MqttSettingsService(
             !string.IsNullOrEmpty(entity.PasswordEncrypted),
             entity.ClientId,
             entity.DiscoveryPrefix,
-            entity.EntityPrefix);
+            entity.EntityPrefix,
+            entity.DeviceName,
+            entity.Manufacturer);
     }
 
     public async Task UpdateAsync(UpdateMqttSettingsRequest request, CancellationToken cancellationToken = default)
@@ -64,6 +68,8 @@ public sealed class MqttSettingsService(
         entity.ClientId = NormalizePrefix(request.ClientId, "stashboard");
         entity.DiscoveryPrefix = NormalizePrefix(request.DiscoveryPrefix, "homeassistant");
         entity.EntityPrefix = NormalizePrefix(request.EntityPrefix, "stashboard");
+        entity.DeviceName = NormalizePrefix(request.DeviceName, "Stashboard");
+        entity.Manufacturer = NormalizePrefix(request.Manufacturer, "Stashboard");
 
         ApplyPassword(entity, request.Password);
 
@@ -110,6 +116,8 @@ public sealed class MqttSettingsService(
             ClientId = NormalizePrefix(_seed.ClientId, "stashboard"),
             DiscoveryPrefix = NormalizePrefix(_seed.DiscoveryPrefix, "homeassistant"),
             EntityPrefix = NormalizePrefix(_seed.EntityPrefix, "stashboard"),
+            DeviceName = NormalizePrefix(_seed.DeviceName, "Stashboard"),
+            Manufacturer = NormalizePrefix(_seed.Manufacturer, "Stashboard"),
             CreatedUtc = now,
             UpdatedUtc = now,
         };

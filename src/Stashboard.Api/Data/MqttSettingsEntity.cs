@@ -59,5 +59,20 @@ public class MqttSettingsEntity : AuditableEntity
     [MaxLength(64)]
     public string EntityPrefix { get; set; } = "stashboard";
 
+    /// <summary>
+    /// V9.1 — the name of the single Home Assistant hub device every published
+    /// entity links to via <c>via_device</c> (the root the others nest under).
+    /// Default <c>Stashboard</c>; let an operator rebrand it (e.g. "Homelab").
+    /// </summary>
+    [MaxLength(64)]
+    public string DeviceName { get; set; } = "Stashboard";
+
+    /// <summary>
+    /// V9.1 — the <c>manufacturer</c> string stamped on every published HA device
+    /// (shown in HA's Manufacturer column). Default <c>Stashboard</c>.
+    /// </summary>
+    [MaxLength(64)]
+    public string Manufacturer { get; set; } = "Stashboard";
+
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

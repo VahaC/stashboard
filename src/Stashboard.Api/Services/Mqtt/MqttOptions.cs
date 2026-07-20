@@ -20,6 +20,8 @@ public sealed class MqttOptions
     public string ClientId { get; set; } = "stashboard";
     public string DiscoveryPrefix { get; set; } = "homeassistant";
     public string EntityPrefix { get; set; } = "stashboard";
+    public string DeviceName { get; set; } = "Stashboard";
+    public string Manufacturer { get; set; } = "Stashboard";
 
     /// <summary>Publisher loop cadence (full state refresh interval), in seconds.</summary>
     public int RefreshIntervalSeconds { get; set; } = 30;

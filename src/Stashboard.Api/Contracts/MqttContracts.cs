@@ -16,7 +16,9 @@ public sealed record MqttSettingsResponse(
     bool HasPassword,
     string ClientId,
     string DiscoveryPrefix,
-    string EntityPrefix);
+    string EntityPrefix,
+    string DeviceName,
+    string Manufacturer);
 
 /// <summary>V9.0 — update payload for the MQTT integration settings.</summary>
 public sealed record UpdateMqttSettingsRequest(
@@ -30,7 +32,9 @@ public sealed record UpdateMqttSettingsRequest(
     SecretValueUpsert? Password,
     [MaxLength(128)] string? ClientId,
     [MaxLength(64)] string? DiscoveryPrefix,
-    [MaxLength(64)] string? EntityPrefix);
+    [MaxLength(64)] string? EntityPrefix,
+    [MaxLength(64)] string? DeviceName,
+    [MaxLength(64)] string? Manufacturer);
 
 /// <summary>V9.0 — outcome of the "Test connection" button: did Stashboard reach the broker?</summary>
 public sealed record MqttTestResponse(bool Reachable, string? Error);
