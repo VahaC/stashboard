@@ -40,6 +40,7 @@ public class DockerInstancesController(
     IDockerLogStreamer logStreamer,
     IDockerStatsStreamer statsStreamer,
     IDockerProjectUpdater projectUpdater,
+    ISelfUpdateLauncher selfUpdateLauncher,
     IDockerUpdateChecker updateChecker,
     IDockerPruneRunner pruneRunner,
     IContainerIconResolver iconResolver,
@@ -556,7 +557,49 @@ public class DockerInstancesController(
             DockerWatchMapper.BuildComposePathMapping(connection),
             services);
 
-        var result = await projectUpdater.UpdateProjectAsync(profileToRun, cancellationToken);
+        // V9.2 — if this project includes the Stashboard container itself, the
+        // in-process bulk recreate would stop our own container mid-flight and
+        // kill the updater. Offload the whole project recreate to a detached
+        // helper instead and report Scheduled; the next digest check reconciles.
+        DockerProjectUpdateResult result;
+        if (await selfUpdateLauncher.IsSelfInProjectAsync(profileToRun, cancellationToken))
+        {
+            var launch = await selfUpdateLauncher.LaunchProjectAsync(profileToRun, cancellationToken);
+            if (launch.Started)
+            {
+                // Record a Scheduled child row per tracked service carrying the
+                // digest we're trying to reach, so the startup reconciler can
+                // confirm each one by comparing the container's actual digest.
+                var scheduledServices = services
+                    .Where(s => s.WatchId is not null && watchByContainer.ContainsKey(s.ContainerName))
+                    .Select(s =>
+                    {
+                        var w = watchByContainer[s.ContainerName];
+                        return new DockerProjectServiceResult(
+                            s.ServiceName, s.ContainerName, s.WatchId, s.WebResourceId,
+                            s.UpdateProfile.ImageReference, DockerUpdateAttemptStatus.Scheduled,
+                            PreviousDigest: w.CurrentDigest, NewDigest: w.LatestDigest,
+                            Error: null, HealthVerified: false, HealthVerifiedUtc: null);
+                    })
+                    .ToList();
+                result = new DockerProjectUpdateResult(
+                    DockerProjectUpdateMode.Recreate, DockerUpdateAttemptStatus.Scheduled,
+                    "Stashboard is updating its own project in a detached helper container. The UI will be "
+                    + "briefly unavailable while it restarts — refresh in a minute.",
+                    scheduledServices);
+            }
+            else
+            {
+                result = new DockerProjectUpdateResult(
+                    DockerProjectUpdateMode.Recreate, DockerUpdateAttemptStatus.RecreateFailed,
+                    launch.Error ?? "Failed to start the self-update helper container.",
+                    Array.Empty<DockerProjectServiceResult>());
+            }
+        }
+        else
+        {
+            result = await projectUpdater.UpdateProjectAsync(profileToRun, cancellationToken);
+        }
 
         // Write the audit rows in a single SaveChanges so the parent + child
         // rows are committed atomically. The parent carries the aggregate
@@ -640,7 +683,8 @@ public class DockerInstancesController(
             children.Select(watchMapper.ToResponse).ToList(),
             result.Mode.ToString());
 
-        if (result.AggregateStatus == DockerUpdateAttemptStatus.Success)
+        if (result.AggregateStatus == DockerUpdateAttemptStatus.Success
+            || result.AggregateStatus == DockerUpdateAttemptStatus.Scheduled)
             return Ok(response);
 
         // Failure responses still carry the parent + child rows so the UI can

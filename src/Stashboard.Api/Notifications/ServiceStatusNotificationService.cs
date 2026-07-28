@@ -8,6 +8,8 @@ namespace Stashboard.Api.Notifications;
 
 public sealed class ServiceStatusNotificationService(
     ITelegramSender telegramSender,
+    IAppriseSender appriseSender,
+    IAppriseSettingsService appriseSettings,
     IEncryptionService encryption,
     ILogger<ServiceStatusNotificationService> logger) : IServiceStatusNotificationService
 {
@@ -18,12 +20,10 @@ public sealed class ServiceStatusNotificationService(
         ServiceStatus previousAdditionalStatus,
         CancellationToken cancellationToken = default)
     {
-        var botToken = ResolveBotToken(user);
-        if (!service.OfflineNotificationsEnabled
-            || !user.TelegramNotificationsEnabled
-            || string.IsNullOrWhiteSpace(botToken)
-            || string.IsNullOrWhiteSpace(user.TelegramChatId))
-            return;
+        // The per-service master switch gates every channel; offline alerts here are
+        // transition-based (fired on a Down edge), so there is no per-channel throttle
+        // key — the transition is the dedup, exactly as the Telegram path always worked.
+        if (!service.OfflineNotificationsEnabled) return;
 
         var messages = new List<string>();
         if (service.MainUrlHealthCheckEnabled
@@ -41,6 +41,23 @@ public sealed class ServiceStatusNotificationService(
             messages.Add($"🔴 Service unavailable: {service.Name}\nAdditional URL: {service.AdditionalUrl}\nError: {service.AdditionalUrlLastError ?? "unknown"}");
         }
 
+        if (messages.Count == 0) return;
+
+        // Independent channels: an Apprise outage never drops the Telegram message and
+        // vice-versa. Each channel checks its own configuration on its own.
+        await SendTelegramAsync(user, service, messages, cancellationToken);
+        await SendAppriseAsync(service, messages, cancellationToken);
+    }
+
+    private async Task SendTelegramAsync(
+        UserEntity user, WebResourceEntity service, IReadOnlyList<string> messages, CancellationToken cancellationToken)
+    {
+        var botToken = ResolveBotToken(user);
+        if (!user.TelegramNotificationsEnabled
+            || string.IsNullOrWhiteSpace(botToken)
+            || string.IsNullOrWhiteSpace(user.TelegramChatId))
+            return;
+
         foreach (var message in messages)
         {
             try
@@ -50,6 +67,27 @@ public sealed class ServiceStatusNotificationService(
             catch (Exception ex)
             {
                 logger.LogError(ex, "Failed to send Telegram notification for service {ServiceId}", service.Id);
+            }
+        }
+    }
+
+    private async Task SendAppriseAsync(
+        WebResourceEntity service, IReadOnlyList<string> messages, CancellationToken cancellationToken)
+    {
+        var cfg = await appriseSettings.GetResolvedAsync(cancellationToken);
+        if (!cfg.IsConfigured) return;
+
+        foreach (var message in messages)
+        {
+            try
+            {
+                await appriseSender.SendAsync(
+                    cfg.BaseUrl, cfg.Urls, $"Service unavailable: {service.Name}", message,
+                    AppriseNotificationType.Failure, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to send Apprise notification for service {ServiceId}", service.Id);
             }
         }
     }

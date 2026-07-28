@@ -74,6 +74,7 @@ const UPDATE_STATUS_LABELS: Record<string, string> = {
   RecreateFailed: 'Recreate failed',
   HostUnreachable: 'Host unreachable',
   ContainerNotFound: 'Container not found',
+  Scheduled: 'Self-update scheduled',
 }
 
 const PRUNE_STATUS_LABELS: Record<string, string> = {

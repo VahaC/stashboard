@@ -681,6 +681,53 @@ status badge tells you which leg of the sequence failed:
   `RecreateFailed` row records the digest of the image we just pulled
   so you know what to point the manual recreate at.
 
+#### Updating Stashboard itself (V9.2)
+
+A container cannot reliably recreate **itself**: the moment Stashboard stops
+and removes its own container, the process running the recreate dies, so the
+`create` + `start` steps never run and the container simply vanishes. Before
+V9.2, pointing **Update now** at the Stashboard container did exactly this — it
+"just broke."
+
+**V9.2** detects this case automatically. It identifies "self" by matching the
+running container's **id** (read from `/proc`) against the watch's target — so it
+works no matter how the connection reaches the daemon (**local socket, SSH tunnel
+or TCP**), and correctly treats a container on a genuinely remote daemon as *not*
+self. When the watch's container is the Stashboard container itself, Stashboard
+does **not** recreate itself in process. Instead it launches a **detached
+one-shot helper container** — the same Stashboard image run as
+`dotnet Stashboard.Api.dll self-update` — which inherits Stashboard's mounts and
+the decrypted connection profile (including any SSH credentials, so the helper
+talks to the same daemon the same way) and performs the normal pull + recreate
+from the outside. Because the helper is an independent container it survives the
+parent being stopped, so the recreate completes. The helper is **always
+auto-removed** when it exits, so it never lingers (a rare leftover from e.g. a
+daemon restart mid-run is cleared by name before the next self-update).
+
+This applies to **both** **Update now** (the single Stashboard container) and
+**Update project** (a Compose project that includes the Stashboard container) — in
+the project case the whole project recreate is handed to the helper.
+
+What you see:
+
+- The Update history row is logged as **`Scheduled`** (not `Success`/`Failed`),
+  remembering the digest the update is aiming for. On the **next startup**
+  Stashboard reconciles it: it reads the container's **actual** running digest
+  and compares it to that target — a match flips the row to **`Success`** and
+  clears the "Update available" badge; a mismatch flips it to **`RecreateFailed`**
+  and keeps the badge. The digest is read straight off the container, so the
+  confirmation works even if the registry is unreachable at startup. (If the
+  current digest can't be read at all, the row stays `Scheduled` and is retried
+  on a later startup — the outcome is never guessed.)
+- The **Update now** dialog shows a *"Self-update scheduled"* banner and the UI
+  goes briefly unavailable while Stashboard restarts — refresh after a minute.
+
+Requirements are the same as any "Update now" on that connection: it must be able
+to recreate the container — a **writable** local socket (`:ro` is not enough), or
+an SSH / TCP connection to the daemon. Compose-deployed Stashboard recreates via
+`docker compose up -d`; a plain `docker run` deployment uses the raw recreate. No
+extra configuration is needed.
+
 ### 5.1a Compose-aware recreate (V5.2)
 
 The raw recreate above is faithful for the common case but bypasses Docker

@@ -56,6 +56,11 @@ public class ProxmoxNodeAlertSettingsEntity : AuditableEntity
     /// suppress the other.</summary>
     public string? LastTelegramNotifiedSignature { get; set; }
 
+    /// <summary>V10.0 — same as <see cref="LastNotifiedSignature"/> for the Apprise
+    /// channel — independent so a transient Apprise outage doesn't suppress the
+    /// other channels and vice-versa.</summary>
+    public string? LastAppriseNotifiedSignature { get; set; }
+
     /// <summary>UTC timestamp of the most recent alert notification (either channel).</summary>
     public DateTime? LastNotificationSentUtc { get; set; }
 

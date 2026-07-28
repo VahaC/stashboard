@@ -35,6 +35,10 @@ public abstract class DockerWatchesControllerTestBase : IAsyncLifetime
     protected readonly Mock<IDockerUpdateChecker> _updateCheckerMock = new();
     protected readonly Mock<IDockerWebhookTokenGenerator> _webhookTokenGeneratorMock = new();
     protected readonly Mock<IDockerImageUpdater> _imageUpdaterMock = new();
+    // Default (unconfigured) IsSelfTargetAsync returns false, so every existing
+    // test keeps exercising the normal in-process recreate path. Self-update
+    // tests override the setup.
+    protected readonly Mock<ISelfUpdateLauncher> _selfUpdateLauncherMock = new();
     protected readonly Mock<IDockerHostClient> _hostClientMock = new();
     protected readonly Mock<IDockerLogStreamer> _logStreamerMock = new();
     protected readonly Mock<IDockerStatsStreamer> _statsStreamerMock = new();
@@ -131,7 +135,7 @@ public abstract class DockerWatchesControllerTestBase : IAsyncLifetime
         var controller = new DockerWatchesController(
             _dbContext, mapper, connectionMapper,
             _updateCheckerMock.Object, _webhookTokenGeneratorMock.Object,
-            _imageUpdaterMock.Object, _hostClientMock.Object,
+            _imageUpdaterMock.Object, _selfUpdateLauncherMock.Object, _hostClientMock.Object,
             _logStreamerMock.Object, _statsStreamerMock.Object);
 
         var identity = new ClaimsIdentity(
@@ -150,7 +154,8 @@ public abstract class DockerWatchesControllerTestBase : IAsyncLifetime
         var mapper = new DockerWatchMapper(_encryptionMock.Object, new ImageReferenceParser());
         var controller = new DockerConnectionWatchesController(
             _dbContext, mapper,
-            _updateCheckerMock.Object, _webhookTokenGeneratorMock.Object, _imageUpdaterMock.Object);
+            _updateCheckerMock.Object, _webhookTokenGeneratorMock.Object, _imageUpdaterMock.Object,
+            _selfUpdateLauncherMock.Object);
 
         var identity = new ClaimsIdentity(
             new[] { new Claim(StashboardClaims.UserId, (userId ?? _userId).ToString()) }, "Test");

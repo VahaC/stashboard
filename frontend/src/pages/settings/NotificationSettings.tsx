@@ -5,13 +5,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { accountApi } from '@/lib/account-api'
+import { settingsApi } from '@/lib/settings-api'
 import { parseApiErrors } from '@/lib/utils'
-import type { EmailSettings, TelegramSettings } from '@/lib/types'
+import type { AppriseSettings, AppriseTargetResult, EmailSettings, TelegramSettings } from '@/lib/types'
 import '@/styles/account-page.css'
 
 export function NotificationSettings() {
   const [telegramSettings, setTelegramSettings] = useState<TelegramSettings | null>(null)
   const [emailSettings, setEmailSettings] = useState<EmailSettings | null>(null)
+  const [appriseSettings, setAppriseSettings] = useState<AppriseSettings | null>(null)
   const [reload, setReload] = useState(0)
 
   useEffect(() => {
@@ -22,6 +24,10 @@ export function NotificationSettings() {
     accountApi.getEmailSettings()
       .then(setEmailSettings)
       .catch(() => setEmailSettings(null))
+
+    settingsApi.getAppriseSettings()
+      .then(setAppriseSettings)
+      .catch(() => setAppriseSettings(null))
   }, [reload])
 
   return (
@@ -60,7 +66,128 @@ export function NotificationSettings() {
           />
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Apprise notifications</CardTitle>
+          <CardDescription>
+            Fan notifications out to Discord, ntfy, Gotify, Slack, and 90+ other services through your own{' '}
+            <a href="https://github.com/caronc/apprise-api" target="_blank" rel="noreferrer" className="underline">Apprise API</a>.
+            Set the base URL of your Apprise instance (or the stateless <code>/notify</code> endpoint) and one
+            Apprise URL per line. Enable the per-watch / per-host / per-service Apprise toggle to route those alerts here.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AppriseSettingsForm
+            key={`${appriseSettings?.enabled ?? false}|${appriseSettings?.baseUrl ?? ''}|${appriseSettings?.hasUrls ?? false}|${appriseSettings?.urlCount ?? 0}`}
+            initial={appriseSettings}
+            onSaved={() => setReload((value) => value + 1)}
+          />
+        </CardContent>
+      </Card>
     </div>
+  )
+}
+
+export function AppriseSettingsForm({ initial, onSaved }: { initial: AppriseSettings | null; onSaved: () => void }) {
+  const [enabled, setEnabled] = useState(initial?.enabled ?? false)
+  const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? '')
+  const [urls, setUrls] = useState('')
+  const [urlsTouched, setUrlsTouched] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResults, setTestResults] = useState<AppriseTargetResult[] | null>(null)
+  const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setSaving(true)
+    setMessage(null)
+    setTestResults(null)
+    setFieldErrors({})
+    try {
+      await settingsApi.updateAppriseSettings({
+        enabled,
+        baseUrl,
+        urls: urlsTouched ? { action: 'Set', value: urls } : null,
+      })
+      setMessage({ kind: 'ok', text: 'Apprise settings saved.' })
+      onSaved()
+    } catch (error: unknown) {
+      const { fieldErrors: parsedFieldErrors, globalError } = parseApiErrors(error)
+      setFieldErrors(parsedFieldErrors)
+      setMessage({ kind: 'err', text: globalError ?? 'Failed to save Apprise settings.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const sendTest = async () => {
+    setTesting(true)
+    setMessage(null)
+    setTestResults(null)
+    try {
+      const result = await settingsApi.testAppriseSettings()
+      setTestResults(result.results)
+      if (result.error) setMessage({ kind: 'err', text: result.error })
+      else setMessage({ kind: result.ok ? 'ok' : 'err', text: result.ok ? 'Test notification sent to all targets.' : 'One or more targets failed — see below.' })
+    } catch {
+      setMessage({ kind: 'err', text: 'Failed to send test notification.' })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="account-form account-form-spaced">
+      <label className="account-checkbox-label">
+        <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+        Enable Apprise notifications
+      </label>
+      <div className="account-field">
+        <Label>Apprise base URL</Label>
+        <Input
+          value={baseUrl}
+          onChange={(event) => setBaseUrl(event.target.value)}
+          placeholder="http://apprise:8000"
+          className={fieldErrors['baseurl'] ? 'border-destructive' : ''}
+        />
+        {fieldErrors['baseurl'] && <p className="account-field-error">{fieldErrors['baseurl']}</p>}
+      </div>
+      <div className="account-field">
+        <Label>Apprise URLs (one per line)</Label>
+        <textarea
+          className="ui-input"
+          rows={4}
+          style={{ height: 'auto', minHeight: '7rem', resize: 'vertical', lineHeight: 1.6, fontFamily: 'var(--font-mono, monospace)' }}
+          value={urls}
+          onChange={(event) => { setUrls(event.target.value); setUrlsTouched(true) }}
+          placeholder={initial?.hasUrls
+            ? `•••••••• (${initial.urlCount} stored — leave blank to keep)`
+            : 'discord://webhook_id/webhook_token\nntfy://ntfy.sh/my-topic\ngotify://gotify.example.com/token'}
+        />
+        {initial && initial.targets.length > 0 && (
+          <p className="text-sm text-muted-foreground">Configured targets: {initial.targets.join(', ')}</p>
+        )}
+      </div>
+      {testResults && (
+        <ul className="account-form-spaced" style={{ margin: 0, paddingLeft: '1.25rem' }}>
+          {testResults.map((r, i) => (
+            <li key={i} className={r.success ? 'account-form-success' : 'account-form-error'}>
+              {r.success ? '✅' : '❌'} {r.target}{r.error ? ` — ${r.error}` : ''}
+            </li>
+          ))}
+        </ul>
+      )}
+      {message && <p className={message.kind === 'ok' ? 'account-form-success' : 'account-form-error'}>{message.text}</p>}
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save Apprise settings'}</Button>
+        <Button type="button" variant="outline" disabled={testing || !initial?.hasUrls} onClick={sendTest}>
+          {testing ? 'Sending…' : 'Send test'}
+        </Button>
+      </div>
+    </form>
   )
 }
 

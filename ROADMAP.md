@@ -13,7 +13,7 @@
 > and the V8.x advanced Proxmox provisioning track (V8.0–V8.6) to [`HISTORY.md`](./HISTORY.md) §18,
 > once those phases all shipped; only V9.0+ remains in this file.
 >
-> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2) · ✅ V5.4 (Compose project grouping & bulk update, image 5.4.0) · ✅ V5.5 (image cleanup / prune, image 5.5.0) · ✅ V5.6 (health-check tuning page, image 5.6.0) · ✅ V5.7 (container exec, image 5.7.0) · ✅ V5.8 (session audit viewer, image 5.8.0) · ✅ V5.9 (Docker instances page redesign, image 5.9.0) · ✅ V6.0 (Proxmox LXC update monitoring, image 6.0.0) · ✅ V6.1 (Proxmox LXC detail modal + Docker-style cards, image 6.1.0) · ✅ V6.2 (LXC Config tab, image 6.2.0) · ✅ V6.3 (LXC Stats + Tasks tabs, image 6.3.0) · ✅ V6.4 (LXC lifecycle actions + real-time stats, image 6.4.0) · ✅ V6.5 (edit LXC parameters, image 6.5.0) · ✅ V6.6 (browser LXC console / Console tab, image 6.6.0) · ✅ V6.7 (per-LXC update monitoring toggle, image 6.7.0) · ✅ V6.7.1 (Proxmox one-click "Update now", image 6.7.1) · ✅ V6.8 (PVE node health card + node modal, image 6.8.0) · ✅ V6.8.1 (PVE node alerting, image 6.8.1) · ✅ V6.8.2 (PVE node deep telemetry / SSH collectors, image 6.8.2) · ✅ V6.9.0 (edit LXC network interfaces & mount points, image 6.9.0) · ✅ V6.10 (Proxmox page Docker-parity redesign, image 6.10.0) · ✅ V6.11 (bulk LXC monitoring & update operations + audit, image 6.11.0) · ✅ V6.12 (LXC live logs / Logs tab, image 6.12.0) · ✅ V6.13 (destroy / remove LXC, image 6.13.0) · ✅ V6.13.1 (create LXC, image 6.13.1) · ✅ V6.14 (VM / QEMU support, image 6.14.0) · ✅ V6.15 (Proxmox connections in backup/restore, image 6.15.0) · ✅ V7.0 (visual Compose viewer, image 7.0.0) · ✅ V7.1 (edit basic service fields, image 7.1.0) · ✅ V7.1.1 (Compose as a per-project modal, image 7.1.1) · ✅ V7.2 (resource constraints UI, image 7.2.0) · ✅ V7.2.1 (PBS disk/SMART fixes, image 7.2.1) · ✅ V7.3 (top-level resources, image 7.3.0) · ✅ V7.4 (create a new service, image 7.4.0) · ✅ V7.4.1 (create a whole project, image 7.4.1) · ✅ V7.5 (service templates, image 7.5.0) · ✅ V7.6 (diff / dry-run / apply, image 7.6.0) · ✅ V7.7 (dependency graph + linter, image 7.7.0) · ✅ V7.8 (container card icons, image 7.8.0) · ✅ V7.9 (link Proxmox guests to services + Docker↔Proxmox cross-link, image 7.9.0) · ✅ V8.0 (clone & snapshot LXC, image 8.0.0) · ✅ V8.1 (restore LXC from backup, image 8.1.0) · ✅ V8.2 (clone & snapshot VM / QEMU, image 8.2.0) · ✅ V8.3 (restore VM from backup, image 8.3.0) · ✅ V8.4 (create VM / QEMU from scratch, image 8.4.0) · ✅ V8.5 (edit VM / QEMU parameters, image 8.5.0) · ✅ V8.6 (browser VM console / noVNC, image 8.6.0) · ✅ V9.0 (MQTT publisher + HA Discovery, image 9.0.0) · ✅ V9.1 (derived-signal MQTT sensors, image 9.1.0). Shipped V5.x phase detail now lives in [`HISTORY.md`](./HISTORY.md) §14, the V6.x Proxmox parity & LXC/VM phase detail in [`HISTORY.md`](./HISTORY.md) §16, the V7.x visual Compose editor track in [`HISTORY.md`](./HISTORY.md) §17, and the V8.x advanced Proxmox provisioning track in [`HISTORY.md`](./HISTORY.md) §18; V1–V4 historical detail is also in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
+> **Status (shipped milestones, V5+):** ✅ V5.0 (disabled card style + one-click removal) · ✅ V5.0.1 (unlink container from service) · ✅ V5.0.2 (editable SMTP / email settings) · ✅ V5.0.3 (dedicated notifications settings page) · ✅ V5.1 (secure key auto-provisioning, image 5.1.0) · ✅ V5.2 (true Compose-aware recreate, image 5.2.0) · ✅ V5.3 (host terminal, image v5.3.0) · ✅ V5.3.1 (tag-pattern filter correctness + version tags, image 5.3.1) · ✅ V5.3.2 (reliable offline alerts, image 5.3.2) · ✅ V5.4 (Compose project grouping & bulk update, image 5.4.0) · ✅ V5.5 (image cleanup / prune, image 5.5.0) · ✅ V5.6 (health-check tuning page, image 5.6.0) · ✅ V5.7 (container exec, image 5.7.0) · ✅ V5.8 (session audit viewer, image 5.8.0) · ✅ V5.9 (Docker instances page redesign, image 5.9.0) · ✅ V6.0 (Proxmox LXC update monitoring, image 6.0.0) · ✅ V6.1 (Proxmox LXC detail modal + Docker-style cards, image 6.1.0) · ✅ V6.2 (LXC Config tab, image 6.2.0) · ✅ V6.3 (LXC Stats + Tasks tabs, image 6.3.0) · ✅ V6.4 (LXC lifecycle actions + real-time stats, image 6.4.0) · ✅ V6.5 (edit LXC parameters, image 6.5.0) · ✅ V6.6 (browser LXC console / Console tab, image 6.6.0) · ✅ V6.7 (per-LXC update monitoring toggle, image 6.7.0) · ✅ V6.7.1 (Proxmox one-click "Update now", image 6.7.1) · ✅ V6.8 (PVE node health card + node modal, image 6.8.0) · ✅ V6.8.1 (PVE node alerting, image 6.8.1) · ✅ V6.8.2 (PVE node deep telemetry / SSH collectors, image 6.8.2) · ✅ V6.9.0 (edit LXC network interfaces & mount points, image 6.9.0) · ✅ V6.10 (Proxmox page Docker-parity redesign, image 6.10.0) · ✅ V6.11 (bulk LXC monitoring & update operations + audit, image 6.11.0) · ✅ V6.12 (LXC live logs / Logs tab, image 6.12.0) · ✅ V6.13 (destroy / remove LXC, image 6.13.0) · ✅ V6.13.1 (create LXC, image 6.13.1) · ✅ V6.14 (VM / QEMU support, image 6.14.0) · ✅ V6.15 (Proxmox connections in backup/restore, image 6.15.0) · ✅ V7.0 (visual Compose viewer, image 7.0.0) · ✅ V7.1 (edit basic service fields, image 7.1.0) · ✅ V7.1.1 (Compose as a per-project modal, image 7.1.1) · ✅ V7.2 (resource constraints UI, image 7.2.0) · ✅ V7.2.1 (PBS disk/SMART fixes, image 7.2.1) · ✅ V7.3 (top-level resources, image 7.3.0) · ✅ V7.4 (create a new service, image 7.4.0) · ✅ V7.4.1 (create a whole project, image 7.4.1) · ✅ V7.5 (service templates, image 7.5.0) · ✅ V7.6 (diff / dry-run / apply, image 7.6.0) · ✅ V7.7 (dependency graph + linter, image 7.7.0) · ✅ V7.8 (container card icons, image 7.8.0) · ✅ V7.9 (link Proxmox guests to services + Docker↔Proxmox cross-link, image 7.9.0) · ✅ V8.0 (clone & snapshot LXC, image 8.0.0) · ✅ V8.1 (restore LXC from backup, image 8.1.0) · ✅ V8.2 (clone & snapshot VM / QEMU, image 8.2.0) · ✅ V8.3 (restore VM from backup, image 8.3.0) · ✅ V8.4 (create VM / QEMU from scratch, image 8.4.0) · ✅ V8.5 (edit VM / QEMU parameters, image 8.5.0) · ✅ V8.6 (browser VM console / noVNC, image 8.6.0) · ✅ V9.0 (MQTT publisher + HA Discovery, image 9.0.0) · ✅ V9.1 (derived-signal MQTT sensors, image 9.1.0) · ✅ V9.2 (self-update via detached helper, image 9.2.0) · ✅ V10.0 (notification channels beyond email/Telegram — Apprise, image 10.0.0). Shipped V5.x phase detail now lives in [`HISTORY.md`](./HISTORY.md) §14, the V6.x Proxmox parity & LXC/VM phase detail in [`HISTORY.md`](./HISTORY.md) §16, the V7.x visual Compose editor track in [`HISTORY.md`](./HISTORY.md) §17, the V8.x advanced Proxmox provisioning track in [`HISTORY.md`](./HISTORY.md) §18, and the V9.x Home Assistant / MQTT + self-update track in [`HISTORY.md`](./HISTORY.md) §19; V1–V4 historical detail is also in [`HISTORY.md`](./HISTORY.md). End-user documentation: [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md).
 
 ## 14. Post-V4 backlog (V5+) — deferred Docker features
 
@@ -52,207 +52,12 @@
 
 ## V9 — Home Assistant integration via MQTT
 
->Stashboard already collects everything a
-> homelab dashboard in Home Assistant would want — per-container running state
-> across Docker hosts **and** Proxmox guests, Docker image-update availability, and
-> per-service health-check status — but that data lives only behind Stashboard's own
-> auth. Publishing it to an MQTT broker via **Home Assistant MQTT Discovery** lets HA
-> auto-create the matching entities with zero manual YAML, turning Stashboard into a
-> data source for HA dashboards, automations, and the notification channels the user
-> already runs there. This phase is **publish-only** (read): HA observes, it does not
-> control — control (start/stop/restart from HA via command topics) is explicitly
-> deferred so the first cut adds no externally-driven action surface.
-
-### Phase V9.0 — MQTT publisher + HA Discovery (read-only) ✅ Shipped (9.0.0)
-
-**Shipped in 9.0.0.** Exactly as scoped. A DB-backed, runtime-editable MQTT config
-(**Settings → Home Assistant**, mirroring the editable-SMTP model: broker host / port /
-TLS / username + encrypted password / client id / discovery prefix / entity prefix,
-master switch off by default, password never returned) feeds a background
-`MqttPublisherService` (`IHostedService`) holding one long-lived MQTTnet connection.
-It publishes **retained** HA-Discovery config topics + retained state topics, grouping
-entities into **one HA device per real object** linked by `via_device` to a single
-**Stashboard** hub. Three `binary_sensor` families ship: container/guest **running**
-state (Docker daemons live + Proxmox guests), Docker **image-update** available (from
-`DockerWatch.UpdateStatus`), and service **health** (from `WebResource.CurrentStatus`).
-Every entity's node id / object_id / unique_id is prefixed with the configured entity
-prefix (default `stashboard`, e.g. `binary_sensor.stashboard_jellyfin_running`); changing
-the prefix re-publishes under the new ids and clears the old retained topics. A single
-availability topic is registered as the broker **Last Will** and referenced by every
-entity (all flip to `unavailable` when Stashboard stops / drops). A periodic reconcile
-refreshes state on transitions (no spam on unchanged ticks), clears retained topics for
-vanished containers/guests/services, and reconnects after a broker drop. The MQTT config
-(password encrypted) round-trips through `BackupService`. **Out of scope (unchanged):**
-control / command topics, raw resource telemetry, per-entity publish selection, and
-running a broker. Covered by `MqttDiscoveryBuilderTests`, `MqttPublishReconcilerTests`,
-`MqttPublisherServiceTests`, `MqttSettingsServiceTests`, and `MqttBackupRoundTripTests`.
-See the [CHANGELOG](./CHANGELOG.md).
-
-<details><summary>Original phase plan</summary>
-
-**Complexity:** Medium
-**Value:** Surfaces three already-collected signals into Home Assistant as
-auto-discovered entities, so a user can build HA dashboards/automations over their
-whole estate (e.g. "notify when a container goes down", "alert when a Docker update
-appears") without Stashboard re-implementing notification breadth itself. Complements
-V10.0 (Apprise) rather than competing with it — MQTT exposes *state* to HA; Apprise
-fans *events* out to chat services.
-
-**Scope:**
-
-- **App-wide MQTT config** on the **Notifications** (or a new **Integrations**)
-  settings page, mirroring the editable-SMTP / Apprise model: broker host, port,
-  TLS toggle, username + password, a client id, a configurable **discovery prefix**
-  (default `homeassistant`), and a configurable **entity prefix** (default
-  `stashboard`) applied to every published sensor — stored DB-backed, the password
-  **encrypted at rest** and never returned (presence flag only). Changes apply
-  without a restart.
-  A master **"MQTT / Home Assistant integration"** switch, off by default.
-- **A background publisher** (`MqttPublisherService`, an `IHostedService` holding one
-  long-lived broker connection) that publishes **retained** HA Discovery config
-  topics (`<prefix>/<component>/<node>/<object>/config`) with a stable `unique_id`,
-  grouping entities into **one HA device per real object** — each container / guest /
-  node / service is its **own** device with a handful of entities, linked by
-  `via_device` to a single **Stashboard** hub device (which also carries the V9.1 estate
-  roll-ups), so HA renders a tidy device tree (`Stashboard → host → container`, ~5–10
-  entities each) instead of one monolithic 500-entity device — and retained **state**
-  topics the entities point at. **Every published entity is prefixed with the
-  configured entity prefix** (default `stashboard`) — the discovery node id, the
-  `object_id`/`name`, and the `unique_id` all start with `<prefix>_`
-  (e.g. `binary_sensor.stashboard_jellyfin_running`) so the entities are trivial to
-  spot, group, and filter in Home Assistant and never collide with other MQTT
-  producers. Changing the prefix re-publishes discovery under the new ids and clears
-  the old retained topics. Three entity families for the MVP:
-  1. **Container state** — a `binary_sensor` (running / not-running) per Docker
-     container across hosts **and** per Proxmox LXC/VM guest, sourced from the
-     existing instance/guest state already shown on the Docker and Proxmox pages.
-  2. **Image-update available** — a `binary_sensor` per Docker container, sourced from
-     the existing `DockerUpdateChecker` / `DockerUpdateStatus`.
-  3. **Service health** — a `binary_sensor` (online / offline) per `WebResource`
-     health check, sourced from `ServiceHealthChecker`'s `currentStatus`.
-- **Event-driven + periodic publishing:** states are republished when the underlying
-  checker/health loop detects a change, plus a periodic full refresh; because state
-  topics are retained, HA gets the last value immediately on (re)connect.
-- **Availability / LWT:** a single Stashboard availability topic registered as the
-  MQTT **Last Will**, referenced by every discovered entity, so all entities flip to
-  `unavailable` (not stale-last-value) when Stashboard stops or the connection drops.
-- **Lifecycle cleanup:** when a container/guest/service disappears, its retained
-  discovery + state topics are cleared so HA removes the entity rather than leaving an
-  orphan.
-- **Backup/restore:** the MQTT config (password encrypted) is added to
-  `BackupService` export/import and its round-trip test in the same change
-  (Definition-of-Done §10.3).
-
-**Out of scope:** **control / command topics** (start/stop/restart a container or
-guest from HA) — deferred to a follow-up phase because it introduces an
-externally-driven action surface needing its own gating/auth/ACL story; raw CPU/RAM/disk
-**resource-telemetry** sensors (deliberately off the roadmap — see the note after V9.1;
-V9.0 publishes state + update + health only); per-entity
-selection of *which* containers/services publish (V9.0 publishes all the user's
-monitored entities); running an MQTT broker (the user points Stashboard at their
-existing Mosquitto).
-
-**Transport rationale (MQTT, not a HACS integration):** container / guest / service state
-is **sparse and event-driven** — one thing goes down, one retained message flips one
-entity — which is precisely MQTT's sweet spot, and HA MQTT Discovery needs **zero HA-side
-code** (no Python integration to maintain against HA's fast-moving API, no second
-language / repo / release cadence). The estate is large, so entities are deliberately
-**not** grouped under one device: per-object `device.identifiers` + `via_device` build a
-tidy tree of small devices under a single Stashboard hub (see the publisher bullet above),
-so the count stays navigable without a monster device. A HACS **polling** integration is
-reconsidered only for the deferred **bidirectional-control** surface, where a coordinator +
-`services` / `buttons` genuinely win — not for publishing state.
-
-**Tests:** a discovery config message is published (retained) with the expected
-`unique_id`, device grouping, `state_topic`, and `availability_topic`; every
-published entity's node id / `object_id` / `unique_id` starts with the configured
-entity prefix (defaulting to `stashboard_`), and changing the prefix re-publishes
-discovery and clears the old retained topics; a state topic
-is republished on a status transition and not spammed on an unchanged tick beyond the
-refresh cadence; the LWT/availability topic is registered and entities reference it; a
-removed container/service clears its retained discovery + state topics; the broker
-password is encrypted at rest and the API returns a presence flag only; the
-publisher reconnects after a broker drop; the backup round-trip preserves the MQTT
-config.
-
-**Acceptance bar:** with a broker configured and the switch on, Home Assistant
-auto-discovers one device per host exposing a `binary_sensor` for each container's
-running state, each Docker container's update-available, and each monitored service's
-online/offline status — values update within one check cycle, all entities go
-`unavailable` when Stashboard stops, and no manual HA YAML is required.
-
-</details>
-
----
-
-### Phase V9.1 — Derived-signal sensors over MQTT ✅ Shipped (9.1.0)
-
-**Shipped in 9.1.0 — exactly as scoped.** The V9.0 publisher pipeline
-(`MqttEntityStateProvider` → `MqttDiscoveryBuilder` → `MqttPublishReconciler` →
-`MqttPublisherService`) was extended in place: four new entity kinds (`UpdateCount`,
-`NodeAlert`, `BackupAge`, `Rollup`) flow through the same reconcile / lifecycle path.
-Update counts publish as numeric `sensor`s (per Docker host on a new `dockerhost:{id}`
-device, per Proxmox node + per monitored LXC); the node-alert `problem` `binary_sensor`
-carries the per-category breakdown + worst severity over a retained `json_attributes`
-topic; backup-age publishes as a `timestamp` `sensor` from the newest vzdump ctime
-(`ListBackupsAsync`, best-effort/live like the Docker query); and the estate roll-ups ride
-the existing Stashboard hub device. All retained, all under the shared availability / LWT,
-all cleared when the underlying object disappears. Covered by builder, reconciler and
-provider tests.
-
-**Complexity:** Medium
-**Value:** Publishes the signals Stashboard **computes** (not raw telemetry) into Home
-Assistant — pending-update counts, the V6.8.1 node-alert verdicts, backup freshness, and
-whole-estate roll-ups — so HA can automate over Stashboard's own *conclusions* rather than
-re-deriving them ("notify when any node raises a crit alert", "warn if a VM hasn't been
-backed up in 7 days", "remind me on Sunday if updates are pending"). All of it is already
-on hand from the existing checkers / evaluators; **pure publish, no new collection**.
-
-**Scope:** builds on the V9.0 publisher verbatim (same broker, discovery + entity
-prefixes, per-object **device** tree, retained topics, shared availability / LWT,
-lifecycle cleanup):
-
-1. **Update counts** — a numeric `sensor` for pending updates per Docker host, per
-   Proxmox node (apt), and per monitored LXC, sourced from `DockerUpdateChecker` and the
-   Proxmox per-guest + node counts already on the cards. (V9.0 ships the boolean "update
-   available"; this adds the **number**.)
-2. **Node alerts** — a `binary_sensor` (`device_class: problem`) per PVE / PBS node
-   carrying the V6.8.1 `ProxmoxNodeAlertEvaluator` verdict (`off` = clear, `on` =
-   warn / crit), with the per-category breakdown (CPU / memory / storage / thermal /
-   SMART / network) and the worst active severity as attributes — Stashboard's own
-   alerting logic surfaced to HA.
-3. **Backup freshness** — a `sensor` per guest for the **age** (timestamp) of its most
-   recent vzdump archive, from `ListBackupsAsync` (ctime), `device_class: timestamp` so HA
-   renders "x days ago" and can alert on a stale backup.
-4. **Estate roll-ups** — a single **"Stashboard" HA device** with summary `sensor`s:
-   containers running / total, guests running / total, services online / total, hosts
-   reachable, and total updates pending across everything — the one-glance + single-trigger
-   surface.
-
-**Out of scope:** raw resource telemetry (deliberately off the roadmap — see the note
-below); control / command topics (still deferred); TLS-certificate expiry (Stashboard
-doesn't collect it yet — needs its own collection first).
-
-**Transport rationale:** derived signals are the **most** event-driven of all — an alert
-raises, an update count ticks, a backup completes — which is the strongest case for MQTT's
-push model over polling (a coordinator would re-fetch unchanged values every cycle). The
-estate **roll-up** sensors live on the **Stashboard hub device** (the `via_device` root),
-while per-node alert and per-guest backup-age entities attach to their **existing** node /
-guest devices from V9.0 — so this phase adds signals without spawning new devices or
-inflating any one of them.
-
-**Tests:** an update-count sensor publishes the expected number and refreshes on a check
-cycle; the node-alert binary_sensor flips `on` with the category attributes when the
-evaluator raises warn / crit and clears when it resolves; a guest's backup-age sensor
-reflects the newest archive's ctime; the roll-up device's counts match the underlying
-entities; every entity references the shared availability topic and clears its retained
-topics when the host / guest / service disappears.
-
-**Acceptance bar:** with the V9.0 integration on, HA additionally exposes per-host /
-per-guest pending-update counts, a per-node alert `problem` sensor reflecting the V6.8.1
-verdict, a per-guest backup-age sensor, and a single Stashboard roll-up device — all
-auto-discovered, updated within a check cycle, and going `unavailable` when Stashboard
-stops.
+> **Archived:** every shipped phase that lived under this section has moved to
+> [`HISTORY.md`](./HISTORY.md) §19 — the full **V9.0–V9.2** Home Assistant / MQTT +
+> self-update track: the read-only MQTT publisher with HA MQTT-Discovery (V9.0), the
+> derived-signal sensors built on it (V9.1), and the detached-helper self-update that
+> lets Stashboard update its own container (V9.2). The heading is kept only for external
+> references; the active roadmap continues with V10 below.
 
 ---
 
@@ -282,7 +87,31 @@ stops.
 
 ---
 
-### Phase V10.0 — Notification channels beyond email/Telegram
+### ✅ Shipped (10.0.0) Phase V10.0 — Notification channels beyond email/Telegram
+
+**Shipped in 10.0.0 — exactly as scoped.** A new **Apprise** channel sits alongside the
+existing email + Telegram channels in all four notification services
+(`ServiceStatusNotificationService`, `DockerUpdateNotificationService`,
+`ProxmoxUpdateNotificationService`, `ProxmoxNodeAlertNotificationService`), reusing the
+per-channel toggle + per-channel throttle-key pattern (the digest/signature key is stamped
+only after a successful send, so a transient Apprise outage retries on the next tick and
+never drops email/Telegram — and vice-versa). App-wide config lives on the **Notifications**
+settings page, mirroring the editable-SMTP model: a master switch, an Apprise base URL (the
+operator's own Apprise API or the stateless `/notify` endpoint), and one Apprise URL per line
+(`discord://`, `ntfy://`, `gotify://`, `slack://`, …) stored DB-backed with the URLs
+**encrypted at rest** and never returned (presence flag + non-secret schemes only); changes
+apply without a restart. A **Send test** button fires a sample notification through each
+configured target and reports per-target success/failure. Per-watch / per-host **Apprise**
+toggles surface disabled until the channel is configured (same UX as the Telegram toggle);
+service-offline alerts fan out whenever the per-service offline-notification switch is on.
+The Apprise config (URLs encrypted) + the per-target toggles round-trip through
+`BackupService`. Covered by `AppriseSenderTests`, `AppriseSettingsServiceTests`,
+`AppriseBackupRoundTripTests`, and the per-channel cases added to the notification-service
+tests. **Out of scope (unchanged):** a built-in Apprise runtime, and per-notification routing
+rules — V10.0 fans every notification out to all configured channels. See the
+[CHANGELOG](./CHANGELOG.md).
+
+<details><summary>Original phase plan</summary>
 
 **Complexity:** Medium
 **Value:** Today every notification (service offline, Docker update available,
@@ -333,6 +162,8 @@ API returns presence flags only; the backup round-trip preserves config + toggle
 update appearing, and a Proxmox node alert each deliver to the configured
 Discord/ntfy/Gotify target exactly once per state change, with no regression to the
 existing email/Telegram delivery.
+
+</details>
 
 ---
 

@@ -65,6 +65,7 @@ public sealed record DockerWatchResponse(
     string? AwsRegion,
     bool UpdateNotificationsEnabled,
     bool TelegramNotificationsEnabled,
+    bool AppriseNotificationsEnabled,
     CheckScheduleType ScheduleType,
     int CheckEveryHours,
     TimeOnly? CheckAtTime,
@@ -122,6 +123,7 @@ public sealed record DockerWatchUpsertRequest(
     [MaxLength(50)] string? AwsRegion = null,
     bool UpdateNotificationsEnabled = true,
     bool TelegramNotificationsEnabled = false,
+    bool AppriseNotificationsEnabled = false,
     /// <summary>V2.2 — schedule mode. Default <see cref="CheckScheduleType.Hourly"/>.</summary>
     CheckScheduleType ScheduleType = CheckScheduleType.Hourly,
     /// <summary>V2.2 — only honoured when <see cref="ScheduleType"/> is

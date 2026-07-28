@@ -42,6 +42,17 @@ export function ProjectUpdateDialog({
 
   const handleConfirm = async (): Promise<UpdateOutcome[]> => {
     const response = await onConfirm()
+    // V9.2 — if the project includes the Stashboard container itself, the whole
+    // recreate is offloaded to a detached helper and reported as Scheduled with
+    // no per-service rows. Render every target as "Scheduled".
+    if (response.parent.status === 'Scheduled' || response.parent.status === 5) {
+      return targets.map((t) => ({
+        key: t.key,
+        success: true,
+        scheduled: true,
+        error: response.parent.error,
+      }))
+    }
     return response.services.map((s) => ({
       key: s.containerName,
       success: s.status === 'Success' || s.status === 0,

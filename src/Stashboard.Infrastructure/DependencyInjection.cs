@@ -156,6 +156,10 @@ public static class DependencyInjection
         // container. Singleton: stateless, pulls the per-request transport
         // from the same factory the host client uses.
         services.AddSingleton<IDockerImageUpdater, DockerImageUpdater>();
+        // V9.2 — self-update launcher: detects an "Update now" pointed at the
+        // Stashboard container itself and offloads the recreate to a detached
+        // helper container so the app never stops the process doing the work.
+        services.AddSingleton<ISelfUpdateLauncher, SelfUpdateLauncher>();
         // V5.4 — bulk "Update project" orchestrator that drives the
         // compose-aware path (one `docker compose pull && up -d` against the
         // project root) or falls back to per-service raw recreate ordered by
