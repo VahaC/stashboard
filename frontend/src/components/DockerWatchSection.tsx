@@ -1795,7 +1795,11 @@ function UpdateHistoryPanel({ connectionId, watch }: { connectionId: string; wat
               <div className="docker-update-history-head">
                 <span
                   className="docker-section-badge"
-                  data-status={resolveAttemptStatus(a.status) === 'Success' ? 'UpToDate' : 'Error'}
+                  data-status={
+                    resolveAttemptStatus(a.status) === 'Success' ? 'UpToDate'
+                      : resolveAttemptStatus(a.status) === 'Scheduled' ? 'Unknown'
+                        : 'Error'
+                  }
                 >
                   {resolveAttemptStatus(a.status)}
                 </span>

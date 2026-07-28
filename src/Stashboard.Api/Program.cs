@@ -24,8 +24,17 @@ namespace Stashboard.Api;
 
 public class Program
 {
-    public static void Main(string[] args)
+    public static int Main(string[] args)
     {
+        // V9.2 — detached self-update helper mode. When the Stashboard image is
+        // run as `dotnet Stashboard.Api.dll self-update` it does NOT start the
+        // web app: it runs a single out-of-band recreate of the Stashboard
+        // container (driven by SelfUpdateLauncher) and exits. See SelfUpdateProcess.
+        if (args.Length > 0
+            && (args[0] == Core.Abstractions.SelfUpdateProtocol.CommandName
+                || args[0] == Core.Abstractions.SelfUpdateProtocol.ProjectCommandName))
+            return SelfUpdateProcess.RunAsync(args).GetAwaiter().GetResult();
+
         var builder = WebApplication.CreateBuilder(args);
 
         // STASHBOARD_* env vars override appsettings (use __ to descend into a section).
@@ -229,6 +238,10 @@ public class Program
         builder.Services.AddSingleton<Services.Mqtt.MqttPublishReconciler>();
 
         builder.Services.AddHostedService<HealthCheckBackgroundService>();
+        // V9.2 — confirms a self-update on the next startup by comparing the
+        // container's actual digest to the target recorded on the Scheduled row.
+        builder.Services.AddScoped<SelfUpdateReconciler>();
+        builder.Services.AddHostedService<SelfUpdateReconcilerHostedService>();
         builder.Services.AddHostedService<DockerUpdateBackgroundService>();
         builder.Services.AddHostedService<DockerImagePruneBackgroundService>();
         builder.Services.AddHostedService<ProxmoxUpdateBackgroundService>();
@@ -247,6 +260,14 @@ public class Program
         using (var scope = app.Services.CreateScope())
         {
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+            // V9.2 build marker — lets an operator confirm at a glance which code
+            // a running container actually carries (grep the logs for
+            // STASHBOARD_BUILD). Bump the marker whenever the self-update path
+            // changes so a stale image is obvious without guessing.
+            logger.LogInformation(
+                "STASHBOARD_BUILD marker=selfupdate-v5-reconcile (V9.2; self-update for Update now AND Update project; helper auto-removed; outcome confirmed on next startup by digest, badge clears only on real success)");
+
             foreach (var note in secretProvisioningNotes)
                 logger.LogInformation("{SecretProvisioningNote}", note);
 
@@ -312,6 +333,7 @@ public class Program
         app.MapFallbackToFile("index.html", staticFileOptions);
 
         app.Run();
+        return 0;
     }
 
     /// <summary>

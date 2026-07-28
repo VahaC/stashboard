@@ -185,6 +185,83 @@ public class UpdateNowEndpointTests : DockerWatchesControllerTestBase
     }
 
     [Fact]
+    public async Task Update_SelfTarget_SchedulesDetachedHelper_AndSkipsInProcessRecreate()
+    {
+        var svc = await _dataFactory.ServiceAsync();
+        var watch = await SeedWatchAsync(svc.Id, _userId, label: "stashboard",
+            imageReference: "vahac/stashboard:latest",
+            registryHost: "docker.io", repository: "vahac/stashboard", tag: "latest",
+            containerName: "stashboard-app",
+            status: DockerUpdateStatus.UpdateAvailable);
+        // The target the self-update is trying to reach.
+        watch.CurrentDigest = PreviousDigest;
+        watch.LatestDigest = NewDigest;
+        _dbContext.DockerWatches.Update(watch);
+        await _dbContext.SaveChangesAsync();
+        _dbContext.ChangeTracker.Clear();
+
+        _selfUpdateLauncherMock
+            .Setup(l => l.IsSelfTargetAsync(It.IsAny<DockerUpdateProfile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _selfUpdateLauncherMock
+            .Setup(l => l.LaunchAsync(It.IsAny<DockerUpdateProfile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SelfUpdateLaunchResult(true, null));
+
+        var ctrl = BuildController();
+        var result = await ctrl.UpdateNow(svc.Id, watch.Id, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var response = Assert.IsType<DockerWatchUpdateResponse>(ok.Value);
+        Assert.Equal(DockerUpdateAttemptStatus.Scheduled, response.Attempt.Status);
+
+        // The badge is NOT cleared yet — the recreate runs out of band and is only
+        // confirmed (or failed) by the startup reconciler comparing digests.
+        var watchRow = await ReloadWatchAsync(watch.Id);
+        Assert.Equal(DockerUpdateStatus.UpdateAvailable, watchRow!.UpdateStatus);
+
+        // The in-process recreate must NOT run — that's the very bug we avoid.
+        _imageUpdaterMock.Verify(u => u.UpdateAsync(
+            It.IsAny<DockerUpdateProfile>(), It.IsAny<CancellationToken>()), Times.Never);
+        // No synchronous re-check for a scheduled self-update.
+        _updateCheckerMock.Verify(c => c.CheckAsync(
+            It.IsAny<DockerWatchProfile>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // The Scheduled row records the digest we're trying to reach so the
+        // reconciler can confirm it on the next startup.
+        var attemptRow = await _dbContext.DockerUpdateAttempts.AsNoTracking()
+            .SingleAsync(a => a.DockerWatchId == watch.Id);
+        Assert.Equal(DockerUpdateAttemptStatus.Scheduled, attemptRow.Status);
+        Assert.Equal(NewDigest, attemptRow.NewDigest);
+    }
+
+    [Fact]
+    public async Task Update_SelfTarget_HelperFailsToStart_PersistsRecreateFailed()
+    {
+        var svc = await _dataFactory.ServiceAsync();
+        var watch = await SeedWatchAsync(svc.Id, _userId, label: "stashboard",
+            containerName: "stashboard-app",
+            status: DockerUpdateStatus.UpdateAvailable);
+
+        _selfUpdateLauncherMock
+            .Setup(l => l.IsSelfTargetAsync(It.IsAny<DockerUpdateProfile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _selfUpdateLauncherMock
+            .Setup(l => l.LaunchAsync(It.IsAny<DockerUpdateProfile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SelfUpdateLaunchResult(false, "Docker socket is read-only."));
+
+        var ctrl = BuildController();
+        var result = await ctrl.UpdateNow(svc.Id, watch.Id, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var response = Assert.IsType<DockerWatchUpdateResponse>(ok.Value);
+        Assert.Equal(DockerUpdateAttemptStatus.RecreateFailed, response.Attempt.Status);
+        Assert.Contains("read-only", response.Attempt.Error);
+
+        _imageUpdaterMock.Verify(u => u.UpdateAsync(
+            It.IsAny<DockerUpdateProfile>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ListUpdates_ReturnsAttemptsNewestFirst()
     {
         var svc = await _dataFactory.ServiceAsync();

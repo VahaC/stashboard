@@ -375,7 +375,9 @@ export type DockerUpdateAttemptStatus =
   | 'RecreateFailed'
   | 'HostUnreachable'
   | 'ContainerNotFound'
-  | 0 | 1 | 2 | 3 | 4
+  // V9.2 — self-update was handed off to a detached helper container.
+  | 'Scheduled'
+  | 0 | 1 | 2 | 3 | 4 | 5
 
 export interface DockerUpdateAttempt {
   id: string
@@ -417,7 +419,7 @@ export interface DockerWatchUpdateResponse {
 
 export const resolveAttemptStatus = (s: DockerUpdateAttemptStatus): string =>
   typeof s === 'number'
-    ? (['Success', 'PullFailed', 'RecreateFailed', 'HostUnreachable', 'ContainerNotFound'][s] ?? 'Unknown')
+    ? (['Success', 'PullFailed', 'RecreateFailed', 'HostUnreachable', 'ContainerNotFound', 'Scheduled'][s] ?? 'Unknown')
     : s
 
 // ── Docker connection (per-service daemon transport) ───────────────────────

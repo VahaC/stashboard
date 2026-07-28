@@ -63,7 +63,7 @@
 > control — control (start/stop/restart from HA via command topics) is explicitly
 > deferred so the first cut adds no externally-driven action surface.
 
-### Phase V9.0 — MQTT publisher + HA Discovery (read-only) ✅ Shipped (9.0.0)
+### ✅ Shipped (9.0.0) Phase V9.0 — MQTT publisher + HA Discovery (read-only)
 
 **Shipped in 9.0.0.** Exactly as scoped. A DB-backed, runtime-editable MQTT config
 (**Settings → Home Assistant**, mirroring the editable-SMTP model: broker host / port /
@@ -185,7 +185,7 @@ online/offline status — values update within one check cycle, all entities go
 
 ---
 
-### Phase V9.1 — Derived-signal sensors over MQTT ✅ Shipped (9.1.0)
+### ✅ Shipped (9.1.0) Phase V9.1 — Derived-signal sensors over MQTT
 
 **Shipped in 9.1.0 — exactly as scoped.** The V9.0 publisher pipeline
 (`MqttEntityStateProvider` → `MqttDiscoveryBuilder` → `MqttPublishReconciler` →
@@ -253,6 +253,51 @@ per-guest pending-update counts, a per-node alert `problem` sensor reflecting th
 verdict, a per-guest backup-age sensor, and a single Stashboard roll-up device — all
 auto-discovered, updated within a check cycle, and going `unavailable` when Stashboard
 stops.
+
+---
+
+### ✅ Shipped (9.2.0) Phase V9.2 — Self-update via detached helper
+
+**Problem.** Clicking **Update now** on the Stashboard container itself broke the
+instance. A container can't recreate itself in process: the `IDockerImageUpdater`
+stop → remove step kills the very process running it, so `create` + `start` never
+execute and the container vanishes. The Compose path failed the same way (the
+`docker compose` child dies with its container).
+
+**Fix (Watchtower self-update pattern).** A new `ISelfUpdateLauncher` detects that an
+"Update now" targets our own container — over **any** transport (local socket, SSH tunnel
+or TCP); self is decided by matching the running container's **id** against the watch
+target (own id read from `/proc/self/mountinfo`), so a container on a genuinely remote
+daemon is correctly never "self" — and offloads the recreate to a **detached one-shot
+helper container**: the same Stashboard image run as `dotnet Stashboard.Api.dll self-update`
+(`SelfUpdateProcess`), with the decrypted `DockerUpdateProfile` (including any SSH
+credentials) passed in an env var and the parent's mounts replicated onto it. The helper
+runs the proven `DockerImageUpdater.UpdateAsync` (or `IDockerProjectUpdater` for a whole-project
+recreate) out of band — surviving the parent's death — and is always auto-removed on exit so it
+never lingers. Covers both **Update now** (single container, via `SelfUpdateGate`)
+and **Update project** (`IsSelfInProjectAsync` → `LaunchProjectAsync` when the project includes
+our own container).
+
+**UX.** The attempt is logged with a new `DockerUpdateAttemptStatus.Scheduled` status carrying
+the target digest; the **Update now** dialog renders a distinct *"Self-update scheduled"* state
+warning the UI will be briefly unavailable. On the next startup `SelfUpdateReconciler` reads the
+container's actual digest and compares it to the target — Success (badge clears) or
+RecreateFailed (badge stays), registry-independent; the outcome is confirmed, never guessed.
+
+**Complexity:** Medium
+**Value:** The one container you most want to keep current — Stashboard itself — can finally
+be updated from its own UI instead of breaking.
+
+**Scope:** detection + detached helper launch + `self-update` CLI mode + `Scheduled` status
++ dialog state. No new collection, no schema change. Transport-agnostic; the same gate as any
+"Update now" on that connection. End-user docs:
+[`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md) §5.1 → "Updating
+Stashboard itself".
+
+**Tests:** self-detection by id over socket & SSH / non-self / remote-daemon (own id absent)
+/ own-id-unresolved; helper launch replicates mounts + serializes a round-tripping profile +
+removes a stale helper + create/start failures; the controller schedules instead of
+recreating in process and persists a `Scheduled` row; the dialog renders the scheduled state.
 
 ---
 

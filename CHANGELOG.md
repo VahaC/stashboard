@@ -5,6 +5,44 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [9.2.0] — 2026-06-27
+
+### Fixed
+- **Updating Stashboard itself no longer breaks the instance (V9.2).** Clicking
+  **Update now** on the Stashboard container previously killed the container: a
+  container can't recreate itself in process — the `stop` → `remove` step kills the
+  very process running the recreate, so `create` + `start` never run and the
+  container vanishes.
+
+### Added
+- **Self-update via a detached helper (V9.2).** When **Update now** targets the
+  Stashboard container itself — over **any** transport (local socket, SSH tunnel or
+  TCP; self is decided by matching the container **id**, so a remote daemon is never
+  "self") — Stashboard now detects this and offloads the pull + recreate to a
+  **detached one-shot helper container** — the same Stashboard image run as
+  `dotnet Stashboard.Api.dll self-update` — that inherits Stashboard's mounts and the
+  decrypted connection profile and performs the recreate from the outside, surviving
+  the parent's restart. The helper is always auto-removed when it exits, so it never
+  lingers. Works for both the raw recreate and the Compose-aware
+  recreate, and covers both **Update now** (the single container) and **Update project**
+  (a Compose project that includes the Stashboard container — the whole project recreate
+  is offloaded to the helper).
+  - The attempt is logged with a new **`Scheduled`** status carrying the digest the
+    update is trying to reach; the **Update now** dialog shows a *"Self-update scheduled"*
+    banner (the UI is briefly unavailable while the app restarts). On the next startup a
+    reconciler reads the container's **actual** digest and compares it to that target:
+    a match flips the row to **Success** and clears the "Update available" badge; a
+    mismatch flips it to **RecreateFailed** and keeps the badge — so the outcome is
+    confirmed, never guessed (works even if the registry is unreachable at startup).
+  - Requirements are the same as any "Update now" on that connection — it must be able to
+    recreate the container (a **writable** local socket, or an SSH / TCP connection). See
+    [`DOCKER_UPDATE_MONITORING_GUIDE.md`](./DOCKER_UPDATE_MONITORING_GUIDE.md) §5.1 →
+    "Updating Stashboard itself".
+
+### Changed
+- Bumped the bundled standalone Docker Compose binary baked into the image from
+  **v5.1.4 → v5.2.0** (`Dockerfile` `COMPOSE_VERSION`).
+
 ## [9.1.0] — 2026-06-25
 
 ### Added

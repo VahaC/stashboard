@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   AlertCircle,
   CheckCircle2,
+  Clock,
   ExternalLink,
   Loader2,
   RefreshCw,
@@ -49,6 +50,11 @@ export interface UpdateOutcome {
   key: string
   success: boolean
   error?: string | null
+  /** V9.2 — the target is the Stashboard container itself, so the recreate
+   *  was handed off to a detached helper. Not a success or a failure: the
+   *  app is about to restart out of band. Rendered as a distinct
+   *  "Scheduled" state with an informational banner. */
+  scheduled?: boolean
 }
 
 export interface UpdateProgressDialogProps {
@@ -96,10 +102,14 @@ export function UpdateProgressDialog({
   const [phase, setPhase] = useState<Phase>({ kind: 'confirm' })
 
   // Reset to confirm whenever the dialog (re)opens so a previous run's
-  // checklist doesn't shadow a fresh confirmation.
-  useEffect(() => {
+  // checklist doesn't shadow a fresh confirmation. Done during render off the
+  // open transition (not in an effect) — the React-documented "you might not
+  // need an effect" reset pattern, which avoids the cascading-render lint.
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
     if (open) setPhase({ kind: 'confirm' })
-  }, [open])
+  }
 
   const outcomesByKey = new Map<string, UpdateOutcome>()
   if (phase.kind === 'done') {
@@ -159,6 +169,14 @@ export function UpdateProgressDialog({
     const outcome = outcomesByKey.get(target.key)
     if (!outcome) {
       return <span className="update-progress-row-status update-progress-row-status-pending">No result</span>
+    }
+    if (outcome.scheduled) {
+      return (
+        <span className="update-progress-row-status update-progress-row-status-pending">
+          <Clock className="h-3.5 w-3.5" />
+          Scheduled
+        </span>
+      )
     }
     return outcome.success
       ? (
@@ -225,6 +243,13 @@ export function UpdateProgressDialog({
           </>
         )
       case 'done': {
+        if (phase.outcomes.some((o) => o.scheduled)) {
+          return (
+            <>
+              Self-update scheduled: <code className="container-modal-code">{subject}</code>
+            </>
+          )
+        }
         const failed = phase.outcomes.filter((o) => !o.success).length
         return (
           <>
@@ -261,6 +286,20 @@ export function UpdateProgressDialog({
       )
     }
     // done
+    // V9.2 — self-update: the recreate runs in a detached helper and this
+    // process is about to restart, so neither "updated" nor "failed" fits.
+    const scheduled = phase.outcomes.find((o) => o.scheduled)
+    if (scheduled) {
+      return (
+        <p className="update-progress-banner">
+          <Clock className="h-4 w-4" />
+          {scheduled.error ?? (
+            <>Stashboard is updating itself in a detached helper container. The UI will be briefly
+              unavailable while it restarts — refresh in a minute.</>
+          )}
+        </p>
+      )
+    }
     const okCount = phase.outcomes.filter((o) => o.success).length
     const total = phase.outcomes.length
     const failed = total - okCount
