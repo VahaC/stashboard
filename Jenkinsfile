@@ -3,6 +3,7 @@ pipeline {
 
     options {
         disableConcurrentBuilds()
+        skipDefaultCheckout(true)
     }
 
     triggers {
@@ -13,10 +14,14 @@ pipeline {
         stage('Checkout') {
             agent any
             steps {
+                deleteDir()
                 git branch: 'main',
                     credentialsId: 'github-pat',
                     url: 'https://github.com/VahaC/stashboard.git'
-                stash includes: '**', name: 'source'
+
+                stash name: 'source',
+                    includes: '**/*',
+                    excludes: '.git/**,**/bin/**,**/obj/**,frontend/node_modules/**'
             }
         }
 
