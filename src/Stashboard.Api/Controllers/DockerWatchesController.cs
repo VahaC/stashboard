@@ -28,7 +28,6 @@ public class DockerWatchesController(
     IDockerUpdateChecker updateChecker,
     IDockerWebhookTokenGenerator webhookTokenGenerator,
     IDockerImageUpdater imageUpdater,
-    ISelfUpdateLauncher selfUpdateLauncher,
     IDockerHostClient hostClient,
     IDockerLogStreamer logStreamer,
     IDockerStatsStreamer statsStreamer) : ControllerBase
@@ -283,11 +282,8 @@ public class DockerWatchesController(
             return BadRequest(new { error = "Enable this watch before running Update now." });
 
         var profile = mapper.BuildUpdateProfile(watch, connection);
-        var result = await SelfUpdateGate.UpdateAsync(selfUpdateLauncher, imageUpdater, profile, cancellationToken);
+        var result = await imageUpdater.UpdateAsync(profile, cancellationToken);
 
-        // V9.2 — a scheduled self-update records the target digest (the watch's
-        // LatestDigest) so the startup reconciler can confirm success/failure by
-        // comparing the container's actual digest to it.
         var attempt = new DockerUpdateAttemptEntity
         {
             Id = Guid.NewGuid(),
@@ -298,8 +294,8 @@ public class DockerWatchesController(
             Status = result.Status,
             ImageReference = watch.ImageReference,
             ContainerName = watch.ContainerName,
-            PreviousDigest = result.Status == DockerUpdateAttemptStatus.Scheduled ? watch.CurrentDigest : result.PreviousDigest,
-            NewDigest = result.Status == DockerUpdateAttemptStatus.Scheduled ? watch.LatestDigest : result.NewDigest,
+            PreviousDigest = result.PreviousDigest,
+            NewDigest = result.NewDigest,
             Error = result.Error,
             CompletedUtc = DateTime.UtcNow,
             CreatedUtc = DateTime.UtcNow,

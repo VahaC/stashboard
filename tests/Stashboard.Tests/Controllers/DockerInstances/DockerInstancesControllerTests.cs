@@ -38,9 +38,6 @@ public class DockerInstancesControllerTests : IAsyncLifetime
     private readonly Mock<IDockerLogStreamer> _logStreamerMock = new();
     private readonly Mock<IDockerStatsStreamer> _statsStreamerMock = new();
     private readonly Mock<IDockerProjectUpdater> _projectUpdaterMock = new();
-    // Default (unconfigured) IsSelfInProjectAsync returns false, so existing
-    // "Update project" tests keep exercising the in-process bulk path.
-    private readonly Mock<ISelfUpdateLauncher> _selfUpdateLauncherMock = new();
     private readonly Mock<IDockerUpdateChecker> _updateCheckerMock = new();
     private readonly Mock<IDockerPruneRunner> _pruneRunnerMock = new();
     private readonly Mock<IContainerIconResolver> _iconResolverMock = new();
@@ -1368,7 +1365,7 @@ public class DockerInstancesControllerTests : IAsyncLifetime
         var controller = new DockerInstancesController(
             _dbContext, connectionMapper, watchMapper,
             _hostClientMock.Object, _logStreamerMock.Object, _statsStreamerMock.Object,
-            _projectUpdaterMock.Object, _selfUpdateLauncherMock.Object, _updateCheckerMock.Object,
+            _projectUpdaterMock.Object, _updateCheckerMock.Object,
             _pruneRunnerMock.Object, _iconResolverMock.Object, opts);
 
         var identity = new ClaimsIdentity(

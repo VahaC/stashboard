@@ -3,7 +3,7 @@ ARG NODE_VERSION=22
 # V5.2 — standalone Docker Compose v2 binary baked into the runtime image so the
 # Compose-aware "Update now" recreate works out of the box. Pinned for
 # reproducible builds; bump in lockstep with upstream.
-ARG COMPOSE_VERSION=5.2.0
+ARG COMPOSE_VERSION=5.1.4
 
 # ---------- Stage 1: build the React frontend ----------
 FROM node:${NODE_VERSION}-alpine AS frontend-build

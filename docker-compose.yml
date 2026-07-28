@@ -47,11 +47,6 @@ services:
       # per-click confirmation and writes an audit row regardless of
       # outcome — see DOCKER_UPDATE_MONITORING_GUIDE.md §5.1.
       #
-      # V9.2 — with the writable socket, "Update now" also works on the
-      # Stashboard container itself: it offloads its own recreate to a
-      # short-lived detached helper container so it doesn't kill the
-      # process mid-update. See the guide §5.1 "Updating Stashboard itself".
-      #
       # Security: anyone with the socket effectively has root on the
       # host. Don't expose the Stashboard UI publicly without a strong
       # reverse-proxy auth layer.

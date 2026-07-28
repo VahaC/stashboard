@@ -59,10 +59,6 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         // encrypted at rest). Included so a restore brings the integration back.
         var mqtt = await db.MqttSettings.AsNoTracking()
             .FirstOrDefaultAsync(m => m.Id == MqttSettingsEntity.SingletonId, cancellationToken);
-        // V10.0 — app-wide Apprise notification config (singleton, URLs encrypted at
-        // rest). Included so a restore brings the notification channel back.
-        var apprise = await db.AppriseSettings.AsNoTracking()
-            .FirstOrDefaultAsync(a => a.Id == AppriseSettingsEntity.SingletonId, cancellationToken);
         var categories = await db.Categories.AsNoTracking().Where(c => c.UserId == userId).ToListAsync(cancellationToken);
         var tags = await db.Tags.AsNoTracking().Where(t => t.UserId == userId).ToListAsync(cancellationToken);
         var connections = await db.DockerConnections.AsNoTracking().Where(c => c.UserId == userId).ToListAsync(cancellationToken);
@@ -139,8 +135,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 Dec(w.RegistryUsernameEncrypted), Dec(w.RegistryPasswordEncrypted), Dec(w.GitHubPatEncrypted),
                 w.RegistryAuthType, Dec(w.AwsAccessKeyIdEncrypted), Dec(w.AwsSecretAccessKeyEncrypted), w.AwsRegion,
                 w.UpdateNotificationsEnabled, w.TelegramNotificationsEnabled, w.ScheduleType, w.CheckEveryHours,
-                w.CheckAtTime, w.CheckOnDayOfWeek, w.TagPatternFilter, w.WebhookToken,
-                w.AppriseNotificationsEnabled)).ToList(),
+                w.CheckAtTime, w.CheckOnDayOfWeek, w.TagPatternFilter, w.WebhookToken)).ToList(),
             ProxmoxConnections: proxmoxConnections.Select(c => new ProxmoxConnectionDto(
                 c.Id, c.Name, c.ApiBaseUrl, c.NodeName, c.ServerType, c.ApiTokenId,
                 Dec(c.ApiTokenSecretEncrypted), c.SkipTlsVerify,
@@ -154,8 +149,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                         g.VmId, g.GuestType, g.Name, g.MonitoringEnabled, g.MonitoringSnoozedUntil))
                     .ToList(),
                 (guestIconsByConnection.TryGetValue(c.Id, out var gi) ? gi : [])
-                    .Select(i => new GuestIconDto(i.VmId, i.LogoBase64!)).ToList(),
-                c.AppriseNotificationsEnabled)).ToList(),
+                    .Select(i => new GuestIconDto(i.VmId, i.LogoBase64!)).ToList())).ToList(),
             ServiceProxmoxLinks: serviceProxmoxLinks
                 .Select(l => new WebResourceProxmoxGuestLinkDto(l.WebResourceId, l.ProxmoxConnectionId, l.VmId)).ToList(),
             ContainerProxmoxLinks: containerProxmoxLinks
@@ -163,9 +157,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             Mqtt: mqtt is null ? null : new MqttDto(
                 mqtt.Enabled, mqtt.Host, mqtt.Port, mqtt.UseTls, mqtt.AllowUntrustedTls,
                 mqtt.Username, Dec(mqtt.PasswordEncrypted), mqtt.ClientId, mqtt.DiscoveryPrefix, mqtt.EntityPrefix,
-                mqtt.DeviceName, mqtt.Manufacturer),
-            Apprise: apprise is null ? null : new AppriseDto(
-                apprise.Enabled, apprise.BaseUrl, Dec(apprise.UrlsEncrypted)));
+                mqtt.DeviceName, mqtt.Manufacturer));
 
         return JsonSerializer.SerializeToUtf8Bytes(dto, JsonOpts);
     }
@@ -218,24 +210,6 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             mqtt.DeviceName = string.IsNullOrWhiteSpace(m.DeviceName) ? "Stashboard" : m.DeviceName;
             mqtt.Manufacturer = string.IsNullOrWhiteSpace(m.Manufacturer) ? "Stashboard" : m.Manufacturer;
             mqtt.UpdatedUtc = DateTime.UtcNow;
-        }
-
-        // ── V10.0 — app-wide Apprise notification config (singleton upsert) ──
-        // The URLs are re-encrypted on import so they're portable across instances
-        // with different encryption keys, like every other secret in this service.
-        if (dto.Apprise is { } a)
-        {
-            var appriseRow = await db.AppriseSettings.FirstOrDefaultAsync(
-                x => x.Id == AppriseSettingsEntity.SingletonId, cancellationToken);
-            if (appriseRow is null)
-            {
-                appriseRow = new AppriseSettingsEntity { Id = AppriseSettingsEntity.SingletonId };
-                db.AppriseSettings.Add(appriseRow);
-            }
-            appriseRow.Enabled = a.Enabled;
-            appriseRow.BaseUrl = a.BaseUrl;
-            appriseRow.UrlsEncrypted = Enc(a.Urls);
-            appriseRow.UpdatedUtc = DateTime.UtcNow;
         }
 
         // ── Categories / Tags (merge by name) ──
@@ -356,7 +330,6 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                     TelemetryPollSeconds = pc.TelemetryPollSeconds,
                     UpdateNotificationsEnabled = pc.UpdateNotificationsEnabled,
                     TelegramNotificationsEnabled = pc.TelegramNotificationsEnabled,
-                    AppriseNotificationsEnabled = pc.AppriseNotificationsEnabled,
                     ScheduleType = pc.ScheduleType,
                     CheckEveryHours = pc.CheckEveryHours,
                     CheckAtTime = pc.CheckAtTime,
@@ -533,7 +506,6 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 AwsRegion = w.AwsRegion,
                 UpdateNotificationsEnabled = w.UpdateNotificationsEnabled,
                 TelegramNotificationsEnabled = w.TelegramNotificationsEnabled,
-                AppriseNotificationsEnabled = w.AppriseNotificationsEnabled,
                 ScheduleType = w.ScheduleType,
                 CheckEveryHours = w.CheckEveryHours,
                 CheckAtTime = w.CheckAtTime,
@@ -582,12 +554,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         List<ProxmoxConnectionDto>? ProxmoxConnections = null,
         List<WebResourceProxmoxGuestLinkDto>? ServiceProxmoxLinks = null,
         List<ContainerProxmoxLinkDto>? ContainerProxmoxLinks = null,
-        MqttDto? Mqtt = null,
-        AppriseDto? Apprise = null);
-
-    // V10.0 — app-wide Apprise notification config. URLs decrypted on export and
-    // re-encrypted on import (portable across instances), like every other secret here.
-    private sealed record AppriseDto(bool Enabled, string BaseUrl, string? Urls);
+        MqttDto? Mqtt = null);
 
     // V9.0 — app-wide MQTT integration config. Password is decrypted on export and
     // re-encrypted on import (portable across instances), like every other secret here.
@@ -633,9 +600,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         string? RegistryUsername, string? RegistryPassword, string? GitHubPat, RegistryAuthType RegistryAuthType,
         string? AwsAccessKeyId, string? AwsSecretAccessKey, string? AwsRegion,
         bool UpdateNotificationsEnabled, bool TelegramNotificationsEnabled, CheckScheduleType ScheduleType,
-        int CheckEveryHours, TimeOnly? CheckAtTime, DayOfWeek? CheckOnDayOfWeek, string? TagPatternFilter, string? WebhookToken,
-        // V10.0 — nullable/defaulted so a pre-V10.0 backup still deserializes.
-        bool AppriseNotificationsEnabled = false);
+        int CheckEveryHours, TimeOnly? CheckAtTime, DayOfWeek? CheckOnDayOfWeek, string? TagPatternFilter, string? WebhookToken);
 
     private sealed record ProxmoxConnectionDto(
         Guid Id, string Name, string ApiBaseUrl, string NodeName, ProxmoxServerType ServerType, string ApiTokenId,
@@ -645,9 +610,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         bool AllowConsole, bool AllowUpdates, bool AllowDestroy, bool AllowCreate, bool Enabled,
         int? TelemetryPollSeconds, bool UpdateNotificationsEnabled, bool TelegramNotificationsEnabled,
         CheckScheduleType ScheduleType, int CheckEveryHours, TimeOnly? CheckAtTime, DayOfWeek? CheckOnDayOfWeek,
-        string? WebhookToken, List<ProxmoxGuestDto> Guests, List<GuestIconDto>? GuestIcons = null,
-        // V10.0 — nullable/defaulted so a pre-V10.0 backup still deserializes.
-        bool AppriseNotificationsEnabled = false);
+        string? WebhookToken, List<ProxmoxGuestDto> Guests, List<GuestIconDto>? GuestIcons = null);
 
     private sealed record ProxmoxGuestDto(
         int VmId, ProxmoxGuestType GuestType, string Name, bool MonitoringEnabled, DateTime? MonitoringSnoozedUntil);

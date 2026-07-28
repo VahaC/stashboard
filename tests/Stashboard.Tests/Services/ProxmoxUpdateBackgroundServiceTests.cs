@@ -390,13 +390,6 @@ public class ProxmoxUpdateBackgroundServiceTests : IAsyncLifetime
         services.AddSingleton(_checkerMock.Object);
         services.AddSingleton(_emailMock.Object);
         services.AddSingleton(_telegramMock.Object);
-        // V10.0 — the notification service now also depends on the Apprise channel;
-        // register an unconfigured stub so these tests exercise only email/Telegram.
-        services.AddSingleton(new Mock<IAppriseSender>().Object);
-        var appriseSettingsMock = new Mock<IAppriseSettingsService>();
-        appriseSettingsMock.Setup(s => s.GetResolvedAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ResolvedAppriseSettings(false, "", []));
-        services.AddSingleton(appriseSettingsMock.Object);
         // V7.8 — the scan service backfills guest OsType via the API client; these
         // tests don't exercise icons, so a bare mock (config reads return null,
         // swallowed best-effort) keeps the existing scan assertions intact.

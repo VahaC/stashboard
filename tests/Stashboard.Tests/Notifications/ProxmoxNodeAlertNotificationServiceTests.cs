@@ -19,8 +19,6 @@ public class ProxmoxNodeAlertNotificationServiceTests
 {
     private readonly Mock<IEmailSender> _emailMock = new();
     private readonly Mock<ITelegramSender> _telegramMock = new();
-    private readonly Mock<IAppriseSender> _appriseMock = new();
-    private readonly Mock<IAppriseSettingsService> _appriseSettingsMock = new();
     private readonly Mock<IEncryptionService> _encryptionMock = new();
     private readonly ProxmoxNodeAlertNotificationService _service;
 
@@ -28,91 +26,9 @@ public class ProxmoxNodeAlertNotificationServiceTests
     {
         _encryptionMock.Setup(e => e.Decrypt(It.IsAny<string>()))
             .Returns<string>(v => v.StartsWith("enc:") ? v[4..] : v);
-        _appriseSettingsMock.Setup(s => s.GetResolvedAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ResolvedAppriseSettings(false, "", []));
         _service = new ProxmoxNodeAlertNotificationService(
-            _emailMock.Object, _telegramMock.Object, _appriseMock.Object, _appriseSettingsMock.Object,
-            _encryptionMock.Object, NullLogger<ProxmoxNodeAlertNotificationService>.Instance);
-    }
-
-    private void ConfigureApprise() =>
-        _appriseSettingsMock.Setup(s => s.GetResolvedAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ResolvedAppriseSettings(true, "http://apprise:8000", ["gotify://g.lan/token"]));
-
-    private void VerifyNoApprise() =>
-        _appriseMock.Verify(a => a.SendAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(),
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AppriseNotificationType>(), It.IsAny<CancellationToken>()), Times.Never);
-
-    // ── Apprise channel ───────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task AppriseEnabled_SendsAndStampsOwnSignature_WithCritSeverity()
-    {
-        ConfigureApprise();
-        AppriseNotificationType? type = null;
-        _appriseMock.Setup(a => a.SendAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(),
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AppriseNotificationType>(), It.IsAny<CancellationToken>()))
-            .Callback<string, IReadOnlyList<string>, string, string, AppriseNotificationType, CancellationToken>(
-                (_, _, _, _, t, _) => type = t)
-            .Returns(Task.CompletedTask);
-
-        var settings = Settings();
-        var active = new[] { State(ProxmoxAlertCategory.Cpu, HealthLevel.Crit, "CPU", 96, 95, DateTime.UtcNow) };
-        const string sig = "Cpu:Crit:96";
-
-        await _service.NotifyIfNeededAsync(User(), Connection(appriseEnabled: true), settings, active, sig);
-
-        Assert.Equal(AppriseNotificationType.Failure, type);
-        Assert.Equal(sig, settings.LastAppriseNotifiedSignature);
-    }
-
-    [Fact]
-    public async Task AppriseSameSignature_DoesNotResend()
-    {
-        ConfigureApprise();
-        const string sig = "Cpu:Crit:96";
-        var settings = Settings();
-        settings.LastAppriseNotifiedSignature = sig;
-        var active = new[] { State(ProxmoxAlertCategory.Cpu, HealthLevel.Crit, "CPU", 96, 95, DateTime.UtcNow) };
-
-        await _service.NotifyIfNeededAsync(User(), Connection(appriseEnabled: true), settings, active, sig);
-
-        VerifyNoApprise();
-    }
-
-    [Fact]
-    public async Task AppriseThrows_LeavesSignatureUnset_ForRetry()
-    {
-        ConfigureApprise();
-        _appriseMock.Setup(a => a.SendAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(),
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AppriseNotificationType>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("apprise down"));
-        var settings = Settings();
-        var active = new[] { State(ProxmoxAlertCategory.Cpu, HealthLevel.Crit, "CPU", 96, 95, DateTime.UtcNow) };
-
-        await _service.NotifyIfNeededAsync(User(), Connection(appriseEnabled: true), settings, active, "Cpu:Crit:96");
-
-        Assert.Null(settings.LastAppriseNotifiedSignature);
-    }
-
-    [Fact]
-    public async Task EmailFails_AppriseStillSends_PerChannelKeys()
-    {
-        ConfigureApprise();
-        _emailMock.Setup(s => s.SendAsync(It.IsAny<EmailMessage>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("smtp down"));
-        _appriseMock.Setup(a => a.SendAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(),
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AppriseNotificationType>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        var settings = Settings();
-        var active = new[] { State(ProxmoxAlertCategory.Cpu, HealthLevel.Crit, "CPU", 96, 95, DateTime.UtcNow) };
-        const string sig = "Cpu:Crit:96";
-
-        await _service.NotifyIfNeededAsync(User(), Connection(appriseEnabled: true), settings, active, sig);
-
-        Assert.Null(settings.LastNotifiedSignature);                 // email retries next tick
-        Assert.Equal(sig, settings.LastAppriseNotifiedSignature);    // apprise stamped
+            _emailMock.Object, _telegramMock.Object, _encryptionMock.Object,
+            NullLogger<ProxmoxNodeAlertNotificationService>.Instance);
     }
 
     // ── email throttle ────────────────────────────────────────────────────────
@@ -285,8 +201,7 @@ public class ProxmoxNodeAlertNotificationServiceTests
         return user;
     }
 
-    private static ProxmoxConnectionEntity Connection(
-        bool emailEnabled = true, bool telegramEnabled = false, bool appriseEnabled = false) => new()
+    private static ProxmoxConnectionEntity Connection(bool emailEnabled = true, bool telegramEnabled = false) => new()
     {
         Id = Guid.NewGuid(),
         UserId = Guid.NewGuid(),
@@ -296,7 +211,6 @@ public class ProxmoxNodeAlertNotificationServiceTests
         ApiTokenId = "root@pam!stash",
         UpdateNotificationsEnabled = emailEnabled,
         TelegramNotificationsEnabled = telegramEnabled,
-        AppriseNotificationsEnabled = appriseEnabled,
     };
 
     private static ProxmoxNodeAlertSettingsEntity Settings(string? lastNotified = null, string? lastTelegram = null) => new()

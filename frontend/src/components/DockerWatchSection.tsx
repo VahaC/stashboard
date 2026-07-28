@@ -26,7 +26,6 @@ import {
   useSetContainerProxmoxLink,
   useRemoveContainerProxmoxLink,
   useTelegramSettings,
-  useAppriseSettings,
   useTestConnectionWatch,
   useTestDockerConnectionPing,
   useUnlinkConnectionWatch,
@@ -842,7 +841,6 @@ interface FormState {
   containerName: string
   updateNotificationsEnabled: boolean
   telegramNotificationsEnabled: boolean
-  appriseNotificationsEnabled: boolean
   /** V2.2 schedule mode. */
   scheduleType: 'Hourly' | 'Daily' | 'Weekly'
   /** Hours between checks for Hourly mode. */
@@ -897,7 +895,6 @@ const emptyForm: FormState = {
   containerName: '',
   updateNotificationsEnabled: true,
   telegramNotificationsEnabled: false,
-  appriseNotificationsEnabled: false,
   scheduleType: 'Hourly',
   checkEveryHours: 24,
   checkAtTimeLocal: '08:00',
@@ -978,12 +975,6 @@ export function DockerWatchForm({
     && telegramSettings.data.chatId
     && telegramSettings.data.notificationsEnabled
   )
-  const appriseSettings = useAppriseSettings()
-  const appriseConfigured = Boolean(
-    appriseSettings.data
-    && appriseSettings.data.enabled
-    && appriseSettings.data.hasUrls
-  )
 
   const [form, setForm] = useState<FormState>(() => existing
     ? {
@@ -993,7 +984,6 @@ export function DockerWatchForm({
         containerName: existing.containerName,
         updateNotificationsEnabled: existing.updateNotificationsEnabled,
         telegramNotificationsEnabled: existing.telegramNotificationsEnabled,
-        appriseNotificationsEnabled: existing.appriseNotificationsEnabled,
         scheduleType: resolveScheduleType(existing.scheduleType),
         checkEveryHours: existing.checkEveryHours,
         checkAtTimeLocal: utcTimeToLocalHHmm(existing.checkAtTime) ?? '08:00',
@@ -1038,7 +1028,6 @@ export function DockerWatchForm({
       awsRegion: isAwsEcr ? (form.awsRegion.trim() || null) : null,
       updateNotificationsEnabled: form.updateNotificationsEnabled,
       telegramNotificationsEnabled: telegramConfigured && form.telegramNotificationsEnabled,
-      appriseNotificationsEnabled: appriseConfigured && form.appriseNotificationsEnabled,
       scheduleType: form.scheduleType,
       checkEveryHours: form.checkEveryHours,
       checkAtTime: utcTime,
@@ -1443,24 +1432,6 @@ export function DockerWatchForm({
               Account page and enable notifications there to use this channel.
             </p>
           )}
-          <label
-            className="service-modal-checkbox-label service-modal-label"
-            title={!appriseConfigured ? 'Configure Apprise in Account → Notifications first.' : undefined}
-          >
-            <input
-              type="checkbox"
-              checked={appriseConfigured && form.appriseNotificationsEnabled}
-              disabled={!appriseConfigured}
-              onChange={(e) => setForm({ ...form, appriseNotificationsEnabled: e.target.checked })}
-            />
-            Send an Apprise notification when an update is available
-          </label>
-          {!appriseConfigured && (
-            <p className="service-modal-help">
-              Apprise is not configured yet. Set the Apprise base URL and at least one
-              Apprise URL on the Notifications page to use this channel.
-            </p>
-          )}
         </div>
 
         {form.containerName && (
@@ -1824,11 +1795,7 @@ function UpdateHistoryPanel({ connectionId, watch }: { connectionId: string; wat
               <div className="docker-update-history-head">
                 <span
                   className="docker-section-badge"
-                  data-status={
-                    resolveAttemptStatus(a.status) === 'Success' ? 'UpToDate'
-                      : resolveAttemptStatus(a.status) === 'Scheduled' ? 'Unknown'
-                        : 'Error'
-                  }
+                  data-status={resolveAttemptStatus(a.status) === 'Success' ? 'UpToDate' : 'Error'}
                 >
                   {resolveAttemptStatus(a.status)}
                 </span>

@@ -9,8 +9,6 @@ namespace Stashboard.Api.Notifications;
 public sealed class ProxmoxUpdateNotificationService(
     IEmailSender emailSender,
     ITelegramSender telegramSender,
-    IAppriseSender appriseSender,
-    IAppriseSettingsService appriseSettings,
     IEncryptionService encryption,
     ILogger<ProxmoxUpdateNotificationService> logger) : IProxmoxUpdateNotificationService
 {
@@ -29,40 +27,11 @@ public sealed class ProxmoxUpdateNotificationService(
 
         var signature = BuildSignature(pending);
 
-        // Independent channels, each with its own throttle key (mirrors the Docker
-        // notifier): a flaky SMTP server doesn't suppress Telegram or Apprise, and
+        // Two independent channels, each with its own throttle key (mirrors the
+        // Docker notifier): a flaky SMTP server doesn't suppress Telegram, and
         // vice-versa. The key is stamped only after the channel's send succeeds.
         await SendEmailIfNeededAsync(user, connection, pending, signature, cancellationToken);
         await SendTelegramIfNeededAsync(user, connection, pending, signature, cancellationToken);
-        await SendAppriseIfNeededAsync(connection, pending, signature, cancellationToken);
-    }
-
-    // ── Apprise channel ───────────────────────────────────────────────────────
-
-    private async Task SendAppriseIfNeededAsync(
-        ProxmoxConnectionEntity connection, IReadOnlyList<ProxmoxGuestEntity> pending,
-        string signature, CancellationToken cancellationToken)
-    {
-        if (!connection.AppriseNotificationsEnabled) return;
-        var cfg = await appriseSettings.GetResolvedAsync(cancellationToken);
-        if (!cfg.IsConfigured) return;
-
-        if (string.Equals(connection.LastAppriseNotifiedSignature, signature, StringComparison.Ordinal)) return;
-
-        try
-        {
-            await appriseSender.SendAsync(
-                cfg.BaseUrl, cfg.Urls,
-                $"Updates pending on Proxmox host {connection.Name}",
-                BuildTelegramText(connection, pending),
-                AppriseNotificationType.Info, cancellationToken);
-            connection.LastAppriseNotifiedSignature = signature;
-            connection.LastNotificationSentUtc = DateTime.UtcNow;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to send Proxmox update Apprise notification for connection {ConnectionId}", connection.Id);
-        }
     }
 
     /// <summary>Stable signature of the pending-update state — a sorted list of

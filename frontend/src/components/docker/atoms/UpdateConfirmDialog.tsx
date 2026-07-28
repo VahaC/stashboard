@@ -42,16 +42,10 @@ export function UpdateConfirmDialog({
 
   const handleConfirm = async (): Promise<UpdateOutcome[]> => {
     const response = await onConfirm()
-    const status = response.attempt.status
-    // V9.2 — Stashboard updating itself is offloaded to a detached helper;
-    // the recreate runs out of band, so render a distinct "Scheduled" state
-    // rather than a green ✓ (which would imply it's already done) or a red ✗.
-    const scheduled = status === 'Scheduled' || status === 5
-    const success = scheduled || status === 'Success' || status === 0
+    const success = response.attempt.status === 'Success' || response.attempt.status === 0
     return [{
       key: containerName,
       success,
-      scheduled,
       error: response.attempt.error,
     }]
   }

@@ -33,8 +33,7 @@ public class DockerConnectionWatchesController(
     IDockerWatchMapper mapper,
     IDockerUpdateChecker updateChecker,
     IDockerWebhookTokenGenerator webhookTokenGenerator,
-    IDockerImageUpdater imageUpdater,
-    ISelfUpdateLauncher selfUpdateLauncher) : ControllerBase
+    IDockerImageUpdater imageUpdater) : ControllerBase
 {
     private Guid UserId => User.GetUserId();
 
@@ -280,13 +279,8 @@ public class DockerConnectionWatchesController(
             return BadRequest(new { error = "Enable this watch before running Update now." });
 
         var profile = mapper.BuildUpdateProfile(watch, connection);
-        var result = await SelfUpdateGate.UpdateAsync(selfUpdateLauncher, imageUpdater, profile, cancellationToken);
+        var result = await imageUpdater.UpdateAsync(profile, cancellationToken);
 
-        // V9.2 — for a scheduled self-update the recreate runs out of band in the
-        // helper, so we record the digest we're trying to reach (the watch's
-        // LatestDigest) on the Scheduled attempt. On the next startup the
-        // reconciler compares the container's actual digest to this target and
-        // flips the row to Success or RecreateFailed — no guessing.
         var attempt = new DockerUpdateAttemptEntity
         {
             Id = Guid.NewGuid(),
@@ -297,8 +291,8 @@ public class DockerConnectionWatchesController(
             Status = result.Status,
             ImageReference = watch.ImageReference,
             ContainerName = watch.ContainerName,
-            PreviousDigest = result.Status == DockerUpdateAttemptStatus.Scheduled ? watch.CurrentDigest : result.PreviousDigest,
-            NewDigest = result.Status == DockerUpdateAttemptStatus.Scheduled ? watch.LatestDigest : result.NewDigest,
+            PreviousDigest = result.PreviousDigest,
+            NewDigest = result.NewDigest,
             Error = result.Error,
             CompletedUtc = DateTime.UtcNow,
             CreatedUtc = DateTime.UtcNow,

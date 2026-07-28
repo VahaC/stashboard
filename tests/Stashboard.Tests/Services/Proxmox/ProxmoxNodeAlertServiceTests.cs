@@ -215,13 +215,9 @@ public class ProxmoxNodeAlertServiceTests : IAsyncLifetime
         encryption.Setup(e => e.Encrypt(It.IsAny<string>())).Returns<string>(v => $"enc:{v}");
 
         var mapper = new ProxmoxConnectionMapper(encryption.Object);
-        var appriseSender = new Mock<IAppriseSender>();
-        var appriseSettings = new Mock<IAppriseSettingsService>();
-        appriseSettings.Setup(s => s.GetResolvedAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ResolvedAppriseSettings(false, "", []));
         var notifier = new ProxmoxNodeAlertNotificationService(
-            _emailMock.Object, _telegramMock.Object, appriseSender.Object, appriseSettings.Object,
-            encryption.Object, NullLogger<ProxmoxNodeAlertNotificationService>.Instance);
+            _emailMock.Object, _telegramMock.Object, encryption.Object,
+            NullLogger<ProxmoxNodeAlertNotificationService>.Instance);
         var options = new TestOptionsMonitor(new ProxmoxUpdateOptions { AlertConsecutiveBreaches = breaches });
 
         return new ProxmoxNodeAlertService(

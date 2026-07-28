@@ -27,11 +27,4 @@ public enum DockerUpdateAttemptStatus
     /// <summary>The configured container wasn't found on the host. Nothing
     /// was changed.</summary>
     ContainerNotFound = 4,
-
-    /// <summary>V9.2 — the target is the Stashboard container itself, so the
-    /// pull + recreate was handed off to a detached self-update helper
-    /// container (a container can't reliably recreate itself in process). The
-    /// recreate runs out of band; its real outcome is observed by the next
-    /// digest check, which flips the watch back to Up-to-date on success.</summary>
-    Scheduled = 5,
 }

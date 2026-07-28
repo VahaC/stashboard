@@ -24,17 +24,8 @@ namespace Stashboard.Api;
 
 public class Program
 {
-    public static int Main(string[] args)
+    public static void Main(string[] args)
     {
-        // V9.2 — detached self-update helper mode. When the Stashboard image is
-        // run as `dotnet Stashboard.Api.dll self-update` it does NOT start the
-        // web app: it runs a single out-of-band recreate of the Stashboard
-        // container (driven by SelfUpdateLauncher) and exits. See SelfUpdateProcess.
-        if (args.Length > 0
-            && (args[0] == Core.Abstractions.SelfUpdateProtocol.CommandName
-                || args[0] == Core.Abstractions.SelfUpdateProtocol.ProjectCommandName))
-            return SelfUpdateProcess.RunAsync(args).GetAwaiter().GetResult();
-
         var builder = WebApplication.CreateBuilder(args);
 
         // STASHBOARD_* env vars override appsettings (use __ to descend into a section).
@@ -82,12 +73,6 @@ public class Program
         builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
         builder.Services.AddScoped<IEmailSettingsService, EmailSettingsService>();
         builder.Services.AddScoped<IEmailSender, DbEmailSender>();
-        // V10.0 — Apprise notification channel. DB-backed, runtime-editable config
-        // (single row, URLs encrypted at rest) seeded from the bound AppriseOptions on
-        // first access, mirroring the editable-SMTP / MQTT model. The sender POSTs to
-        // the operator's own Apprise API / the stateless /notify endpoint.
-        builder.Services.Configure<AppriseOptions>(builder.Configuration.GetSection(AppriseOptions.SectionName));
-        builder.Services.AddScoped<IAppriseSettingsService, AppriseSettingsService>();
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddScoped<IAccountNotificationService, AccountNotificationService>();
 
@@ -147,11 +132,6 @@ public class Program
         {
             c.Timeout = TimeSpan.FromSeconds(10);
             c.DefaultRequestHeaders.UserAgent.ParseAdd("Stashboard/1.0 (+telegram)");
-        });
-        builder.Services.AddHttpClient<IAppriseSender, AppriseSender>(c =>
-        {
-            c.Timeout = TimeSpan.FromSeconds(10);
-            c.DefaultRequestHeaders.UserAgent.ParseAdd("Stashboard/1.0 (+apprise)");
         });
 
         // Api-side services
@@ -249,10 +229,6 @@ public class Program
         builder.Services.AddSingleton<Services.Mqtt.MqttPublishReconciler>();
 
         builder.Services.AddHostedService<HealthCheckBackgroundService>();
-        // V9.2 — confirms a self-update on the next startup by comparing the
-        // container's actual digest to the target recorded on the Scheduled row.
-        builder.Services.AddScoped<SelfUpdateReconciler>();
-        builder.Services.AddHostedService<SelfUpdateReconcilerHostedService>();
         builder.Services.AddHostedService<DockerUpdateBackgroundService>();
         builder.Services.AddHostedService<DockerImagePruneBackgroundService>();
         builder.Services.AddHostedService<ProxmoxUpdateBackgroundService>();
@@ -271,14 +247,6 @@ public class Program
         using (var scope = app.Services.CreateScope())
         {
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-
-            // V9.2 build marker — lets an operator confirm at a glance which code
-            // a running container actually carries (grep the logs for
-            // STASHBOARD_BUILD). Bump the marker whenever the self-update path
-            // changes so a stale image is obvious without guessing.
-            logger.LogInformation(
-                "STASHBOARD_BUILD marker=selfupdate-v5-reconcile (V9.2; self-update for Update now AND Update project; helper auto-removed; outcome confirmed on next startup by digest, badge clears only on real success)");
-
             foreach (var note in secretProvisioningNotes)
                 logger.LogInformation("{SecretProvisioningNote}", note);
 
@@ -344,7 +312,6 @@ public class Program
         app.MapFallbackToFile("index.html", staticFileOptions);
 
         app.Run();
-        return 0;
     }
 
     /// <summary>

@@ -11,8 +11,6 @@ namespace Stashboard.Api.Notifications;
 public sealed class ProxmoxNodeAlertNotificationService(
     IEmailSender emailSender,
     ITelegramSender telegramSender,
-    IAppriseSender appriseSender,
-    IAppriseSettingsService appriseSettings,
     IEncryptionService encryption,
     ILogger<ProxmoxNodeAlertNotificationService> logger) : IProxmoxNodeAlertNotificationService
 {
@@ -24,46 +22,11 @@ public sealed class ProxmoxNodeAlertNotificationService(
         string signature,
         CancellationToken cancellationToken = default)
     {
-        // Independent channels, each with its own throttle key (mirrors the update
-        // notifier): a flaky SMTP server doesn't suppress Telegram or Apprise, and
+        // Two independent channels, each with its own throttle key (mirrors the
+        // update notifier): a flaky SMTP server doesn't suppress Telegram, and
         // vice-versa. The key is stamped only after the channel's send succeeds.
         await SendEmailIfNeededAsync(user, connection, settings, active, signature, cancellationToken);
         await SendTelegramIfNeededAsync(user, connection, settings, active, signature, cancellationToken);
-        await SendAppriseIfNeededAsync(connection, settings, active, signature, cancellationToken);
-    }
-
-    // ── Apprise channel ────────────────────────────────────────────────────────
-
-    private async Task SendAppriseIfNeededAsync(
-        ProxmoxConnectionEntity connection, ProxmoxNodeAlertSettingsEntity settings,
-        IReadOnlyList<ProxmoxNodeAlertStateEntity> active, string signature, CancellationToken cancellationToken)
-    {
-        if (!connection.AppriseNotificationsEnabled) return;
-        var cfg = await appriseSettings.GetResolvedAsync(cancellationToken);
-        if (!cfg.IsConfigured) return;
-
-        if (string.Equals(settings.LastAppriseNotifiedSignature ?? "", signature, StringComparison.Ordinal)) return;
-
-        var allClear = active.Count == 0;
-        var title = allClear
-            ? $"Node health recovered on Proxmox host {connection.Name}"
-            : $"Node health alert on Proxmox host {connection.Name}";
-        var type = allClear
-            ? AppriseNotificationType.Success
-            : active.Any(a => a.ActiveLevel == HealthLevel.Crit)
-                ? AppriseNotificationType.Failure
-                : AppriseNotificationType.Warning;
-        try
-        {
-            await appriseSender.SendAsync(
-                cfg.BaseUrl, cfg.Urls, title, BuildTelegramText(connection, active), type, cancellationToken);
-            settings.LastAppriseNotifiedSignature = signature;
-            settings.LastNotificationSentUtc = DateTime.UtcNow;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to send Proxmox node-alert Apprise notification for connection {ConnectionId}", connection.Id);
-        }
     }
 
     // ── email channel ─────────────────────────────────────────────────────────

@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Stashboard.Api.Contracts;
-using Stashboard.Api.Notifications;
 using Stashboard.Api.Services.ContainerExec;
 using Stashboard.Api.Services.HealthCheckSettings;
 using Stashboard.Api.Services.HostShell;
@@ -38,9 +37,7 @@ public class SettingsController(
     IImagePruneSettingsService imagePrune,
     IHealthCheckSettingsService healthCheck,
     IMqttSettingsService mqtt,
-    IMqttBrokerClient mqttBroker,
-    IAppriseSettingsService apprise,
-    IAppriseSender appriseSender) : ControllerBase
+    IMqttBrokerClient mqttBroker) : ControllerBase
 {
     /// <summary>The host-terminal master switch (the global gate for V5.3).</summary>
     [HttpGet("host-shell")]
@@ -217,61 +214,5 @@ public class SettingsController(
         {
             return Ok(new MqttTestResponse(false, ex.Message));
         }
-    }
-
-    /// <summary>V10.0 — the app-wide Apprise notification settings. The Apprise URLs
-    /// are never returned (presence flag + non-secret schemes only).</summary>
-    [HttpGet("apprise")]
-    public async Task<ActionResult<AppriseSettingsResponse>> GetApprise(CancellationToken cancellationToken)
-        => Ok(await apprise.GetAsync(cancellationToken));
-
-    [HttpPut("apprise")]
-    public async Task<IActionResult> UpdateApprise(
-        [FromBody] UpdateAppriseSettingsRequest request, CancellationToken cancellationToken)
-    {
-        if (!ModelState.IsValid) return ValidationProblem(ModelState);
-        await apprise.UpdateAsync(request, cancellationToken);
-        return NoContent();
-    }
-
-    /// <summary>V10.0 — fires a sample notification through each configured Apprise URL
-    /// individually and reports per-target success/failure, so the user gets immediate
-    /// feedback instead of waiting on a real alert.</summary>
-    [HttpPost("apprise/test")]
-    public async Task<ActionResult<AppriseTestResponse>> TestApprise(CancellationToken cancellationToken)
-    {
-        var settings = await apprise.GetResolvedAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(settings.BaseUrl))
-            return Ok(new AppriseTestResponse(false, "No Apprise base URL configured.", []));
-        if (settings.Urls.Count == 0)
-            return Ok(new AppriseTestResponse(false, "No Apprise URLs configured.", []));
-
-        const string title = "Stashboard test notification";
-        const string body = "This is a test notification from Stashboard. If you can read this, the target works.";
-
-        var results = new List<AppriseTargetResult>();
-        foreach (var url in settings.Urls)
-        {
-            try
-            {
-                await appriseSender.SendAsync(
-                    settings.BaseUrl, [url], title, body, AppriseNotificationType.Info, cancellationToken);
-                results.Add(new AppriseTargetResult(MaskTarget(url), true, null));
-            }
-            catch (Exception ex)
-            {
-                results.Add(new AppriseTargetResult(MaskTarget(url), false, ex.Message));
-            }
-        }
-
-        return Ok(new AppriseTestResponse(results.All(r => r.Success), null, results));
-    }
-
-    /// <summary>Reduces an Apprise URL to its non-secret scheme for reporting
-    /// (<c>discord://****</c>), so credentials never leak back through the test result.</summary>
-    private static string MaskTarget(string url)
-    {
-        var idx = url.IndexOf("://", StringComparison.Ordinal);
-        return idx <= 0 ? "****" : $"{url[..idx]}://****";
     }
 }

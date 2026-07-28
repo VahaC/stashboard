@@ -57,7 +57,6 @@ public sealed class ProxmoxConnectionMapper(IEncryptionService encryption) : IPr
             entity.Enabled,
             entity.UpdateNotificationsEnabled,
             entity.TelegramNotificationsEnabled,
-            entity.AppriseNotificationsEnabled,
             entity.ScheduleType,
             entity.CheckEveryHours,
             entity.CheckAtTime,
@@ -123,7 +122,6 @@ public sealed class ProxmoxConnectionMapper(IEncryptionService encryption) : IPr
             : null;
         entity.UpdateNotificationsEnabled = request.UpdateNotificationsEnabled;
         entity.TelegramNotificationsEnabled = request.TelegramNotificationsEnabled;
-        entity.AppriseNotificationsEnabled = request.AppriseNotificationsEnabled;
 
         entity.ScheduleType = request.ScheduleType;
         entity.CheckEveryHours = CheckScheduleEvaluator.AllowedHourlyValues.Contains(request.CheckEveryHours)

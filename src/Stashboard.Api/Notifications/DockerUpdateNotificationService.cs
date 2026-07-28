@@ -10,8 +10,6 @@ namespace Stashboard.Api.Notifications;
 public sealed class DockerUpdateNotificationService(
     IEmailSender emailSender,
     ITelegramSender telegramSender,
-    IAppriseSender appriseSender,
-    IAppriseSettingsService appriseSettings,
     IEncryptionService encryption,
     ILogger<DockerUpdateNotificationService> logger) : IDockerUpdateNotificationService
 {
@@ -24,42 +22,13 @@ public sealed class DockerUpdateNotificationService(
         if (watch.UpdateStatus != DockerUpdateStatus.UpdateAvailable) return;
         if (string.IsNullOrEmpty(watch.LatestDigest)) return;
 
-        // Independent channels — each has its own throttle key so a flaky SMTP
-        // server doesn't permanently suppress the Telegram message, a Telegram
-        // outage doesn't drop the email, and an Apprise outage drops neither.
-        // Failures on any channel are logged and swallowed; the throttle key is
+        // Two independent channels — each has its own throttle key so a flaky
+        // SMTP server doesn't permanently suppress the Telegram message, and
+        // a Telegram outage doesn't drop the email. Email failures and
+        // Telegram failures are logged and swallowed; the throttle key is
         // stamped only after the corresponding channel's send succeeds.
         await SendEmailIfNeededAsync(user, service, watch, cancellationToken);
         await SendTelegramIfNeededAsync(user, service, watch, cancellationToken);
-        await SendAppriseIfNeededAsync(service, watch, cancellationToken);
-    }
-
-    // ── Apprise channel ──────────────────────────────────────────────────────
-
-    private async Task SendAppriseIfNeededAsync(
-        WebResourceEntity? service, DockerWatchEntity watch, CancellationToken cancellationToken)
-    {
-        if (!watch.AppriseNotificationsEnabled) return;
-        var cfg = await appriseSettings.GetResolvedAsync(cancellationToken);
-        if (!cfg.IsConfigured) return;
-
-        if (string.Equals(watch.LastAppriseNotifiedDigest, watch.LatestDigest, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        var title = $"Update available for {DisplayName(service, watch)}";
-        try
-        {
-            await appriseSender.SendAsync(
-                cfg.BaseUrl, cfg.Urls, title, BuildTelegramText(service, watch),
-                AppriseNotificationType.Info, cancellationToken);
-            watch.LastAppriseNotifiedDigest = watch.LatestDigest;
-            watch.LastNotificationSentUtc = DateTime.UtcNow;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to send Docker update Apprise notification for watch {WatchId} (service {ServiceId})",
-                watch.Id, service?.Id);
-        }
     }
 
     // ── email channel ────────────────────────────────────────────────────────

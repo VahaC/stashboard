@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { AppriseSettings, AppriseSettingsUpdate, AppriseTestResult, ContainerExecSettings, HealthCheckSettings, HostShellSettings, ImagePruneSettings, MqttSettings, MqttSettingsUpdate, MqttTestResult, ProxmoxCloneSettings, ProxmoxConsoleSettings, ProxmoxCreateSettings, ProxmoxDestroySettings, ProxmoxRestoreSettings, ProxmoxUpdateApplySettings } from './types'
+import type { ContainerExecSettings, HealthCheckSettings, HostShellSettings, ImagePruneSettings, MqttSettings, MqttSettingsUpdate, MqttTestResult, ProxmoxCloneSettings, ProxmoxConsoleSettings, ProxmoxCreateSettings, ProxmoxDestroySettings, ProxmoxRestoreSettings, ProxmoxUpdateApplySettings } from './types'
 
 /** V5.3 — app-wide operational settings managed from the Settings page. */
 export const settingsApi = {
@@ -60,12 +60,4 @@ export const settingsApi = {
   /** V9.0 — verify the configured broker is reachable. */
   testMqttSettings: () =>
     api.post<MqttTestResult>('/api/settings/mqtt/test').then((r) => r.data),
-  /** V10.0 — Apprise notification settings (URLs never returned, presence flags only). */
-  getAppriseSettings: () =>
-    api.get<AppriseSettings>('/api/settings/apprise').then((r) => r.data),
-  updateAppriseSettings: (settings: AppriseSettingsUpdate) =>
-    api.put('/api/settings/apprise', settings),
-  /** V10.0 — fire a sample notification through each configured target. */
-  testAppriseSettings: () =>
-    api.post<AppriseTestResult>('/api/settings/apprise/test').then((r) => r.data),
 }

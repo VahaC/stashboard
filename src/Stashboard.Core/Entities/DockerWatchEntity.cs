@@ -105,11 +105,6 @@ public class DockerWatchEntity : AuditableEntity
     /// configured Telegram on the Account page.</summary>
     public bool TelegramNotificationsEnabled { get; set; } = false;
 
-    /// <summary>V10.0 — fan this watch's update notification out through the app-wide
-    /// Apprise channel as well. Effective only when the operator has configured Apprise
-    /// on the Notifications page. Independent of the email/Telegram toggles.</summary>
-    public bool AppriseNotificationsEnabled { get; set; } = false;
-
     /// <summary>V2.2 per-watch schedule mode. Default <see cref="CheckScheduleType.Hourly"/>
     /// with <see cref="CheckEveryHours"/> = 24, which keeps the watch well under the
     /// Docker Hub anonymous rate-limit for the typical single-watch case.</summary>
@@ -204,12 +199,6 @@ public class DockerWatchEntity : AuditableEntity
     /// transient Bot API failure doesn't permanently suppress the notification.</summary>
     [MaxLength(100)]
     public string? LastTelegramNotifiedDigest { get; set; }
-
-    /// <summary>V10.0 — <see cref="LatestDigest"/> already sent through Apprise — independent
-    /// throttle for the Apprise channel. Stamped only after a successful send so a transient
-    /// Apprise outage doesn't permanently suppress the notification.</summary>
-    [MaxLength(100)]
-    public string? LastAppriseNotifiedDigest { get; set; }
 
     public string? LastError { get; set; }
 

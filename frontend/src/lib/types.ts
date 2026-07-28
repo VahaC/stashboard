@@ -257,8 +257,6 @@ export interface DockerWatch {
   awsRegion: string | null
   updateNotificationsEnabled: boolean
   telegramNotificationsEnabled: boolean
-  /** V10.0 — fan this target's notifications through the app-wide Apprise channel. */
-  appriseNotificationsEnabled: boolean
   /** V2.2 — schedule mode. */
   scheduleType: CheckScheduleType
   /** V2.2 — only meaningful when `scheduleType === 'Hourly'`. Allowed:
@@ -324,8 +322,6 @@ export interface DockerWatchUpsert {
   awsRegion: string | null
   updateNotificationsEnabled: boolean
   telegramNotificationsEnabled: boolean
-  /** V10.0 — fan this target's notifications through the app-wide Apprise channel. */
-  appriseNotificationsEnabled: boolean
   /** V2.2 — schedule mode. Default `'Hourly'`. */
   scheduleType: CheckScheduleType
   /** V2.2 — only honoured when `scheduleType === 'Hourly'`. Allowed:
@@ -379,9 +375,7 @@ export type DockerUpdateAttemptStatus =
   | 'RecreateFailed'
   | 'HostUnreachable'
   | 'ContainerNotFound'
-  // V9.2 — self-update was handed off to a detached helper container.
-  | 'Scheduled'
-  | 0 | 1 | 2 | 3 | 4 | 5
+  | 0 | 1 | 2 | 3 | 4
 
 export interface DockerUpdateAttempt {
   id: string
@@ -423,7 +417,7 @@ export interface DockerWatchUpdateResponse {
 
 export const resolveAttemptStatus = (s: DockerUpdateAttemptStatus): string =>
   typeof s === 'number'
-    ? (['Success', 'PullFailed', 'RecreateFailed', 'HostUnreachable', 'ContainerNotFound', 'Scheduled'][s] ?? 'Unknown')
+    ? (['Success', 'PullFailed', 'RecreateFailed', 'HostUnreachable', 'ContainerNotFound'][s] ?? 'Unknown')
     : s
 
 // ── Docker connection (per-service daemon transport) ───────────────────────
@@ -885,40 +879,6 @@ export interface MqttSettingsUpdate {
 export interface MqttTestResult {
   reachable: boolean
   error: string | null
-}
-
-/** V10.0 — masked view of the app-wide Apprise notification settings.
- *  The Apprise URLs are never returned — only a presence flag, count, and the
- *  non-secret target schemes (e.g. `discord`, `ntfy`). */
-export interface AppriseSettings {
-  enabled: boolean
-  baseUrl: string
-  hasUrls: boolean
-  urlCount: number
-  targets: string[]
-}
-
-/** V10.0 — update payload for the Apprise settings; `urls` is the tri-state secret
- *  (one URL per line in `value`). */
-export interface AppriseSettingsUpdate {
-  enabled: boolean
-  baseUrl: string
-  /** Tri-state secret — `null` keeps the stored URLs. */
-  urls: SecretValueUpsert | null
-}
-
-/** V10.0 — per-target outcome of the Apprise "Send test" button. */
-export interface AppriseTargetResult {
-  target: string
-  success: boolean
-  error: string | null
-}
-
-/** V10.0 — outcome of the Apprise "Send test" button. */
-export interface AppriseTestResult {
-  ok: boolean
-  error: string | null
-  results: AppriseTargetResult[]
 }
 
 /** V5.5 — trigger that kicked off a prune run. Mirrors the backend enum. */
@@ -2141,8 +2101,6 @@ export interface ProxmoxConnection {
   enabled: boolean
   updateNotificationsEnabled: boolean
   telegramNotificationsEnabled: boolean
-  /** V10.0 — fan this target's notifications through the app-wide Apprise channel. */
-  appriseNotificationsEnabled: boolean
   scheduleType: CheckScheduleType
   checkEveryHours: number
   checkAtTime: string | null
@@ -2190,8 +2148,6 @@ export interface ProxmoxConnectionUpsert {
   enabled: boolean
   updateNotificationsEnabled: boolean
   telegramNotificationsEnabled: boolean
-  /** V10.0 — fan this target's notifications through the app-wide Apprise channel. */
-  appriseNotificationsEnabled: boolean
   scheduleType: CheckScheduleType
   checkEveryHours: number
   checkAtTime: string | null

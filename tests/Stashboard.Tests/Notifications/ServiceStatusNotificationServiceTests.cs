@@ -11,8 +11,6 @@ namespace Stashboard.Tests.Notifications;
 public class ServiceStatusNotificationServiceTests
 {
     private readonly Mock<ITelegramSender> _telegramSender = new();
-    private readonly Mock<IAppriseSender> _appriseSender = new();
-    private readonly Mock<IAppriseSettingsService> _appriseSettings = new();
     private readonly Mock<IEncryptionService> _encryption = new();
     private readonly ServiceStatusNotificationService _sut;
 
@@ -20,61 +18,7 @@ public class ServiceStatusNotificationServiceTests
     {
         _encryption.Setup(encryptionService => encryptionService.Decrypt(It.IsAny<string>()))
             .Returns<string>(value => value.StartsWith("enc:") ? value[4..] : value);
-        // Apprise unconfigured by default; ConfigureApprise() opts a test into it.
-        _appriseSettings.Setup(s => s.GetResolvedAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ResolvedAppriseSettings(false, "", []));
-        _sut = new ServiceStatusNotificationService(
-            _telegramSender.Object, _appriseSender.Object, _appriseSettings.Object,
-            _encryption.Object, NullLogger<ServiceStatusNotificationService>.Instance);
-    }
-
-    private void ConfigureApprise() =>
-        _appriseSettings.Setup(s => s.GetResolvedAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ResolvedAppriseSettings(true, "http://apprise:8000", ["ntfy://ntfy.sh/topic"]));
-
-    [Fact]
-    public async Task NotifyIfNeededAsync_WhenMainTransitionsToDownAndAppriseConfigured_SendsAppriseEvenWithoutTelegram()
-    {
-        ConfigureApprise();
-        var user = new UserEntity(); // no Telegram configured
-        var service = new WebResourceEntity
-        {
-            Id = Guid.NewGuid(),
-            Name = "API",
-            MainUrl = "https://api.example.com",
-            MainUrlHealthCheckEnabled = true,
-            CurrentStatus = ServiceStatus.Down,
-            LastError = "HTTP 503",
-        };
-
-        await _sut.NotifyIfNeededAsync(user, service, ServiceStatus.Up, ServiceStatus.Unknown);
-
-        _appriseSender.Verify(a => a.SendAsync(
-            "http://apprise:8000",
-            It.Is<IReadOnlyList<string>>(u => u.Count == 1 && u[0] == "ntfy://ntfy.sh/topic"),
-            It.Is<string>(t => t.Contains("API")),
-            It.Is<string>(b => b.Contains("Main URL")),
-            AppriseNotificationType.Failure,
-            It.IsAny<CancellationToken>()), Times.Once);
-        _telegramSender.VerifyNoOtherCalls();
-    }
-
-    [Fact]
-    public async Task NotifyIfNeededAsync_WhenServiceOfflineNotificationsDisabled_SendsNoApprise()
-    {
-        ConfigureApprise();
-        var service = new WebResourceEntity
-        {
-            Name = "API",
-            MainUrl = "https://api.example.com",
-            MainUrlHealthCheckEnabled = true,
-            OfflineNotificationsEnabled = false,
-            CurrentStatus = ServiceStatus.Down,
-        };
-
-        await _sut.NotifyIfNeededAsync(new UserEntity(), service, ServiceStatus.Up, ServiceStatus.Unknown);
-
-        _appriseSender.VerifyNoOtherCalls();
+        _sut = new ServiceStatusNotificationService(_telegramSender.Object, _encryption.Object, NullLogger<ServiceStatusNotificationService>.Instance);
     }
 
     [Fact]

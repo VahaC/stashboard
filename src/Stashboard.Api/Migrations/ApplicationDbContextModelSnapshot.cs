@@ -17,34 +17,6 @@ namespace Stashboard.Api.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
 
-            modelBuilder.Entity("Stashboard.Api.Data.AppriseSettingsEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("BaseUrl")
-                        .IsRequired()
-                        .HasMaxLength(512)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("UrlsEncrypted")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("AppriseSettings");
-                });
-
             modelBuilder.Entity("Stashboard.Api.Data.ContainerExecSettingsEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -990,9 +962,6 @@ namespace Stashboard.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("AppriseNotificationsEnabled")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("AwsAccessKeyIdEncrypted")
                         .HasColumnType("TEXT");
 
@@ -1044,10 +1013,6 @@ namespace Stashboard.Api.Migrations
 
                     b.Property<string>("Label")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("LastAppriseNotifiedDigest")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
@@ -1361,9 +1326,6 @@ namespace Stashboard.Api.Migrations
                     b.Property<string>("ApiTokenSecretEncrypted")
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("AppriseNotificationsEnabled")
-                        .HasColumnType("INTEGER");
-
                     b.Property<TimeOnly?>("CheckAtTime")
                         .HasColumnType("TEXT");
 
@@ -1378,10 +1340,6 @@ namespace Stashboard.Api.Migrations
 
                     b.Property<bool>("Enabled")
                         .HasColumnType("INTEGER");
-
-                    b.Property<string>("LastAppriseNotifiedSignature")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("LastCheckedUtc")
                         .HasColumnType("TEXT");
@@ -1819,9 +1777,6 @@ namespace Stashboard.Api.Migrations
 
                     b.Property<bool>("Enabled")
                         .HasColumnType("INTEGER");
-
-                    b.Property<string>("LastAppriseNotifiedSignature")
-                        .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("LastNotificationSentUtc")
                         .HasColumnType("TEXT");
