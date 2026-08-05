@@ -22,6 +22,8 @@ public class DockerUpdateNotificationServiceTests
 
     private readonly Mock<IEmailSender> _emailMock = new();
     private readonly Mock<ITelegramSender> _telegramMock = new();
+    private readonly Mock<IAppriseSender> _appriseMock = new();
+    private readonly Mock<IAppriseSettingsService> _appriseSettingsMock = new();
     private readonly Mock<Stashboard.Core.Abstractions.IEncryptionService> _encryptionMock = new();
     private readonly DockerUpdateNotificationService _service;
 
@@ -29,12 +31,26 @@ public class DockerUpdateNotificationServiceTests
     {
         _encryptionMock.Setup(encryptionService => encryptionService.Decrypt(It.IsAny<string>()))
             .Returns<string>(value => value.StartsWith("enc:") ? value[4..] : value);
+        // Apprise is unconfigured by default so the existing email/Telegram cases are
+        // unaffected; ConfigureApprise() opts a test into the channel.
+        _appriseSettingsMock.Setup(s => s.GetResolvedAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedAppriseSettings(false, "", []));
         _service = new DockerUpdateNotificationService(
             _emailMock.Object,
             _telegramMock.Object,
+            _appriseMock.Object,
+            _appriseSettingsMock.Object,
             _encryptionMock.Object,
             NullLogger<DockerUpdateNotificationService>.Instance);
     }
+
+    private void ConfigureApprise() =>
+        _appriseSettingsMock.Setup(s => s.GetResolvedAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedAppriseSettings(true, "http://apprise:8000", ["discord://id/token"]));
+
+    private void VerifyNoApprise() =>
+        _appriseMock.Verify(a => a.SendAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(),
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AppriseNotificationType>(), It.IsAny<CancellationToken>()), Times.Never);
 
     // ── Email channel — positive path ────────────────────────────────────────
 
@@ -414,6 +430,105 @@ public class DockerUpdateNotificationServiceTests
         Assert.Contains("Release notes: https://github.com/owner/repo/releases/tag/v2.0.0", captured!);
     }
 
+    // ── Apprise channel ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task NotifyIfNeeded_AppriseEnabledAndConfigured_SendsAndStampsAppriseThrottle()
+    {
+        ConfigureApprise();
+        string? capturedBase = null; IReadOnlyList<string>? capturedUrls = null; string? capturedTitle = null, capturedBody = null;
+        _appriseMock.Setup(a => a.SendAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AppriseNotificationType>(), It.IsAny<CancellationToken>()))
+            .Callback<string, IReadOnlyList<string>, string, string, AppriseNotificationType, CancellationToken>(
+                (b, u, t, body, _, _) => { capturedBase = b; capturedUrls = u; capturedTitle = t; capturedBody = body; })
+            .Returns(Task.CompletedTask);
+
+        var watch = Watch(latestDigest: DigestNew, currentDigest: DigestOld, appriseNotificationsEnabled: true);
+
+        await _service.NotifyIfNeededAsync(User(), Service("Plex"), watch);
+
+        Assert.Equal("http://apprise:8000", capturedBase);
+        Assert.Equal(["discord://id/token"], capturedUrls);
+        Assert.Contains("Plex", capturedTitle!);
+        Assert.Contains("ghcr.io/owner/repo:v1", capturedBody!);
+        Assert.Equal(DigestNew, watch.LastAppriseNotifiedDigest);
+        Assert.NotNull(watch.LastNotificationSentUtc);
+    }
+
+    [Fact]
+    public async Task NotifyIfNeeded_AppriseToggleOff_DoesNotSendApprise()
+    {
+        ConfigureApprise();
+        var watch = Watch(latestDigest: DigestNew, appriseNotificationsEnabled: false);
+
+        await _service.NotifyIfNeededAsync(User(), Service(), watch);
+
+        VerifyNoApprise();
+        Assert.Null(watch.LastAppriseNotifiedDigest);
+    }
+
+    [Fact]
+    public async Task NotifyIfNeeded_AppriseToggleOnButChannelNotConfigured_DoesNotSendApprise()
+    {
+        // _appriseSettingsMock left at its unconfigured default.
+        var watch = Watch(latestDigest: DigestNew, appriseNotificationsEnabled: true);
+
+        await _service.NotifyIfNeededAsync(User(), Service(), watch);
+
+        VerifyNoApprise();
+        Assert.Null(watch.LastAppriseNotifiedDigest);
+    }
+
+    [Fact]
+    public async Task NotifyIfNeeded_SameAppriseDigestAlreadyNotified_DoesNotResendApprise()
+    {
+        ConfigureApprise();
+        var watch = Watch(latestDigest: DigestNew, appriseNotificationsEnabled: true, lastAppriseNotifiedDigest: DigestNew);
+
+        await _service.NotifyIfNeededAsync(User(), Service(), watch);
+
+        VerifyNoApprise();
+    }
+
+    [Fact]
+    public async Task NotifyIfNeeded_AppriseThrows_LeavesAppriseThrottleKeyUnset()
+    {
+        ConfigureApprise();
+        _appriseMock.Setup(a => a.SendAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AppriseNotificationType>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("apprise down"));
+
+        // Email/Telegram off so LastNotificationSentUtc is owned solely by the Apprise channel.
+        var watch = Watch(latestDigest: DigestNew, emailNotificationsEnabled: false, appriseNotificationsEnabled: true);
+
+        await _service.NotifyIfNeededAsync(User(), Service(), watch);
+
+        Assert.Null(watch.LastAppriseNotifiedDigest);
+        Assert.Null(watch.LastNotificationSentUtc);
+    }
+
+    [Fact]
+    public async Task NotifyIfNeeded_AppriseFails_EmailAndTelegramStillSendAndStampTheirOwnKeys()
+    {
+        ConfigureApprise();
+        _emailMock.Setup(s => s.SendAsync(It.IsAny<EmailMessage>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _telegramMock.Setup(t => t.SendMessageAsync(It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _appriseMock.Setup(a => a.SendAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<AppriseNotificationType>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("apprise down"));
+
+        var watch = Watch(latestDigest: DigestNew, telegramNotificationsEnabled: true, appriseNotificationsEnabled: true);
+
+        await _service.NotifyIfNeededAsync(UserWithTelegram(), Service(), watch);
+
+        Assert.Equal(DigestNew, watch.LastNotifiedDigest);          // email unaffected
+        Assert.Equal(DigestNew, watch.LastTelegramNotifiedDigest);  // telegram unaffected
+        Assert.Null(watch.LastAppriseNotifiedDigest);               // apprise retries next tick
+    }
+
     // ── factories ────────────────────────────────────────────────────────────
 
     private void VerifyNoEmail() =>
@@ -458,9 +573,11 @@ public class DockerUpdateNotificationServiceTests
         string? currentDigest = null,
         string? lastNotifiedDigest = null,
         string? lastTelegramNotifiedDigest = null,
+        string? lastAppriseNotifiedDigest = null,
         DockerUpdateStatus status = DockerUpdateStatus.UpdateAvailable,
         bool emailNotificationsEnabled = true,
         bool telegramNotificationsEnabled = false,
+        bool appriseNotificationsEnabled = false,
         string? latestReleaseUrl = null) => new()
     {
         Id = Guid.NewGuid(),
@@ -479,7 +596,9 @@ public class DockerUpdateNotificationServiceTests
         LatestReleaseUrl = latestReleaseUrl,
         LastNotifiedDigest = lastNotifiedDigest,
         LastTelegramNotifiedDigest = lastTelegramNotifiedDigest,
+        LastAppriseNotifiedDigest = lastAppriseNotifiedDigest,
         UpdateNotificationsEnabled = emailNotificationsEnabled,
         TelegramNotificationsEnabled = telegramNotificationsEnabled,
+        AppriseNotificationsEnabled = appriseNotificationsEnabled,
     };
 }

@@ -20,6 +20,7 @@ import {
   useRotateProxmoxWebhook,
   useDeleteProxmoxWebhook,
 } from '@/lib/proxmox-queries'
+import { useAppriseSettings } from '@/lib/queries'
 import { cn, getApiErrorMessage, parseApiErrors } from '@/lib/utils'
 import type {
   CheckScheduleType,
@@ -97,6 +98,9 @@ export function ProxmoxConnectionModal({
   const [enabled, setEnabled] = useState(connection?.enabled ?? true)
   const [emailNotify, setEmailNotify] = useState(connection?.updateNotificationsEnabled ?? true)
   const [telegramNotify, setTelegramNotify] = useState(connection?.telegramNotificationsEnabled ?? false)
+  const [appriseNotify, setAppriseNotify] = useState(connection?.appriseNotificationsEnabled ?? false)
+  const appriseSettings = useAppriseSettings()
+  const appriseConfigured = Boolean(appriseSettings.data && appriseSettings.data.enabled && appriseSettings.data.hasUrls)
 
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -145,6 +149,7 @@ export function ProxmoxConnectionModal({
     enabled,
     updateNotificationsEnabled: emailNotify,
     telegramNotificationsEnabled: telegramNotify,
+    appriseNotificationsEnabled: appriseConfigured && appriseNotify,
     scheduleType,
     checkEveryHours,
     // The backend stores time in UTC; for this single-user homelab tool we keep
@@ -451,6 +456,17 @@ export function ProxmoxConnectionModal({
             </label>
             <label className="service-modal-checkbox-label service-modal-label mt-2">
               <input type="checkbox" checked={telegramNotify} onChange={(e) => setTelegramNotify(e.target.checked)} /> Also notify via Telegram
+            </label>
+            <label
+              className="service-modal-checkbox-label service-modal-label mt-2"
+              title={!appriseConfigured ? 'Configure Apprise in Account → Notifications first.' : undefined}
+            >
+              <input
+                type="checkbox"
+                checked={appriseConfigured && appriseNotify}
+                disabled={!appriseConfigured}
+                onChange={(e) => setAppriseNotify(e.target.checked)}
+              /> Also notify via Apprise
             </label>
           </div>
 

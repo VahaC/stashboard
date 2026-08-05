@@ -5,6 +5,42 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [10.0.0] — 2026-06-28
+
+### Added
+- **Apprise notification channel (V10.0).** Notifications (service offline, Docker
+  update available, Proxmox updates pending, node alert) can now fan out to Discord,
+  ntfy, Gotify, Slack, generic webhooks, and 90+ other services via **Apprise** — one
+  HTTP POST per event to the operator's own Apprise API (or the stateless `/notify`
+  endpoint), so Stashboard stays off the per-provider-API treadmill.
+  - **App-wide config on the Notifications settings page**, mirroring the editable-SMTP
+    model: a master **"Enable Apprise notifications"** switch (off by default), an
+    **Apprise base URL**, and one or more **Apprise URLs** (`discord://`, `ntfy://`,
+    `gotify://`, `slack://`, …) entered one per line. The URLs carry secrets, so the
+    whole list is **encrypted at rest** (AES-256-GCM) and never returned to the API —
+    the masked view exposes only a presence flag, a count, and the non-secret schemes.
+    Changes apply without a restart.
+  - **Per-target opt-in** consistent with the existing toggles: per-watch (Docker
+    update) and per-host (Proxmox update + node alert) **Apprise** toggles, surfaced
+    disabled until the channel is configured (same UX as the Telegram toggle); service
+    offline-alerts fan out through Apprise whenever the service's offline-notification
+    switch is on.
+  - **Independent channel with its own throttle key.** Each of the four notification
+    services (`ServiceStatusNotificationService`, `DockerUpdateNotificationService`,
+    `ProxmoxUpdateNotificationService`, `ProxmoxNodeAlertNotificationService`) stamps
+    the Apprise digest/signature throttle key **only after a successful send**, so a
+    transient Apprise outage retries on the next tick and never drops the email/Telegram
+    delivery — and vice-versa.
+  - **Send test** button on the Notifications page fires a sample notification through
+    each configured target individually and reports **per-target** success/failure.
+  - **Backup/restore:** the Apprise config (URLs re-encrypted) and the per-target
+    Apprise toggles are included in `BackupService` export/import and its round-trip
+    test (Definition-of-Done §10.3).
+  - **Out of scope (deliberately):** running a built-in Apprise instance (point
+    Stashboard at your own / the public stateless endpoint), and per-notification
+    routing rules — V10.0 fans every notification out to all configured channels, the
+    same way email + Telegram already do.
+
 ## [9.2.0] — 2026-06-27
 
 ### Fixed

@@ -1,7 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 import { accountApi } from './account-api'
+import { settingsApi } from './settings-api'
 import { readFileAsDataUrl } from './utils'
+import type { AppriseSettings } from './types'
 import type {
   Category,
   ComposeAllocation,
@@ -101,6 +103,7 @@ export const qk = {
     ['docker', 'connections', connectionId, 'compose-history', project] as const,
   features: ['features'] as const,
   telegramSettings: ['account', 'telegram'] as const,
+  appriseSettings: ['settings', 'apprise'] as const,
 }
 
 export const useServices = () =>
@@ -798,6 +801,18 @@ export const useTelegramSettings = () =>
     queryFn: async (): Promise<TelegramSettings> => accountApi.getTelegramSettings(),
     // Keep the cache around for a couple of minutes so multiple Docker
     // sections opened in quick succession don't refetch.
+    staleTime: 2 * 60_000,
+  })
+
+/**
+ * V10.0 — loads the app-wide Apprise settings so the Docker watch / Proxmox host
+ * forms can enable or disable their per-target "Apprise" toggle (same UX as the
+ * Telegram toggle: disabled with a hint until the channel is configured).
+ */
+export const useAppriseSettings = () =>
+  useQuery({
+    queryKey: qk.appriseSettings,
+    queryFn: async (): Promise<AppriseSettings> => settingsApi.getAppriseSettings(),
     staleTime: 2 * 60_000,
   })
 

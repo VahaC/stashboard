@@ -82,6 +82,12 @@ public class Program
         builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
         builder.Services.AddScoped<IEmailSettingsService, EmailSettingsService>();
         builder.Services.AddScoped<IEmailSender, DbEmailSender>();
+        // V10.0 — Apprise notification channel. DB-backed, runtime-editable config
+        // (single row, URLs encrypted at rest) seeded from the bound AppriseOptions on
+        // first access, mirroring the editable-SMTP / MQTT model. The sender POSTs to
+        // the operator's own Apprise API / the stateless /notify endpoint.
+        builder.Services.Configure<AppriseOptions>(builder.Configuration.GetSection(AppriseOptions.SectionName));
+        builder.Services.AddScoped<IAppriseSettingsService, AppriseSettingsService>();
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddScoped<IAccountNotificationService, AccountNotificationService>();
 
@@ -141,6 +147,11 @@ public class Program
         {
             c.Timeout = TimeSpan.FromSeconds(10);
             c.DefaultRequestHeaders.UserAgent.ParseAdd("Stashboard/1.0 (+telegram)");
+        });
+        builder.Services.AddHttpClient<IAppriseSender, AppriseSender>(c =>
+        {
+            c.Timeout = TimeSpan.FromSeconds(10);
+            c.DefaultRequestHeaders.UserAgent.ParseAdd("Stashboard/1.0 (+apprise)");
         });
 
         // Api-side services

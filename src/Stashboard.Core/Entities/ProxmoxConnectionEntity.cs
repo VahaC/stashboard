@@ -156,6 +156,11 @@ public class ProxmoxConnectionEntity : AuditableEntity
     /// Telegram on the Account page.</summary>
     public bool TelegramNotificationsEnabled { get; set; } = false;
 
+    /// <summary>V10.0 — fan this host's update + node-alert notifications out through the
+    /// app-wide Apprise channel as well. Effective only when the operator has configured
+    /// Apprise on the Notifications page. Independent of the email/Telegram toggles.</summary>
+    public bool AppriseNotificationsEnabled { get; set; } = false;
+
     /// <summary>V2.2 schedule mode, reused verbatim. Default Hourly / 24 h.</summary>
     public CheckScheduleType ScheduleType { get; set; } = CheckScheduleType.Hourly;
 
@@ -190,6 +195,12 @@ public class ProxmoxConnectionEntity : AuditableEntity
     /// doesn't suppress the other.</summary>
     [MaxLength(200)]
     public string? LastTelegramNotifiedSignature { get; set; }
+
+    /// <summary>V10.0 — same as <see cref="LastNotifiedSignature"/> for the Apprise
+    /// channel — independent throttle so a transient Apprise outage doesn't suppress the
+    /// other channels and vice-versa. Stamped only after a successful send.</summary>
+    [MaxLength(200)]
+    public string? LastAppriseNotifiedSignature { get; set; }
 
     /// <summary>
     /// V6.11 — hex-encoded 32-byte random token authenticating an inbound update-

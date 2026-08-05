@@ -21,6 +21,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<ProxmoxRestoreSettingsEntity> ProxmoxRestoreSettings => Set<ProxmoxRestoreSettingsEntity>();
     public DbSet<HealthCheckSettingsEntity> HealthCheckSettings => Set<HealthCheckSettingsEntity>();
     public DbSet<MqttSettingsEntity> MqttSettings => Set<MqttSettingsEntity>();
+    public DbSet<AppriseSettingsEntity> AppriseSettings => Set<AppriseSettingsEntity>();
 
     public DbSet<WebResourceEntity> WebResources => Set<WebResourceEntity>();
     public DbSet<CredentialEntity> Credentials => Set<CredentialEntity>();
@@ -97,6 +98,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         // V9.0 — single-row, app-wide MQTT / Home Assistant integration config (see MqttSettingsEntity.SingletonId).
         builder.Entity<MqttSettingsEntity>();
+
+        // V10.0 — single-row, app-wide Apprise notification config (see AppriseSettingsEntity.SingletonId).
+        builder.Entity<AppriseSettingsEntity>();
 
         builder.Entity<RefreshTokenEntity>(e =>
         {
