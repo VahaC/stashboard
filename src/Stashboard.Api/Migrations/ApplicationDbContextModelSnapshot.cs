@@ -133,6 +133,12 @@ namespace Stashboard.Api.Migrations
                     b.Property<int>("FailureThreshold")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("HistoryRetentionDays")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("HistorySampleIntervalMinutes")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("IntervalSeconds")
                         .HasColumnType("INTEGER");
 
@@ -1157,6 +1163,40 @@ namespace Stashboard.Api.Migrations
                     b.HasIndex("UserId", "Enabled", "LastCheckedUtc");
 
                     b.ToTable("DockerWatches");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.HealthCheckEventEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ResponseTimeMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Target")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("TimestampUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("WebResourceId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TimestampUtc");
+
+                    b.HasIndex("WebResourceId", "Target", "TimestampUtc");
+
+                    b.ToTable("HealthCheckEvents");
                 });
 
             modelBuilder.Entity("Stashboard.Core.Entities.HostShellSessionEntity", b =>
@@ -2356,6 +2396,17 @@ namespace Stashboard.Api.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("DockerConnection");
+
+                    b.Navigation("WebResource");
+                });
+
+            modelBuilder.Entity("Stashboard.Core.Entities.HealthCheckEventEntity", b =>
+                {
+                    b.HasOne("Stashboard.Core.Entities.WebResourceEntity", "WebResource")
+                        .WithMany()
+                        .HasForeignKey("WebResourceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("WebResource");
                 });

@@ -65,7 +65,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
             .ReturnsAsync((string?)null);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await EnsureSchemaAsync();
         await ClearAllDataAsync();
@@ -73,7 +73,7 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
         _otherUserId = (await SeedUserAsync("other@example.com")).Id;
     }
 
-    public Task DisposeAsync() => _db.DisposeAsync().AsTask();
+    public ValueTask DisposeAsync() => _db.DisposeAsync();
 
     // ── monitoring toggle ─────────────────────────────────────────────────────
 
@@ -2761,3 +2761,6 @@ public class ProxmoxConnectionsControllerTests : IAsyncLifetime
     private static string BuildTestConnectionString() =>
         $"Data Source={Path.Combine(Path.GetTempPath(), "stashboard-tests-proxmox-connections.db")};Pooling=False";
 }
+
+
+

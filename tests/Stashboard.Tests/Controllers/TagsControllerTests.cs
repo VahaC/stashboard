@@ -15,7 +15,7 @@ public class TagsControllerTests : DatabaseTestBase
     private TagsController _ctrl = default!;
     private DataFactory _factory = default!;
 
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         var hasher = new Pbkdf2PasswordHasher();
@@ -85,3 +85,7 @@ public class TagsControllerTests : DatabaseTestBase
         public string Decrypt(string cipher) => cipher;
     }
 }
+
+
+
+

@@ -45,3 +45,6 @@ public class ProxmoxSshUpdateApplierTests
         Assert.Contains("exit 3", Applier.BuildCommand(110));
     }
 }
+
+
+

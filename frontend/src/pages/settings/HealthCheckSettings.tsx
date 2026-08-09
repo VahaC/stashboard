@@ -20,6 +20,8 @@ export function HealthCheckSettings() {
   const [failureThreshold, setFailureThreshold] = useState(3)
   const [retryCount, setRetryCount] = useState(2)
   const [retryDelayMs, setRetryDelayMs] = useState(1000)
+  const [historyRetentionDays, setHistoryRetentionDays] = useState(90)
+  const [historySampleIntervalMinutes, setHistorySampleIntervalMinutes] = useState(15)
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
@@ -31,6 +33,8 @@ export function HealthCheckSettings() {
         setFailureThreshold(s.failureThreshold)
         setRetryCount(s.retryCount)
         setRetryDelayMs(s.retryDelayMs)
+        setHistoryRetentionDays(s.historyRetentionDays)
+        setHistorySampleIntervalMinutes(s.historySampleIntervalMinutes)
       })
       .catch(() => { /* leave defaults */ })
       .finally(() => setLoaded(true))
@@ -45,11 +49,15 @@ export function HealthCheckSettings() {
       const threshold = Number.isFinite(failureThreshold) && failureThreshold > 0 ? Math.floor(failureThreshold) : 1
       const retries = Number.isFinite(retryCount) && retryCount >= 0 ? Math.floor(retryCount) : 0
       const delay = Number.isFinite(retryDelayMs) && retryDelayMs >= 0 ? Math.floor(retryDelayMs) : 0
+      const retentionDays = Number.isFinite(historyRetentionDays) && historyRetentionDays >= 1 ? Math.floor(historyRetentionDays) : 90
+      const sampleMinutes = Number.isFinite(historySampleIntervalMinutes) && historySampleIntervalMinutes >= 1 ? Math.floor(historySampleIntervalMinutes) : 15
       await settingsApi.updateHealthCheckSettings({
         intervalSeconds: interval,
         failureThreshold: threshold,
         retryCount: retries,
         retryDelayMs: delay,
+        historyRetentionDays: retentionDays,
+        historySampleIntervalMinutes: sampleMinutes,
       })
       setMessage({ kind: 'ok', text: 'Health-check settings saved. They apply on the next scan.' })
     } catch (error: unknown) {
@@ -182,6 +190,56 @@ export function HealthCheckSettings() {
               <p className="text-xs text-[var(--muted-foreground)]">
                 How long to wait <strong>between in-probe retries</strong>.
                 Default <strong>1000</strong> ms. Ignored when retries are 0.
+              </p>
+            </div>
+
+            <div className="account-form-row">
+              <label htmlFor="hc-history-retention" className="account-form-label">
+                Uptime history retention (days)
+              </label>
+              <Input
+                id="hc-history-retention"
+                type="number"
+                min={1}
+                max={3650}
+                value={Number.isFinite(historyRetentionDays) ? historyRetentionDays : ''}
+                disabled={!loaded}
+                onChange={(event) => {
+                  const parsed = parseInt(event.target.value, 10)
+                  setHistoryRetentionDays(Number.isFinite(parsed) ? parsed : 0)
+                }}
+                className="account-form-input"
+              />
+              <p className="text-xs text-[var(--muted-foreground)]">
+                How long to keep the per-service <strong>uptime history</strong> that powers the
+                Healthcheck tab's uptime %, response-time sparkline and incident log. Older rows
+                are pruned automatically so the table never grows unbounded. Default{' '}
+                <strong>90</strong> days.
+              </p>
+            </div>
+
+            <div className="account-form-row">
+              <label htmlFor="hc-history-sample" className="account-form-label">
+                Response-time sample interval (minutes)
+              </label>
+              <Input
+                id="hc-history-sample"
+                type="number"
+                min={1}
+                max={1440}
+                value={Number.isFinite(historySampleIntervalMinutes) ? historySampleIntervalMinutes : ''}
+                disabled={!loaded}
+                onChange={(event) => {
+                  const parsed = parseInt(event.target.value, 10)
+                  setHistorySampleIntervalMinutes(Number.isFinite(parsed) ? parsed : 0)
+                }}
+                className="account-form-input"
+              />
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Status <strong>changes</strong> (up ↔ down) are always recorded. Between changes, a
+                response-time sample is stored at most this often — so a steady service doesn't
+                write one row per scan forever. Lower values give a finer latency trend at the cost
+                of more rows. Default <strong>15</strong> minutes.
               </p>
             </div>
 

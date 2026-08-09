@@ -54,3 +54,6 @@ public class HostShellSettingsServiceTests : DatabaseTestBase
         Assert.True(await Build(seed: false).IsEnabledAsync());
     }
 }
+
+
+

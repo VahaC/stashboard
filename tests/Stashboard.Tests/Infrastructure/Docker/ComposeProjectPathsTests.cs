@@ -79,3 +79,6 @@ public class ComposeProjectPathsTests
         Assert.Null(ComposeProjectPaths.Resolve(DockerHostType.Ssh, null, workingDir));
     }
 }
+
+
+

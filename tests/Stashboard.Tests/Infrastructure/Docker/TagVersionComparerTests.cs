@@ -124,3 +124,6 @@ public class TagVersionComparerTests
         Assert.Equal("v2.0.0", PickHighest(tags));
     }
 }
+
+
+

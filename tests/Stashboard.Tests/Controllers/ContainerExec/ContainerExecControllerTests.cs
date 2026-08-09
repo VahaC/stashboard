@@ -56,7 +56,7 @@ public class ContainerExecControllerTests : IAsyncLifetime
             Options.Create(new ContainerExecOptions()), TimeProvider.System);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await EnsureSchemaAsync();
         await ClearAllDataAsync();
@@ -67,7 +67,7 @@ public class ContainerExecControllerTests : IAsyncLifetime
         _otherUserId = seeder.Other.Id;
     }
 
-    public Task DisposeAsync() => _dbContext.DisposeAsync().AsTask();
+    public async ValueTask DisposeAsync() => _dbContext.DisposeAsync().AsTask();
 
     [Fact]
     public async Task CreateTicket_Returns403_WhenGlobalFlagOff()
@@ -273,3 +273,5 @@ public class ContainerExecControllerTests : IAsyncLifetime
     private static string BuildTestConnectionString() =>
         $"Data Source={Path.Combine(Path.GetTempPath(), "stashboard-tests.db")};Pooling=False";
 }
+
+

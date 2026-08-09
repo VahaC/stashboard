@@ -145,3 +145,6 @@ public class ComposeProjectReaderTests
         Assert.Contains("connection refused", result.Error);
     }
 }
+
+
+

@@ -224,3 +224,6 @@ public class UploadLogoEndpointTests : WebResourcesControllerTestBase
         _faviconMock.Verify(f => f.InvalidateSiteFaviconCache(It.IsAny<string>()), Times.Never);
     }
 }
+
+
+

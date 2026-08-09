@@ -48,6 +48,7 @@ import type {
   Service,
   ServiceTemplate,
   ServiceUpsert,
+  ServiceUptime,
   StashboardFeatures,
   Tag,
   TelegramSettings,
@@ -153,9 +154,21 @@ export const useCheckNow = () => {
       qc.setQueryData<Service[]>(qk.services, (prev) =>
         prev ? prev.map((s) => (s.id === updated.id ? updated : s)) : prev
       )
+      // V10.1 — a manual check may have appended a history row; refresh the metrics.
+      qc.invalidateQueries({ queryKey: ['services', updated.id, 'health'] })
     },
   })
 }
+
+/** V10.1 — rolled-up uptime history for a service (uptime %, sparkline, incidents).
+ *  Only fetched while the modal's Healthcheck tab is open (gated by `enabled`). */
+export const useHealthHistory = (serviceId: string | undefined, enabled: boolean) =>
+  useQuery({
+    queryKey: ['services', serviceId, 'health', 'metrics'],
+    queryFn: async () => (await api.get<ServiceUptime>(`/api/services/${serviceId}/health/metrics`)).data,
+    enabled: Boolean(serviceId) && enabled,
+    refetchInterval: 60_000,
+  })
 
 /** Set a custom service logo. The image is sent as a base64 data URI in a JSON
  *  body (read in the browser via FileReader), so it lives purely in the database

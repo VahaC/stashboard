@@ -43,14 +43,14 @@ public class DockerUpdateBackgroundServiceTests : IAsyncLifetime
     private readonly Mock<ITelegramSender> _telegramMock = new();
     private readonly DockerWebhookCheckQueue _webhookQueue = new();
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _db = CreateDbContext();
         await EnsureSchemaAsync();
         await ClearAllDataAsync();
     }
 
-    public async Task DisposeAsync() => await _db.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _db.DisposeAsync();
 
     // ── DoD test ─────────────────────────────────────────────────────────────
 
@@ -661,3 +661,4 @@ public class DockerUpdateBackgroundServiceTests : IAsyncLifetime
         public IDisposable? OnChange(Action<DockerUpdateOptions, string?> listener) => null;
     }
 }
+

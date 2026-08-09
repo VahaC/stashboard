@@ -93,3 +93,6 @@ public class MqttSettingsServiceTests : DatabaseTestBase
         Assert.Equal("Stashboard", resolved.Manufacturer);
     }
 }
+
+
+

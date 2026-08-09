@@ -1330,3 +1330,309 @@
     gap: 0.2rem;
   }
 }
+/* ── V10.1 — uptime history & analytics (Healthcheck tab) ─────────────────── */
+
+.uptime-history {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.uptime-empty,
+.uptime-spark-empty,
+.uptime-incidents-empty {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin: 0;
+}
+
+.uptime-target {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.uptime-target-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.uptime-target-kind {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+
+.uptime-target-url {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uptime-stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.uptime-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--card);
+}
+
+.uptime-stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+}
+
+.uptime-stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.uptime-spark {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.uptime-spark-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.uptime-spark-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.uptime-spark-metrics {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Time axis under the sparkline — sits in the SVG's grid column so the start/end
+   labels align with the chart edges (not the y-axis gutter). */
+.uptime-spark-xaxis {
+  grid-column: 1;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.15rem;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hover surface: relative anchor for the cursor tooltip, in the SVG's grid column. */
+.uptime-spark-plot {
+  grid-column: 1;
+  position: relative;
+  min-width: 0;
+}
+
+.uptime-spark-cursor {
+  stroke: var(--muted-foreground);
+  stroke-width: 0.6;
+  stroke-dasharray: 2 2;
+  opacity: 0.7;
+}
+
+.uptime-spark-cursor-dot {
+  fill: var(--status-up);
+  stroke: var(--card);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.uptime-spark-tooltip {
+  position: absolute;
+  bottom: 100%;
+  margin-bottom: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  padding: 0.25rem 0.45rem;
+  background: var(--popover, var(--card));
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.uptime-spark-tooltip-ms {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.uptime-spark-tooltip-time {
+  font-size: 10px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.uptime-incidents {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.uptime-incidents-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+.uptime-incidents-chevron {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  transition: transform 0.15s ease;
+}
+
+.uptime-incidents-chevron-collapsed {
+  transform: rotate(-90deg);
+}
+
+.uptime-incidents-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.uptime-incidents-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--status-down);
+  background: color-mix(in srgb, var(--status-down) 14%, transparent);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  flex-shrink: 0;
+}
+
+.uptime-incidents-count[data-clear='true'] {
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+
+.uptime-incidents-more {
+  list-style: none;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  text-align: center;
+  padding: 0.3rem 0;
+}
+
+.uptime-incidents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 11rem;
+  overflow-y: auto;
+}
+
+.uptime-incident {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--card);
+  font-size: 12px;
+}
+
+.uptime-incident-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--status-down);
+  flex-shrink: 0;
+}
+
+.uptime-incident[data-ongoing='true'] {
+  border-color: var(--status-down);
+}
+
+.uptime-incident-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.uptime-incident-when {
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.uptime-incident-arrow {
+  color: var(--muted-foreground);
+}
+
+.uptime-incident-ongoing {
+  color: var(--status-down);
+  font-weight: 600;
+}
+
+.uptime-incident-error {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uptime-incident-duration {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.uptime-retention-note {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin: 0;
+}

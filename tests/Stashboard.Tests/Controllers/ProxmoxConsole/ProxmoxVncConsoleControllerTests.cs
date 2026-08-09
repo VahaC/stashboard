@@ -60,7 +60,7 @@ public class ProxmoxVncConsoleControllerTests : IAsyncLifetime
             Options.Create(new ProxmoxConsoleOptions()), TimeProvider.System);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await EnsureSchemaAsync();
         await ClearAllDataAsync();
@@ -71,7 +71,7 @@ public class ProxmoxVncConsoleControllerTests : IAsyncLifetime
         _otherUserId = seeder.Other.Id;
     }
 
-    public Task DisposeAsync() => _dbContext.DisposeAsync().AsTask();
+    public ValueTask DisposeAsync() => _dbContext.DisposeAsync();
 
     [Fact]
     public async Task CreateTicket_Returns403_WhenGlobalFlagOff_WithoutTouchingHost()
@@ -248,3 +248,6 @@ public class ProxmoxVncConsoleControllerTests : IAsyncLifetime
     private static string BuildTestConnectionString() =>
         $"Data Source={Path.Combine(Path.GetTempPath(), "stashboard-tests-proxmox-vnc-console.db")};Pooling=False";
 }
+
+
+

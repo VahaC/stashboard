@@ -477,3 +477,5 @@ public class ComposeCommandRunnerTests
         return runner;
     }
 }
+
+

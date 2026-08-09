@@ -27,7 +27,7 @@ public class AuthControllerTests : DatabaseTestBase
     private UserService _users = default!;
     private TokenService _tokens = default!;
 
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         _users = new UserService(_dbContext, _hasher, _encryption, Options.Create(_opt), _time);
@@ -197,3 +197,7 @@ public class AuthControllerTests : DatabaseTestBase
         Assert.IsType<UnauthorizedResult>(result.Result);
     }
 }
+
+
+
+

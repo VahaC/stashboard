@@ -85,3 +85,6 @@ public class DockerHostClientIntegrationTests
         Assert.NotNull(result.Error);
     }
 }
+
+
+

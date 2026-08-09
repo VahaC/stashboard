@@ -32,5 +32,13 @@ public class HealthCheckSettingsEntity : AuditableEntity
     /// <summary>Delay in milliseconds between in-probe retries. Floor 0. Default 1000.</summary>
     public int RetryDelayMs { get; set; } = 1000;
 
+    /// <summary>V10.1 — days of uptime history retained before the background prune drops
+    /// older rows. Floor 1. Default 90.</summary>
+    public int HistoryRetentionDays { get; set; } = 90;
+
+    /// <summary>V10.1 — minutes between response-time samples written for a service whose
+    /// status is unchanged (transitions are always recorded). Floor 1. Default 15.</summary>
+    public int HistorySampleIntervalMinutes { get; set; } = 15;
+
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

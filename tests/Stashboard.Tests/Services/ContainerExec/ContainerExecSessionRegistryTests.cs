@@ -86,3 +86,6 @@ public class ContainerExecSessionRegistryTests
         Assert.NotNull(registry.TryAcquire(user, Guid.NewGuid(), out _));
     }
 }
+
+
+

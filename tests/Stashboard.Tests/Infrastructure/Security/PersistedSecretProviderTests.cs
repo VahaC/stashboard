@@ -63,3 +63,6 @@ public sealed class PersistedSecretProviderTests : IDisposable
             Directory.Delete(_dir, recursive: true);
     }
 }
+
+
+

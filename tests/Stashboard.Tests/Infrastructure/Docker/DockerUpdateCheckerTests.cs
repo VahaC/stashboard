@@ -586,3 +586,5 @@ public class DockerUpdateCheckerTests
             NullLogger<DockerUpdateChecker>.Instance);
     }
 }
+
+

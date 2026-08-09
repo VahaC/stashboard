@@ -59,7 +59,7 @@ public class ComposeProjectsControllerTests : IAsyncLifetime
             .Returns<string>(v => v.StartsWith("enc:") ? v[4..] : v);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await EnsureSchemaAsync();
         await ClearAllDataAsync();
@@ -71,7 +71,7 @@ public class ComposeProjectsControllerTests : IAsyncLifetime
         _dataFactory = new DataFactory(_dbContext, _encryptionMock.Object, _passwordHasher, _userId);
     }
 
-    public Task DisposeAsync() => _dbContext.DisposeAsync().AsTask();
+    public ValueTask DisposeAsync() => _dbContext.DisposeAsync();
 
     // ── discovery (GET /compose) ─────────────────────────────────────────────
 
@@ -1325,3 +1325,4 @@ public class ComposeProjectsControllerTests : IAsyncLifetime
         return $"Data Source={Path.Combine(Path.GetTempPath(), "stashboard-tests.db")};Pooling=False";
     }
 }
+

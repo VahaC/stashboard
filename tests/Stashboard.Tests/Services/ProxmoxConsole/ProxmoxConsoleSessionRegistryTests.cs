@@ -86,3 +86,5 @@ public class ProxmoxConsoleSessionRegistryTests
         Assert.NotNull(registry.TryAcquire(user, Guid.NewGuid(), out _));
     }
 }
+
+

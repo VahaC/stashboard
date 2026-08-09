@@ -63,7 +63,7 @@ public abstract class DockerWatchesControllerTestBase : IAsyncLifetime
         _webhookTokenGeneratorMock.Setup(g => g.Generate()).Returns(new string('a', 64));
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await EnsureSchemaAsync();
         await ClearAllDataAsync();
@@ -75,7 +75,7 @@ public abstract class DockerWatchesControllerTestBase : IAsyncLifetime
         _dataFactory = new DataFactory(_dbContext, _encryptionMock.Object, _passwordHasher, _userId);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _dbContext.DisposeAsync();
     }
@@ -302,3 +302,5 @@ public abstract class DockerWatchesControllerTestBase : IAsyncLifetime
             .Where(w => w.WebResourceId == webResourceId)
             .ToListAsync();
 }
+
+

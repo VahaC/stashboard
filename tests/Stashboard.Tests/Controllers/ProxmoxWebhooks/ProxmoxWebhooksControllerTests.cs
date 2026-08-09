@@ -33,13 +33,13 @@ public class ProxmoxWebhooksControllerTests : IAsyncLifetime
         _db = new ApplicationDbContext(options);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await EnsureSchemaAsync();
         await ClearAsync();
     }
 
-    public async Task DisposeAsync() => await _db.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _db.DisposeAsync();
 
     [Fact]
     public async Task Receive_ValidToken_AcceptedEnqueuedAndStampsReceivedAt()
@@ -164,3 +164,6 @@ public class ProxmoxWebhooksControllerTests : IAsyncLifetime
     private static string BuildTestConnectionString() =>
         $"Data Source={Path.Combine(Path.GetTempPath(), "stashboard-tests-proxmox-webhooks.db")};Pooling=False";
 }
+
+
+

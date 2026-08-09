@@ -24,6 +24,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<AppriseSettingsEntity> AppriseSettings => Set<AppriseSettingsEntity>();
 
     public DbSet<WebResourceEntity> WebResources => Set<WebResourceEntity>();
+    public DbSet<HealthCheckEventEntity> HealthCheckEvents => Set<HealthCheckEventEntity>();
     public DbSet<CredentialEntity> Credentials => Set<CredentialEntity>();
     public DbSet<CategoryEntity> Categories => Set<CategoryEntity>();
     public DbSet<TagEntity> Tags => Set<TagEntity>();
@@ -142,6 +143,20 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .WithMany()
                 .HasForeignKey(s => s.ProxmoxConnectionId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<HealthCheckEventEntity>(e =>
+        {
+            // V10.1 — append-only uptime history. The per-(service, target) timeline is read
+            // newest-first and over a time window, so a single composite index covers both the
+            // metrics roll-up and the paginated history endpoint. The prune scans by timestamp.
+            e.HasIndex(ev => new { ev.WebResourceId, ev.Target, ev.TimestampUtc });
+            e.HasIndex(ev => ev.TimestampUtc);
+            // Cascade with the service — history is meaningless once the service is gone.
+            e.HasOne(ev => ev.WebResource)
+                .WithMany()
+                .HasForeignKey(ev => ev.WebResourceId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<CategoryEntity>(e =>

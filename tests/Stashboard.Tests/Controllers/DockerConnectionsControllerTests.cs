@@ -24,7 +24,7 @@ public class DockerConnectionsControllerTests : DatabaseTestBase
     private Guid _userId;
     private DockerConnectionsController _ctrl = default!;
 
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         var hasher = new Pbkdf2PasswordHasher();
@@ -120,3 +120,7 @@ public class DockerConnectionsControllerTests : DatabaseTestBase
         public string Decrypt(string cipher) => cipher;
     }
 }
+
+
+
+

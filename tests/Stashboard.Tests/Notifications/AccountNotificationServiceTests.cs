@@ -135,3 +135,6 @@ public class AccountNotificationServiceTests
         Assert.Contains("https://app.custom-domain.com/confirm-email?", captured!.HtmlBody);
     }
 }
+
+
+

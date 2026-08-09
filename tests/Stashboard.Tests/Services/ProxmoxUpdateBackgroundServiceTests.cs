@@ -35,14 +35,14 @@ public class ProxmoxUpdateBackgroundServiceTests : IAsyncLifetime
     // webhook-drain tests so an enqueue is visible to the drain.
     private readonly Stashboard.Infrastructure.Proxmox.ProxmoxScanQueue _scanQueue = new();
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _db = CreateDbContext();
         await EnsureSchemaAsync();
         await ClearAllDataAsync();
     }
 
-    public async Task DisposeAsync() => await _db.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _db.DisposeAsync();
 
     // ── DoD: a due connection's guests are discovered + stamped ───────────────
 

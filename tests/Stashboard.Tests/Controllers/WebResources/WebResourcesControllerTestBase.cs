@@ -82,7 +82,7 @@ public abstract class WebResourcesControllerTestBase : IAsyncLifetime
 
     // ── xUnit lifecycle ───────────────────────────────────────────────────────
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await EnsureSchemaAsync();
         await ClearAllDataAsync();
@@ -94,7 +94,7 @@ public abstract class WebResourcesControllerTestBase : IAsyncLifetime
         _dataFactory = new DataFactory(_dbContext, _encryptionMock.Object, _passwordHasher, _userId);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _dbContext.DisposeAsync();
     }
@@ -125,6 +125,8 @@ public abstract class WebResourcesControllerTestBase : IAsyncLifetime
     /// <summary>Wipes all application rows from the test database. Called once per process run.</summary>
     private async Task ClearAllDataAsync()
     {
+        // V10.1 — uptime-history rows reference services; clear them first.
+        await _dbContext.HealthCheckEvents.ExecuteDeleteAsync();
         // V7.9 — link tables reference services / connections; clear them first.
         await _dbContext.ContainerProxmoxLinks.ExecuteDeleteAsync();
         await _dbContext.WebResourceProxmoxGuestLinks.ExecuteDeleteAsync();
@@ -192,7 +194,8 @@ public abstract class WebResourcesControllerTestBase : IAsyncLifetime
             new Stashboard.Api.Services.HealthCheckSettings.HealthCheckSettingsService(
                 _dbContext,
                 Options.Create(new Stashboard.Core.Options.HealthCheckOptions()),
-                new TestTimeProvider()));
+                new TestTimeProvider()),
+            new Stashboard.Api.Services.HealthCheck.HealthCheckEventRecorder());
 
         var identity = new ClaimsIdentity(
             new[] { new Claim(StashboardClaims.UserId, (userId ?? _userId).ToString()) }, "Test");
@@ -230,3 +233,5 @@ public abstract class WebResourcesControllerTestBase : IAsyncLifetime
         new(name, mainUrl, true, null, true, null, HealthCheckMethod.Get, null, null, null,
             LogoSource.AutoFavicon, null, [], []);
 }
+
+

@@ -21,10 +21,18 @@ public sealed class HealthCheckSettingsService(
     /// <c>HealthCheckBackgroundService</c>).</summary>
     public const int MinimumIntervalSeconds = 10;
 
+    /// <summary>V10.1 — at least one day of history must be kept for the windows to mean anything.</summary>
+    public const int MinimumHistoryRetentionDays = 1;
+
+    /// <summary>V10.1 — the sample cadence floor (never sample more than once a minute).</summary>
+    public const int MinimumHistorySampleIntervalMinutes = 1;
+
     public async Task<HealthCheckSettingsResponse> GetAsync(CancellationToken cancellationToken = default)
     {
         var entity = await GetOrCreateAsync(cancellationToken);
-        return new HealthCheckSettingsResponse(entity.IntervalSeconds, entity.FailureThreshold, entity.RetryCount, entity.RetryDelayMs);
+        return new HealthCheckSettingsResponse(
+            entity.IntervalSeconds, entity.FailureThreshold, entity.RetryCount, entity.RetryDelayMs,
+            entity.HistoryRetentionDays, entity.HistorySampleIntervalMinutes);
     }
 
     public async Task UpdateAsync(UpdateHealthCheckSettingsRequest request, CancellationToken cancellationToken = default)
@@ -34,6 +42,8 @@ public sealed class HealthCheckSettingsService(
         entity.FailureThreshold = Math.Max(MinimumFailureThreshold, request.FailureThreshold);
         entity.RetryCount = Math.Max(0, request.RetryCount);
         entity.RetryDelayMs = Math.Max(0, request.RetryDelayMs);
+        entity.HistoryRetentionDays = Math.Max(MinimumHistoryRetentionDays, request.HistoryRetentionDays);
+        entity.HistorySampleIntervalMinutes = Math.Max(MinimumHistorySampleIntervalMinutes, request.HistorySampleIntervalMinutes);
         entity.UpdatedUtc = time.GetUtcNow().UtcDateTime;
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -52,6 +62,8 @@ public sealed class HealthCheckSettingsService(
             FailureThreshold = Math.Max(MinimumFailureThreshold, seedDefaults.Value.FailureThreshold),
             RetryCount = Math.Max(0, seedDefaults.Value.RetryCount),
             RetryDelayMs = Math.Max(0, seedDefaults.Value.RetryDelayMs),
+            HistoryRetentionDays = Math.Max(MinimumHistoryRetentionDays, seedDefaults.Value.HistoryRetentionDays),
+            HistorySampleIntervalMinutes = Math.Max(MinimumHistorySampleIntervalMinutes, seedDefaults.Value.HistorySampleIntervalMinutes),
             CreatedUtc = now,
             UpdatedUtc = now,
         };

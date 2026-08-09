@@ -261,3 +261,5 @@ public class ProxmoxConnectionMapperTests
             CheckEveryHours: checkEveryHours,
             TelemetryPollSeconds: telemetryPollSeconds);
 }
+
+

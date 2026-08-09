@@ -23,4 +23,13 @@ public class HealthCheckOptions
 
     /// <summary>Delay in milliseconds between in-probe retries. Floor: 0. Default: 1000.</summary>
     public int RetryDelayMs { get; set; } = 1000;
+
+    /// <summary>V10.1 — how many days of uptime history to retain before a background prune
+    /// drops older rows. Keeps the append-only event table bounded. Floor: 1. Default: 90.</summary>
+    public int HistoryRetentionDays { get; set; } = 90;
+
+    /// <summary>V10.1 — cadence, in minutes, at which a response-time sample is written for a
+    /// service whose status has not changed (status transitions are always recorded). Avoids
+    /// one row per scan per URL while still capturing a latency trend. Floor: 1. Default: 15.</summary>
+    public int HistorySampleIntervalMinutes { get; set; } = 15;
 }

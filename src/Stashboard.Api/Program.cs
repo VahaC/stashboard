@@ -198,6 +198,10 @@ public class Program
         // managed from the Settings → Health checks page. Seeded from the HealthCheck
         // config block (bound in Infrastructure) on first read.
         builder.Services.AddScoped<IHealthCheckSettingsService, HealthCheckSettingsService>();
+        // V10.1 — uptime history: the recorder appends events during a scan / manual check,
+        // and a slow background prune keeps the append-only table within the retention window.
+        builder.Services.AddScoped<Services.HealthCheck.IHealthCheckEventRecorder, Services.HealthCheck.HealthCheckEventRecorder>();
+        builder.Services.AddHostedService<Services.HealthCheck.HealthCheckHistoryPruneBackgroundService>();
         // V6.0 — Proxmox LXC update monitoring. The API client + SSH inspector
         // + checker live in Infrastructure; here we wire the scan service (the
         // per-connection unit of work, shared by the loop and the "Check now"

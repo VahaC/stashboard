@@ -38,7 +38,7 @@ public class AccountControllerTests : DatabaseTestBase
         public string Decrypt(string ciphertext) => ciphertext.StartsWith("enc:") ? ciphertext[4..] : ciphertext;
     }
 
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         _users = new UserService(_dbContext, _hasher, new PrefixEncryption(), Options.Create(_jwt), _time);
@@ -453,3 +453,6 @@ public class AccountControllerTests : DatabaseTestBase
         Assert.Null(stored!.PasswordEncrypted);
     }
 }
+
+
+

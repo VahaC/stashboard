@@ -288,3 +288,6 @@ public class CreateEndpointTests : WebResourcesControllerTestBase
         Assert.False(dbRow.OfflineNotificationsEnabled);
     }
 }
+
+
+

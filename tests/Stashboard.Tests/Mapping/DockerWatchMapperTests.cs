@@ -952,3 +952,4 @@ public class DockerWatchMapperTests
             AwsSecretAccessKey: awsSecretAccessKey,
             AwsRegion: awsRegion);
 }
+

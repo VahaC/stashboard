@@ -77,7 +77,7 @@ public class DockerInstancesControllerTests : IAsyncLifetime
             .ReturnsAsync((string?)null);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await EnsureSchemaAsync();
         await ClearAllDataAsync();
@@ -89,7 +89,7 @@ public class DockerInstancesControllerTests : IAsyncLifetime
         _dataFactory = new DataFactory(_dbContext, _encryptionMock.Object, _passwordHasher, _userId);
     }
 
-    public Task DisposeAsync() => _dbContext.DisposeAsync().AsTask();
+    public async ValueTask DisposeAsync() => _dbContext.DisposeAsync().AsTask();
 
     [Fact]
     public async Task ListContainers_ReturnsCards_LinkingTheUsersWatch()
@@ -1498,3 +1498,5 @@ public class DockerInstancesControllerTests : IAsyncLifetime
         return $"Data Source={Path.Combine(Path.GetTempPath(), "stashboard-tests.db")};Pooling=False";
     }
 }
+
+

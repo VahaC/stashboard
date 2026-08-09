@@ -220,3 +220,6 @@ public class FaviconBase64PersistenceTests : WebResourcesControllerTestBase
         Assert.Null(dto.FaviconUrl);
     }
 }
+
+
+

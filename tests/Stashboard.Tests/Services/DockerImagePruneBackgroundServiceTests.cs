@@ -51,7 +51,7 @@ public class DockerImagePruneBackgroundServiceTests : IAsyncLifetime
             .Returns<string>(v => v.StartsWith("enc:") ? v[4..] : v);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await EnsureSchemaAsync();
         await ClearAsync();
@@ -60,7 +60,7 @@ public class DockerImagePruneBackgroundServiceTests : IAsyncLifetime
         _userId = user.Id;
     }
 
-    public Task DisposeAsync() => _dbContext.DisposeAsync().AsTask();
+    public ValueTask DisposeAsync() => _dbContext.DisposeAsync();
 
     [Fact]
     public async Task Sweep_DoesNothing_WhenMasterSwitchIsOff()
@@ -291,3 +291,5 @@ public class DockerImagePruneBackgroundServiceTests : IAsyncLifetime
         }
     }
 }
+
+

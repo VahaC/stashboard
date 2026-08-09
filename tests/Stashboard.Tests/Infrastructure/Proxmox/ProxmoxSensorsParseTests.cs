@@ -89,3 +89,6 @@ public class ProxmoxSensorsParseTests
         Assert.Empty(ProxmoxSshGuestInspector.ParseSensors("{}"));
     }
 }
+
+
+

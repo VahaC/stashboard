@@ -181,3 +181,5 @@ public class LogsEndpointTests : DockerWatchesControllerTestBase
         return (body, httpContext.Response);
     }
 }
+
+

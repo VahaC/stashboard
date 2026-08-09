@@ -490,3 +490,5 @@ public class DockerConnectionMapperTests
             AllowHostShell: allowHostShell,
             AllowExec: allowExec);
 }
+
+

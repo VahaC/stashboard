@@ -74,3 +74,5 @@ public class ComposeTextDiffTests
         Assert.Equal(2, diff[1].NewLine);
     }
 }
+
+

@@ -15,14 +15,14 @@ public abstract class DatabaseTestBase : IAsyncLifetime
     private static bool _schemaReady;
     private static readonly SemaphoreSlim _schemaLock = new(1, 1);
 
-    public virtual async Task InitializeAsync()
+    public virtual async ValueTask InitializeAsync()
     {
         _dbContext = CreateDbContext();
         await EnsureSchemaAsync(_dbContext);
         await ClearAllDataAsync(_dbContext);
     }
 
-    public virtual async Task DisposeAsync()
+    public virtual async ValueTask DisposeAsync()
     {
         await _dbContext.DisposeAsync();
     }
@@ -77,6 +77,8 @@ public abstract class DatabaseTestBase : IAsyncLifetime
         await db.ProxmoxRestoreSettings.ExecuteDeleteAsync();
         // V9.0 — same for the MQTT integration singleton.
         await db.MqttSettings.ExecuteDeleteAsync();
+        // V6.6 — same for the Proxmox Console master-switch singleton.
+        await db.ProxmoxConsoleSettings.ExecuteDeleteAsync();
     }
 
     private static string BuildTestConnectionString()
@@ -98,3 +100,6 @@ public abstract class DatabaseTestBase : IAsyncLifetime
         return $"Data Source={Path.Combine(Path.GetTempPath(), "stashboard-tests.db")};Pooling=False";
     }
 }
+
+
+

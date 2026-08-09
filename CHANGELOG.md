@@ -5,6 +5,45 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [10.1.0] — 2026-06-29
+
+### Added
+- **Uptime history & analytics (V10.1).** The health-check loop now retains a bounded,
+  append-only time-series per service, surfaced on a dedicated **Uptime** tab in the
+  service modal — so it becomes a real monitor instead of a single live status.
+  - **Append-only history.** A new `HealthCheckEventEntity` (timestamp, status,
+    response-time, error — keyed by a lean autoincrement id) is written by the
+    background scan **and** a manual **Check now**, through a shared
+    `IHealthCheckEventRecorder`, **only on a status transition or past a sampled
+    cadence** (default 15 min) — so a steady service never writes one row per scan.
+    History is kept **per URL**: the main and additional URLs are tracked separately,
+    each with its own uptime, sparkline and incidents.
+  - **Bounded retention.** A slow background prune
+    (`HealthCheckHistoryPruneBackgroundService`, every 6 h) drops rows older than a
+    configurable window (default **90 days**), keeping the table bounded.
+  - **Derived metrics on the Uptime tab.** Per URL: **uptime % over 24 h / 7 d /
+    30 d**, a **response-time sparkline** (hand-rolled inline SVG, reusing the V3.4
+    stats-panel approach — no chart library), and an **incident log** of Down→Up spans
+    with durations (the still-down span flagged *ongoing*). Up / NeedsAttention count
+    as "up", Down as "down", and Unknown (monitoring off) is excluded from the
+    denominator.
+  - **New owner-scoped endpoints** under the service surface:
+    `GET /api/services/{id}/health/metrics` (rolled-up metrics + incidents + sparkline)
+    and a paginated, newest-first `GET /api/services/{id}/health/events` (raw rows). A
+    foreign service returns 404.
+  - **New settings.** **Uptime-history retention (days)** and **response-time sample
+    interval (minutes)** join the **Settings → Health checks** page, DB-backed and
+    seeded from `STASHBOARD_HealthCheck__HistoryRetentionDays` /
+    `…__HistorySampleIntervalMinutes` on first run.
+  - **Backup/restore:** the uptime **history** is runtime-derived telemetry and is
+    **not** exported (consistent with the "runtime status is re-derived, not exported"
+    rule); the retention/sample knobs are app-wide health-check settings (DB-backed,
+    env-seeded) and, like the rest of the health-check tuning, are not part of the
+    per-user backup export.
+  - **Out of scope (deliberately):** SLA reports / CSV-PDF exports; uptime-% alerting
+    thresholds (offline alerting stays in the V5.6 failure-threshold logic); long-term
+    downsampling/rollup tables — one bounded window is enough.
+
 ## [10.0.0] — 2026-06-28
 
 ### Added

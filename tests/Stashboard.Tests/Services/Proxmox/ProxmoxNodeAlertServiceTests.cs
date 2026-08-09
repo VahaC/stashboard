@@ -33,7 +33,7 @@ public class ProxmoxNodeAlertServiceTests : IAsyncLifetime
     private readonly Mock<ITelegramSender> _telegramMock = new();
     private readonly Mock<IUserService> _userMock = new();
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _db = CreateDbContext();
         await EnsureSchemaAsync();
@@ -51,7 +51,7 @@ public class ProxmoxNodeAlertServiceTests : IAsyncLifetime
             .ReturnsAsync(new ProxmoxNodeNetworkErrors(false, "n/a", 0));
     }
 
-    public async Task DisposeAsync() => await _db.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _db.DisposeAsync();
 
     // ── debounce ──────────────────────────────────────────────────────────────
 

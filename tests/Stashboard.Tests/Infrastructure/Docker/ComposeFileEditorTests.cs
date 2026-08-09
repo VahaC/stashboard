@@ -986,3 +986,4 @@ public class ComposeFileEditorTests
         Assert.Contains("image", result.Error);
     }
 }
+

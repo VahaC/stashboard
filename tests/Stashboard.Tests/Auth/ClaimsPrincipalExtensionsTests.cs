@@ -54,3 +54,6 @@ public class ClaimsPrincipalExtensionsTests
     private static ClaimsPrincipal Build(params Claim[] claims) =>
         new(new ClaimsIdentity(claims, "Test"));
 }
+
+
+

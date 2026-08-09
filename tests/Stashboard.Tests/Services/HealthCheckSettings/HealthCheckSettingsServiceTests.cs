@@ -70,4 +70,27 @@ public class HealthCheckSettingsServiceTests : DatabaseTestBase
         Assert.Equal(0, settings.RetryCount);
         Assert.Equal(0, settings.RetryDelayMs);
     }
+
+    [Fact]
+    public async Task Update_PersistsAndFloors_HistorySettings()
+    {
+        var service = Build();
+
+        await service.UpdateAsync(new UpdateHealthCheckSettingsRequest(
+            IntervalSeconds: 60, FailureThreshold: 3, RetryCount: 2, RetryDelayMs: 1000,
+            HistoryRetentionDays: 45, HistorySampleIntervalMinutes: 5));
+        var persisted = await service.GetAsync();
+        Assert.Equal(45, persisted.HistoryRetentionDays);
+        Assert.Equal(5, persisted.HistorySampleIntervalMinutes);
+
+        // Floors: at least 1 day of retention and a 1-minute sample cadence.
+        await service.UpdateAsync(new UpdateHealthCheckSettingsRequest(
+            IntervalSeconds: 60, FailureThreshold: 3, RetryCount: 2, RetryDelayMs: 1000,
+            HistoryRetentionDays: 0, HistorySampleIntervalMinutes: 0));
+        var floored = await service.GetAsync();
+        Assert.Equal(1, floored.HistoryRetentionDays);
+        Assert.Equal(1, floored.HistorySampleIntervalMinutes);
+    }
 }
+
+

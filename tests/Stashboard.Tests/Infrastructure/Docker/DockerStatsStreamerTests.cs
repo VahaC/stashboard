@@ -293,3 +293,5 @@ public class DockerStatsStreamerTests
         Assert.True(sample.OnlineCpus >= 1, "OnlineCpus should default to at least 1 to avoid divide-by-zero downstream.");
     }
 }
+
+

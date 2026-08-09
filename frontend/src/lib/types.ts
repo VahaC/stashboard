@@ -844,6 +844,45 @@ export interface HealthCheckSettings {
   failureThreshold: number
   retryCount: number
   retryDelayMs: number
+  /** V10.1 — days of uptime history retained before the background prune. */
+  historyRetentionDays: number
+  /** V10.1 — minutes between response-time samples when status is unchanged. */
+  historySampleIntervalMinutes: number
+}
+
+/** V10.1 — one Down→Up span from a service's uptime history. */
+export interface UptimeIncident {
+  startUtc: string
+  endUtc: string | null
+  durationSeconds: number
+  ongoing: boolean
+  error: string | null
+}
+
+/** V10.1 — a response-time data point for the sparkline. */
+export interface ResponseSample {
+  timestampUtc: string
+  responseTimeMs: number
+}
+
+/** V10.1 — rolled-up uptime metrics for one of a service's URLs (main / additional). */
+export interface TargetUptimeMetrics {
+  uptime24h: number | null
+  uptime7d: number | null
+  uptime30d: number | null
+  eventCount: number
+  /** Total incidents in the 30-day window; may exceed `incidents.length` (capped, newest-first). */
+  incidentCount: number
+  responseSamples: ResponseSample[]
+  incidents: UptimeIncident[]
+}
+
+/** V10.1 — the uptime payload for a service: per-URL metrics + retention window. */
+export interface ServiceUptime {
+  retentionDays: number
+  generatedUtc: string
+  main: TargetUptimeMetrics
+  additional: TargetUptimeMetrics | null
 }
 
 /** V9.0 — app-wide MQTT / Home Assistant integration settings (broker password never returned). */

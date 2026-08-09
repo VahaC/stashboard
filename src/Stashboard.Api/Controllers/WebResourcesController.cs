@@ -6,6 +6,7 @@ using Stashboard.Api.Contracts;
 using Stashboard.Api.Data;
 using Stashboard.Api.Mapping;
 using Stashboard.Api.Notifications;
+using Stashboard.Api.Services.HealthCheck;
 using Stashboard.Api.Services.HealthCheckSettings;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
@@ -25,7 +26,8 @@ public class WebResourcesController(
     IServiceStatusNotificationService statusNotifications,
     IWebHostEnvironment env,
     IFaviconService faviconService,
-    IHealthCheckSettingsService healthCheckSettings) : ControllerBase
+    IHealthCheckSettingsService healthCheckSettings,
+    IHealthCheckEventRecorder healthEventRecorder) : ControllerBase
 {
     private Guid UserId => User.GetUserId();
 
@@ -136,6 +138,7 @@ public class WebResourcesController(
         var previousMainStatus = entity.CurrentStatus;
         var previousAdditionalStatus = entity.AdditionalUrlStatus;
         var hcSettings = await healthCheckSettings.GetAsync(cancellationToken);
+        var nowUtc = DateTime.UtcNow;
         var checkResult = await healthChecker.CheckAsync(
             entity, new HealthCheckRetrySettings(hcSettings.RetryCount, hcSettings.RetryDelayMs), cancellationToken);
         entity.CurrentStatus = checkResult.Main.Status;
@@ -144,7 +147,7 @@ public class WebResourcesController(
         entity.LastCheckedUtc = checkResult.Main.Status == Stashboard.Core.Enums.ServiceStatus.Unknown
             && !entity.MainUrlHealthCheckEnabled
             ? null
-            : DateTime.UtcNow;
+            : nowUtc;
 
         if (checkResult.Additional is { } additional)
         {
@@ -157,6 +160,11 @@ public class WebResourcesController(
             ClearAdditionalHealthState(entity);
         }
 
+        // V10.1 — record uptime history for this manual check, same as the background scan.
+        await healthEventRecorder.RecordAsync(
+            db, entity, previousMainStatus, previousAdditionalStatus,
+            hcSettings.HistorySampleIntervalMinutes, nowUtc, cancellationToken);
+
         await db.SaveChangesAsync(cancellationToken);
 
         var user = await users.FindByIdAsync(entity.UserId, cancellationToken);
@@ -165,6 +173,95 @@ public class WebResourcesController(
 
         return Ok(await MapWithGuestsAsync(entity, cancellationToken));
     }
+
+    /// <summary>
+    /// V10.1 — rolled-up uptime metrics for a service: per-URL uptime % (24 h / 7 d / 30 d),
+    /// the response-time sparkline samples, and the incident log. Owner-scoped — a foreign
+    /// service is indistinguishable from a missing one (404). Derived from the retained
+    /// <see cref="HealthCheckEventEntity"/> rows; nothing here is persisted or exported.
+    /// </summary>
+    [HttpGet("{id:guid}/health/metrics")]
+    public async Task<ActionResult<ServiceUptimeResponse>> HealthMetrics(Guid id, CancellationToken cancellationToken)
+    {
+        var userId = UserId;
+        var entity = await db.WebResources.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == id && s.UserId == userId, cancellationToken);
+        if (entity is null) return NotFound();
+
+        var settings = await healthCheckSettings.GetAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+        var windowStart = now.AddDays(-HealthCheckMetricsCalculator.IncidentWindowDays);
+
+        // The 30-day window for every target in one query; the single preceding event per target
+        // (for the carried status at the window edge) is fetched per target in BuildPointsAsync.
+        var windowEvents = await db.HealthCheckEvents.AsNoTracking()
+            .Where(ev => ev.WebResourceId == id && ev.TimestampUtc >= windowStart)
+            .OrderBy(ev => ev.TimestampUtc)
+            .ToListAsync(cancellationToken);
+
+        var mainPoints = await BuildPointsAsync(id, HealthCheckTarget.Main, windowStart, windowEvents, cancellationToken);
+        var main = HealthCheckMetricsCalculator.Compute(mainPoints, now);
+
+        TargetUptimeMetrics? additional = null;
+        if (!string.IsNullOrWhiteSpace(entity.AdditionalUrl))
+        {
+            var addPoints = await BuildPointsAsync(id, HealthCheckTarget.Additional, windowStart, windowEvents, cancellationToken);
+            additional = HealthCheckMetricsCalculator.Compute(addPoints, now);
+        }
+
+        return Ok(new ServiceUptimeResponse(settings.HistoryRetentionDays, now, main, additional));
+    }
+
+    /// <summary>V10.1 — raw uptime-history rows, newest-first and paginated. Owner-scoped (404
+    /// for a foreign service). Optional <c>target</c> filter (<c>Main</c> / <c>Additional</c>).</summary>
+    [HttpGet("{id:guid}/health/events")]
+    public async Task<ActionResult<List<HealthEventResponse>>> HealthEvents(
+        Guid id, [FromQuery] string? target, [FromQuery] int skip, [FromQuery] int take,
+        CancellationToken cancellationToken)
+    {
+        var userId = UserId;
+        if (!await db.WebResources.AnyAsync(s => s.Id == id && s.UserId == userId, cancellationToken))
+            return NotFound();
+
+        take = take <= 0 ? 50 : Math.Min(take, 200);
+        skip = Math.Max(0, skip);
+
+        var query = db.HealthCheckEvents.AsNoTracking().Where(ev => ev.WebResourceId == id);
+        if (Enum.TryParse<HealthCheckTarget>(target, ignoreCase: true, out var parsedTarget))
+            query = query.Where(ev => ev.Target == parsedTarget);
+
+        var rows = await query
+            .OrderByDescending(ev => ev.TimestampUtc)
+            .Skip(skip)
+            .Take(take)
+            .Select(ev => new HealthEventResponse(
+                ev.TimestampUtc, ev.Target.ToString(), ev.Status.ToString(), ev.ResponseTimeMs, ev.Error))
+            .ToListAsync(cancellationToken);
+
+        return Ok(rows);
+    }
+
+    /// <summary>Ascending timeline points for one target: the single event before the window
+    /// (carried status) plus every in-window event for that target.</summary>
+    private async Task<List<HealthCheckMetricsCalculator.Point>> BuildPointsAsync(
+        Guid serviceId, HealthCheckTarget target, DateTime windowStart,
+        List<HealthCheckEventEntity> windowEvents, CancellationToken cancellationToken)
+    {
+        var points = new List<HealthCheckMetricsCalculator.Point>();
+
+        var preceding = await db.HealthCheckEvents.AsNoTracking()
+            .Where(ev => ev.WebResourceId == serviceId && ev.Target == target && ev.TimestampUtc < windowStart)
+            .OrderByDescending(ev => ev.TimestampUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (preceding is not null)
+            points.Add(ToPoint(preceding));
+
+        points.AddRange(windowEvents.Where(ev => ev.Target == target).Select(ToPoint));
+        return points;
+    }
+
+    private static HealthCheckMetricsCalculator.Point ToPoint(HealthCheckEventEntity ev) =>
+        new(ev.TimestampUtc, ev.Status, ev.ResponseTimeMs, ev.Error);
 
     /// <summary>
     /// Set a custom service logo. The image arrives as a base64 data URI in a JSON

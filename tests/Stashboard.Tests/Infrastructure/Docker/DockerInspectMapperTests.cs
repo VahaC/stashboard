@@ -84,3 +84,6 @@ public class DockerInspectMapperTests
         Assert.Equal(string.Empty, result.Value);
     }
 }
+
+
+

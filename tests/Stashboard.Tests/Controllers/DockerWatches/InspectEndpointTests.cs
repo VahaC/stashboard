@@ -140,3 +140,6 @@ public class InspectEndpointTests : DockerWatchesControllerTestBase
             NetworkSettings: new DockerInspectNetworkSettings(new Dictionary<string, DockerInspectNetwork>()),
             Mounts: Array.Empty<DockerInspectMount>());
 }
+
+
+

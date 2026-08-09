@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Stashboard.Api.Auth;
 using Stashboard.Api.Data;
 using Stashboard.Api.Notifications;
+using Stashboard.Api.Services.HealthCheck;
 using Stashboard.Api.Services.HealthCheckSettings;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Options;
@@ -46,6 +47,7 @@ public sealed class HealthCheckBackgroundService(
         var userService = scope.ServiceProvider.GetRequiredService<IUserService>();
         var statusNotifications = scope.ServiceProvider.GetRequiredService<IServiceStatusNotificationService>();
         var healthSettingsService = scope.ServiceProvider.GetRequiredService<IHealthCheckSettingsService>();
+        var eventRecorder = scope.ServiceProvider.GetRequiredService<IHealthCheckEventRecorder>();
 
         // V5.6 — read the DB-backed tuning once per scan so UI edits apply on the next sweep.
         var healthSettings = await healthSettingsService.GetAsync(cancellationToken);
@@ -70,7 +72,13 @@ public sealed class HealthCheckBackgroundService(
             var previousMainStatus = service.CurrentStatus;
             var previousAdditionalStatus = service.AdditionalUrlStatus;
             var result = await checker.CheckAsync(service, retry, cancellationToken);
-            HealthCheckStatusEvaluator.Apply(service, result, healthSettings.FailureThreshold, DateTime.UtcNow);
+            var nowUtc = DateTime.UtcNow;
+            HealthCheckStatusEvaluator.Apply(service, result, healthSettings.FailureThreshold, nowUtc);
+
+            // V10.1 — append uptime history (transition or sampled cadence) for both URLs.
+            await eventRecorder.RecordAsync(
+                db, service, previousMainStatus, previousAdditionalStatus,
+                healthSettings.HistorySampleIntervalMinutes, nowUtc, cancellationToken);
 
             if (userIds.Contains(service.UserId))
             {

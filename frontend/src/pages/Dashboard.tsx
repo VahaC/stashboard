@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Activity, ChevronDown, ChevronRight, Container, Info, KeyRound, MoreVertical, Plus, RefreshCw, Search, Server } from 'lucide-react'
+import { Activity, ChevronDown, ChevronRight, Container, History, Info, KeyRound, MoreVertical, Plus, RefreshCw, Search, Server } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useCategories, useCheckNow, useServices } from '@/lib/queries'
@@ -16,6 +16,7 @@ import '@/styles/dashboard.css'
 const SERVICE_TABS: ReadonlyArray<[ModalTab, string, typeof Info]> = [
   ['general', 'General', Info],
   ['healthcheck', 'Healthcheck', Activity],
+  ['uptime', 'Uptime', History],
   ['credentials', 'Credentials', KeyRound],
   ['docker', 'Docker', Container],
   ['proxmox', 'Proxmox', Server],
@@ -289,10 +290,26 @@ export function Dashboard() {
           )}
         </div>
 
-        {/* Footer: category badge + tags */}
-        {(s.categoryName || s.tags.length > 0) && (
-          <>
-            <div className="h-px bg-border" />
+
+        {/* Footer: category badge + tags (optional) */}
+        <div className="h-px bg-border" />
+          {/* Quick-access tab icons — open the modal straight to a section, mirroring
+              the icon rows on the Docker container & Proxmox guest cards. */}
+          <div className="service-card-tabs" role="group" aria-label={`Open a section of ${s.name}`}>
+            {SERVICE_TABS.map(([tab, label, Icon]) => (
+              <button
+                key={tab}
+                type="button"
+                className="service-card-tab-btn"
+                title={label}
+                aria-label={label}
+                onClick={(e) => { e.stopPropagation(); openEdit(s, tab) }}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </button>
+            ))}
+          </div>
+          {(s.categoryName || s.tags.length > 0) && (
             <div className="service-card-footer">
               {s.categoryName && (
                 <span
@@ -306,8 +323,7 @@ export function Dashboard() {
                 <span key={t} className="service-card-tag">{t}</span>
               ))}
             </div>
-          </>
-        )}
+          )}
       </div>
     )
   }

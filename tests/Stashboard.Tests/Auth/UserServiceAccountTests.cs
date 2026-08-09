@@ -25,7 +25,7 @@ public class UserServiceAccountTests : DatabaseTestBase
         PasswordResetTokenLifetimeHours = 2,
     };
 
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         _sut = new UserService(_dbContext, _hasher, _encryption, Options.Create(_opt), _time);
@@ -479,3 +479,6 @@ public class UserServiceAccountTests : DatabaseTestBase
         Assert.NotNull(await _sut.FindByIdAsync(u.Id));
     }
 }
+
+
+

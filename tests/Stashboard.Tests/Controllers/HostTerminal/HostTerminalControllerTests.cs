@@ -57,7 +57,7 @@ public class HostTerminalControllerTests : IAsyncLifetime
             Options.Create(new HostShellOptions()), TimeProvider.System);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await EnsureSchemaAsync();
         await ClearAllDataAsync();
@@ -68,7 +68,7 @@ public class HostTerminalControllerTests : IAsyncLifetime
         _otherUserId = seeder.Other.Id;
     }
 
-    public Task DisposeAsync() => _dbContext.DisposeAsync().AsTask();
+    public async ValueTask DisposeAsync() => _dbContext.DisposeAsync().AsTask();
 
     [Fact]
     public async Task CreateTicket_Returns403_WhenGlobalFlagOff()
@@ -232,3 +232,5 @@ public class HostTerminalControllerTests : IAsyncLifetime
     private static string BuildTestConnectionString() =>
         $"Data Source={Path.Combine(Path.GetTempPath(), "stashboard-tests.db")};Pooling=False";
 }
+
+

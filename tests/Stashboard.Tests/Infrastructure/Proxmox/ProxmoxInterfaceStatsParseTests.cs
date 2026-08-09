@@ -83,3 +83,6 @@ public class ProxmoxInterfaceStatsParseTests
     private static ProxmoxConnectionProfile NoSshProfile() =>
         new("https://pve.lan:8006", "pve", "root@pam!t", "secret", SkipTlsVerify: true, Ssh: null);
 }
+
+
+

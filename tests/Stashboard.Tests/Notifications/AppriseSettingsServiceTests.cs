@@ -104,3 +104,6 @@ public class AppriseSettingsServiceTests : DatabaseTestBase
         Assert.False((await svc.GetResolvedAsync()).IsConfigured);
     }
 }
+
+
+

@@ -602,3 +602,5 @@ public class DockerUpdateNotificationServiceTests
         AppriseNotificationsEnabled = appriseNotificationsEnabled,
     };
 }
+
+

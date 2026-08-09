@@ -1,9 +1,9 @@
-﻿using Stashboard.Infrastructure.Docker;
+using Stashboard.Infrastructure.Docker;
 
 namespace Stashboard.Tests.Infrastructure.Docker;
 
 /// <summary>
-/// V7.0 — unit tests for <see cref="ComposeFileParser"/>: the viewer subset
+/// V7.0 � unit tests for <see cref="ComposeFileParser"/>: the viewer subset
 /// (services, top-level resources, deploy.resources), short/long syntax
 /// normalisation, simple-alias resolution, and the unsupported-feature
 /// detection (<c>x-*</c> / <c>extends</c> / merge keys) that powers the
@@ -366,7 +366,7 @@ public class ComposeFileParserTests
         Assert.Equal("The Compose file has no 'services' map.", result.Error);
     }
 
-    // ── V7.3 — top-level resource options ────────────────────────────────────
+    // -- V7.3 � top-level resource options ------------------------------------
 
     [Fact]
     public void Parse_TopLevelResources_MapsNetworkVolumeSecretConfigOptions()
@@ -453,4 +453,6 @@ public class ComposeFileParserTests
         Assert.Equal("10.0.0.0/24", project.Networks.Single().Subnet);
     }
 }
+
+
 

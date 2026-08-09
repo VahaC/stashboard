@@ -336,3 +336,5 @@ public class DockerWatchEntityPersistenceTests : DatabaseTestBase
         return resource;
     }
 }
+
+

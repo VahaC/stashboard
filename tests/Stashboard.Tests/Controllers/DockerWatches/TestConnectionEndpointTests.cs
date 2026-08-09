@@ -181,3 +181,6 @@ public class TestConnectionEndpointTests : DockerWatchesControllerTestBase
             RegistryUsername: null,
             RegistryPassword: null);
 }
+
+
+

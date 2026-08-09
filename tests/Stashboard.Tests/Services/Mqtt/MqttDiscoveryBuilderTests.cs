@@ -297,3 +297,4 @@ public class MqttDiscoveryBuilderTests
             Assert.Equal("stashboard/status", Payload(d).GetProperty("availability_topic").GetString()));
     }
 }
+

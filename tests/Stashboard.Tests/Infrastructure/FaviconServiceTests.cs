@@ -101,3 +101,6 @@ public class FaviconServiceTests
         Assert.Equal(2, requestCount);
     }
 }
+
+
+

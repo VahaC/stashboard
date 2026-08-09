@@ -333,3 +333,5 @@ public class ProxmoxUpdateCheckerTests
     private static ProxmoxConnectionProfile ProfileNoSsh() =>
         new("https://pve.lan:8006", "pve", "root@pam!stash", "secret", true, null);
 }
+
+

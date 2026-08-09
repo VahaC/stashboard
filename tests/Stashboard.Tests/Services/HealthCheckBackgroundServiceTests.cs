@@ -7,6 +7,7 @@ using Stashboard.Api.Auth;
 using Stashboard.Api.Data;
 using Stashboard.Api.Notifications;
 using Stashboard.Api.Services;
+using Stashboard.Api.Services.HealthCheck;
 using Stashboard.Api.Services.HealthCheckSettings;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
@@ -54,7 +55,7 @@ public class HealthCheckBackgroundServiceTests : IAsyncLifetime
             .ReturnsAsync((UserEntity?)null);
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await EnsureSchemaAsync();
         await ClearAsync();
@@ -62,7 +63,7 @@ public class HealthCheckBackgroundServiceTests : IAsyncLifetime
         _userId = (await factory.UserAsync()).Id;
     }
 
-    public Task DisposeAsync() => _dbContext.DisposeAsync().AsTask();
+    public async ValueTask DisposeAsync() => _dbContext.DisposeAsync().AsTask();
 
     [Fact]
     public async Task Scan_ReturnsDbInterval_AndPassesDbRetrySettingsToChecker()
@@ -101,6 +102,23 @@ public class HealthCheckBackgroundServiceTests : IAsyncLifetime
         Assert.Equal(2, afterSecond.MainUrlConsecutiveFailures);
     }
 
+    [Fact]
+    public async Task Scan_WritesHistoryEvent_OnStatusTransition()
+    {
+        // Seeded service starts Up; the checker returns Up too on the first scan (no transition,
+        // but the first sample seeds the timeline), then a transition to Down records a row.
+        await SeedSettingsAsync(intervalSeconds: 60, failureThreshold: 1, retryCount: 0, retryDelayMs: 0);
+        await SeedServiceAsync();
+        SetupChecker(ServiceStatus.Down);
+
+        await BuildService().ScanOnceAsync(CancellationToken.None);
+
+        var events = await _dbContext.HealthCheckEvents.AsNoTracking().ToListAsync();
+        var row = Assert.Single(events);
+        Assert.Equal(HealthCheckTarget.Main, row.Target);
+        Assert.Equal(ServiceStatus.Down, row.Status);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private void SetupChecker(ServiceStatus mainStatus, Action<HealthCheckRetrySettings?>? captureRetry = null)
@@ -122,6 +140,7 @@ public class HealthCheckBackgroundServiceTests : IAsyncLifetime
             .AddSingleton(_notificationsMock.Object)
             .AddSingleton<IHealthCheckSettingsService>(_ =>
                 new HealthCheckSettingsService(_dbContext, Options.Create(new HealthCheckOptions()), TimeProvider.System))
+            .AddSingleton<IHealthCheckEventRecorder>(new HealthCheckEventRecorder())
             .BuildServiceProvider();
 
         var optionsMonitor = new Mock<IOptionsMonitor<HealthCheckOptions>>();
@@ -169,6 +188,7 @@ public class HealthCheckBackgroundServiceTests : IAsyncLifetime
 
     private async Task ClearAsync()
     {
+        await _dbContext.HealthCheckEvents.ExecuteDeleteAsync();
         await _dbContext.WebResources.ExecuteDeleteAsync();
         await _dbContext.HealthCheckSettings.ExecuteDeleteAsync();
         await _dbContext.Users.ExecuteDeleteAsync();
@@ -207,3 +227,5 @@ public class HealthCheckBackgroundServiceTests : IAsyncLifetime
         }
     }
 }
+
+

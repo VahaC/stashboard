@@ -191,3 +191,6 @@ public class ContainerIconResolverTests
         Assert.Equal(0, requestCount); // never touches the network
     }
 }
+
+
+

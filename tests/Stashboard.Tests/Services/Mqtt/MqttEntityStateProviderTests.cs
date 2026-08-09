@@ -26,14 +26,14 @@ public class MqttEntityStateProviderTests : IAsyncLifetime
     private ApplicationDbContext _db = default!;
     private readonly Mock<IProxmoxApiClient> _apiMock = new();
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _db = CreateDbContext();
         await EnsureSchemaAsync();
         await ClearAllDataAsync();
     }
 
-    public async Task DisposeAsync() => await _db.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _db.DisposeAsync();
 
     [Fact]
     public async Task BuildsDerivedSignals_Counts_Alert_Backup_AndRollups()
@@ -278,3 +278,4 @@ public class MqttEntityStateProviderTests : IAsyncLifetime
     private static string BuildTestConnectionString() =>
         $"Data Source={Path.Combine(Path.GetTempPath(), "stashboard-mqtt-provider-tests.db")};Pooling=False";
 }
+

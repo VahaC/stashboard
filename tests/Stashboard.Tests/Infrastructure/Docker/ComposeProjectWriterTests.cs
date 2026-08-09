@@ -347,3 +347,4 @@ public class ComposeProjectWriterTests
         Assert.Contains("bad compose file", result.Error);
     }
 }
+

@@ -98,3 +98,6 @@ public class DockerLogStreamerTests
         Assert.Null(line.TimestampUtc);
     }
 }
+
+
+

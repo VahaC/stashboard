@@ -87,3 +87,6 @@ public class DockerWatchStatusWriterTests
         Assert.Equal(result.CheckedAtUtc, watch.LastUpdateDetectedUtc);
     }
 }
+
+
+

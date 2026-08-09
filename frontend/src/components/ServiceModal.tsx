@@ -7,14 +7,15 @@ import { Textarea } from '@/components/ui/textarea'
 import type { Service, ServiceStatus, ServiceUpsert } from '@/lib/types'
 import { resolveDockerUpdateStatus } from '@/lib/types'
 import { useCategories, useCheckNow, useDeleteService, useRefreshFavicon, useUploadLogo, useUpsertService } from '@/lib/queries'
-import { Activity, Check, Container, Copy, Eye, EyeOff, Info, KeyRound, Plus, RefreshCw, Server, Trash2 } from 'lucide-react'
+import { Activity, Check, Container, Copy, Eye, EyeOff, History, Info, KeyRound, Plus, RefreshCw, Server, Trash2 } from 'lucide-react'
 import { parseApiErrors } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { DockerWatchSection } from '@/components/DockerWatchSection'
 import { ProxmoxLinkSection } from '@/components/ProxmoxLinkSection'
+import { UptimeHistorySection } from '@/components/UptimeHistorySection'
 import '@/styles/service-modal.css'
 
-export type ModalTab = 'general' | 'healthcheck' | 'credentials' | 'docker' | 'proxmox'
+export type ModalTab = 'general' | 'healthcheck' | 'uptime' | 'credentials' | 'docker' | 'proxmox'
 
 interface Props {
   open: boolean
@@ -247,6 +248,14 @@ export function ServiceModal({ open, onOpenChange, service, initialTab }: Props)
             active={activeTab === 'healthcheck'}
             onClick={() => setActiveTab('healthcheck')}
             indicatorClass={healthcheckIndicator != null ? dotClass(healthcheckIndicator) : null}
+          />
+          <TabButton
+            label="Uptime"
+            icon={History}
+            active={activeTab === 'uptime'}
+            onClick={() => setActiveTab('uptime')}
+            disabled={!service}
+            disabledHint="Save the service first — uptime history is recorded per existing service."
           />
           <TabButton
             label="Credentials"
@@ -512,6 +521,17 @@ export function ServiceModal({ open, onOpenChange, service, initialTab }: Props)
                 )}
               </div>
             </div>
+          )}
+
+          {/* ── UPTIME TAB (V10.1 — history & analytics) ──────────────── */}
+          {activeTab === 'uptime' && (
+            service
+              ? <UptimeHistorySection service={service} />
+              : (
+                <div className="service-modal-tab-placeholder">
+                  Save the service first — uptime history is recorded per existing service.
+                </div>
+              )
           )}
 
           {/* ── CREDENTIALS TAB ───────────────────────────────────────── */}

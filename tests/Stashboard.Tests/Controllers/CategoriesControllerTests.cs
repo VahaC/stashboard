@@ -17,7 +17,7 @@ public class CategoriesControllerTests : DatabaseTestBase
     private Guid _otherUserId;
     private CategoriesController _ctrl = default!;
 
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         var hasher = new Pbkdf2PasswordHasher();
@@ -125,3 +125,6 @@ public class CategoriesControllerTests : DatabaseTestBase
         public string Decrypt(string cipher) => cipher;
     }
 }
+
+
+

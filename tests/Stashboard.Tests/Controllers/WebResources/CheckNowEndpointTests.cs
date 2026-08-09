@@ -223,3 +223,6 @@ public class CheckNowEndpointTests : WebResourcesControllerTestBase
         Assert.Null(dbRow.AdditionalUrlLastError);
     }
 }
+
+
+
