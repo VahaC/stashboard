@@ -1,0 +1,156 @@
+/* V10.2 — Settings → Status pages (owner management UI). */
+
+.status-pages-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.status-pages-intro {
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+  max-width: 65ch;
+  line-height: 1.5;
+}
+
+.status-pages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.status-page-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--card);
+}
+
+.status-page-row-main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.status-page-row-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.status-page-row-slug {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+}
+
+.status-page-row-meta {
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+}
+
+.status-page-row-side {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.status-page-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  margin-right: 0.25rem;
+  background: color-mix(in srgb, var(--status-unknown) 18%, transparent);
+  color: var(--status-unknown);
+}
+
+.status-page-badge[data-published='true'] {
+  background: color-mix(in srgb, var(--status-up) 18%, transparent);
+  color: var(--status-up);
+}
+
+/* ── Editor dialog ── */
+
+.status-page-editor {
+  max-width: 38rem;
+  width: 100%;
+}
+
+.status-page-editor-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.status-page-slug-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.status-page-slug-prefix {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.status-page-service-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.status-page-service-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.status-page-service-row[data-selected='true'] {
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+
+.status-page-service-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.status-page-service-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-page-service-display {
+  flex: 1 1 14rem;
+  min-width: 0;
+}

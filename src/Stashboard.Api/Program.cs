@@ -125,6 +125,21 @@ public class Program
                 });
             });
 
+            // V10.2 — the public status page is unauthenticated and meant to be shared
+            // widely, so cap it per IP to keep a popular link from hammering the instance.
+            // 60 requests/minute is generous for a human refreshing while still bounding abuse;
+            // a 30 s response cache absorbs most repeat hits before they reach the limiter.
+            o.AddPolicy("public-status", httpContext =>
+            {
+                var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 60,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                });
+            });
+
             // 10 attempts per 15 minutes per IP for token-redemption endpoints
             // (reset-password, confirm-email, confirm-email-change) — slows brute-force
             // guessing of the 256-bit token (still cryptographically infeasible, but
@@ -202,6 +217,9 @@ public class Program
         // and a slow background prune keeps the append-only table within the retention window.
         builder.Services.AddScoped<Services.HealthCheck.IHealthCheckEventRecorder, Services.HealthCheck.HealthCheckEventRecorder>();
         builder.Services.AddHostedService<Services.HealthCheck.HealthCheckHistoryPruneBackgroundService>();
+        // V10.2 — public status pages: the builder turns a published page into the
+        // whitelisted public payload (live status + uptime history), reusing the V10.1 metrics.
+        builder.Services.AddScoped<Services.StatusPages.IPublicStatusPageBuilder, Services.StatusPages.PublicStatusPageBuilder>();
         // V6.0 — Proxmox LXC update monitoring. The API client + SSH inspector
         // + checker live in Infrastructure; here we wire the scan service (the
         // per-connection unit of work, shared by the loop and the "Check now"

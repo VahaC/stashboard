@@ -49,6 +49,8 @@ import type {
   ServiceTemplate,
   ServiceUpsert,
   ServiceUptime,
+  StatusPage,
+  StatusPageUpsert,
   StashboardFeatures,
   Tag,
   TelegramSettings,
@@ -105,6 +107,8 @@ export const qk = {
   features: ['features'] as const,
   telegramSettings: ['account', 'telegram'] as const,
   appriseSettings: ['settings', 'apprise'] as const,
+  /** V10.2 — the owner's public status pages (management view). */
+  statusPages: ['status-pages'] as const,
 }
 
 export const useServices = () =>
@@ -280,6 +284,35 @@ export const useDeleteTag = () => {
       qc.invalidateQueries({ queryKey: qk.tags })
       qc.invalidateQueries({ queryKey: qk.services })
     },
+  })
+}
+
+// ── V10.2 — public status pages (owner management) ──────────────────────────
+
+export const useStatusPages = () =>
+  useQuery({
+    queryKey: qk.statusPages,
+    queryFn: async () => (await api.get<StatusPage[]>('/api/status-pages')).data,
+  })
+
+export const useSaveStatusPage = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: { id?: string; data: StatusPageUpsert }) => {
+      const { id, data } = args
+      return id
+        ? (await api.put<StatusPage>(`/api/status-pages/${id}`, data)).data
+        : (await api.post<StatusPage>('/api/status-pages', data)).data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.statusPages }),
+  })
+}
+
+export const useDeleteStatusPage = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => api.delete(`/api/status-pages/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.statusPages }),
   })
 }
 

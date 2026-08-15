@@ -25,6 +25,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<WebResourceEntity> WebResources => Set<WebResourceEntity>();
     public DbSet<HealthCheckEventEntity> HealthCheckEvents => Set<HealthCheckEventEntity>();
+    public DbSet<StatusPageEntity> StatusPages => Set<StatusPageEntity>();
+    public DbSet<StatusPageItemEntity> StatusPageItems => Set<StatusPageItemEntity>();
     public DbSet<CredentialEntity> Credentials => Set<CredentialEntity>();
     public DbSet<CategoryEntity> Categories => Set<CategoryEntity>();
     public DbSet<TagEntity> Tags => Set<TagEntity>();
@@ -156,6 +158,33 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.HasOne(ev => ev.WebResource)
                 .WithMany()
                 .HasForeignKey(ev => ev.WebResourceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<StatusPageEntity>(e =>
+        {
+            // V10.2 — public status pages. The slug is the public lookup key with no user
+            // context, so it must be globally unique. Owner cascade removes a user's pages.
+            e.HasIndex(p => p.Slug).IsUnique();
+            e.HasIndex(p => new { p.UserId, p.Title });
+            e.HasOne<UserEntity>()
+                .WithMany()
+                .HasForeignKey(p => p.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(p => p.Items)
+                .WithOne(i => i.StatusPage)
+                .HasForeignKey(i => i.StatusPageId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<StatusPageItemEntity>(e =>
+        {
+            // One row per (page, service); the same service can sit on many pages.
+            e.HasIndex(i => new { i.StatusPageId, i.WebResourceId }).IsUnique();
+            // Removing the underlying service drops it from every page it was shown on.
+            e.HasOne(i => i.WebResource)
+                .WithMany()
+                .HasForeignKey(i => i.WebResourceId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

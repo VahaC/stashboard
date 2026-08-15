@@ -5,6 +5,40 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [10.2.0] — 2026-06-29
+
+### Added
+- **Public status page (V10.2).** Stashboard's private admin view becomes something you can
+  share — a read-only status page for a hand-picked set of your services, viewable without an
+  account, in the spirit of Uptime Kuma.
+  - **Status pages you assemble.** A new `StatusPageEntity` + `StatusPageItemEntity` join lets
+    you create one or more pages, each a named selection of **your own** services with a title,
+    optional description and a globally-unique public **slug**. Each selected service can carry a
+    per-page **display-name override** so the public view never leaks your internal naming.
+  - **Publish gate.** A page is a **draft** until you switch **Published** on (off by default).
+    The public read endpoint only ever resolves a **published** page; an unpublished or unknown
+    slug **404s identically**, so pages can't be enumerated.
+  - **Whitelisted public endpoint.** The unauthenticated `GET /api/status/{slug}`
+    (`PublicStatusController`, `[AllowAnonymous]`) returns **only** display fields — the display
+    name, live status, **24 h / 7 d / 30 d uptime %** and a 30-day **history bar** — built by
+    `PublicStatusPageBuilder` reusing the V10.1 `HealthCheckMetricsCalculator` (new `DailyUptime`
+    helper). It **never** exposes URLs, credentials, notes, categories, tags, ids or
+    Docker/Proxmox internals (a test asserts these never appear in the payload).
+  - **Abuse-resistant.** The endpoint is IP-rate-limited (a new `public-status` policy reusing the
+    existing rate-limiter middleware) and sends a 30 s cache header so a widely-shared link can't
+    hammer the instance.
+  - **Management UI.** A new **Settings → Status pages** sub-page creates / edits / publishes /
+    deletes pages and copies the public link; a top-level SPA route `/status/:slug` renders the
+    public page (outside auth and the app shell) with an aggregate "All systems operational"
+    banner.
+  - **Backup/restore:** status pages + their service selections + publish state are added to
+    `BackupService` export/import (the slug is regenerated on a collision since it's globally
+    unique) and to the round-trip test.
+
+### Out of scope
+- Custom domains / white-labelling, subscriber email/RSS digests, and owner-authored incident /
+  scheduled-maintenance banners — V10.2 renders live status + history only.
+
 ## [10.1.0] — 2026-06-29
 
 ### Added

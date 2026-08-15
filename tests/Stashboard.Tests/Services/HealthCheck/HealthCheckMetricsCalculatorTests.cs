@@ -128,4 +128,40 @@ public class HealthCheckMetricsCalculatorTests
         Assert.Equal(120, metrics.ResponseSamples[0].ResponseTimeMs);
         Assert.Equal(95, metrics.ResponseSamples[^1].ResponseTimeMs);
     }
+
+    // ── V10.2 — public status-page daily history bar ──
+
+    [Fact]
+    public void DailyUptime_ReturnsOneBucketPerDayOldestFirst()
+    {
+        var buckets = HealthCheckMetricsCalculator.DailyUptime(Array.Empty<Point>(), Now, 30);
+
+        Assert.Equal(30, buckets.Count);
+        // Oldest first; the last bucket is "today".
+        Assert.True(buckets[0].DayStartUtc < buckets[^1].DayStartUtc);
+        Assert.Equal(Now.Date, buckets[^1].DayStartUtc);
+    }
+
+    [Fact]
+    public void DailyUptime_NullForDaysWithNoData_AndPercentForMonitoredDays()
+    {
+        // Service has been Up since 30 minutes ago only — earlier days have no monitored time.
+        var points = new[] { P(0.5, ServiceStatus.Up) };
+
+        var buckets = HealthCheckMetricsCalculator.DailyUptime(points, Now, 30);
+
+        Assert.Null(buckets[0].Uptime);            // a day weeks ago — no data
+        Assert.Equal(100.0, buckets[^1].Uptime!.Value, 3); // today — fully up since the only event
+    }
+
+    [Fact]
+    public void DailyUptime_DownDayIsZeroPercent()
+    {
+        // Down since the start of yesterday, never recovered.
+        var points = new[] { new Point(Now.Date.AddDays(-1), ServiceStatus.Down, null, "boom") };
+
+        var buckets = HealthCheckMetricsCalculator.DailyUptime(points, Now, 3);
+
+        Assert.Equal(0.0, buckets[^2].Uptime!.Value, 3); // yesterday — fully down
+    }
 }

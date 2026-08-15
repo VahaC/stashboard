@@ -154,6 +154,19 @@ public class BackupServiceTests
                     ProxmoxConnectionId = pve.Id, VmId = 101,
                 });
 
+                // V10.2 — a published public status page selecting the service, with a public
+                // display-name override. Pages + selections + publish state must round-trip.
+                var statusPage = new StatusPageEntity
+                {
+                    UserId = alice.Id, Title = "Home status", Description = "Public uptime",
+                    Slug = "home-status", IsPublished = true,
+                };
+                statusPage.Items.Add(new StatusPageItemEntity
+                {
+                    WebResourceId = svc.Id, DisplayName = "Media Server", SortOrder = 0,
+                });
+                ctx.StatusPages.Add(statusPage);
+
                 await ctx.SaveChangesAsync();
                 userA = alice.Id;
 
@@ -262,6 +275,18 @@ public class BackupServiceTests
                 Assert.Equal("sonarr", ctLink.ContainerName);
                 Assert.Equal(pve.Id, ctLink.ProxmoxConnectionId);
                 Assert.Equal(101, ctLink.VmId);
+
+                // V10.2 — the status page round-trips with its publish state, slug and the
+                // service selection (remapped to Bob's imported service), display name intact.
+                var statusPage = await ctx.StatusPages.AsNoTracking()
+                    .Include(p => p.Items)
+                    .SingleAsync(p => p.UserId == userB);
+                Assert.Equal("Home status", statusPage.Title);
+                Assert.Equal("home-status", statusPage.Slug);
+                Assert.True(statusPage.IsPublished);
+                var pageItem = Assert.Single(statusPage.Items);
+                Assert.Equal(svc.Id, pageItem.WebResourceId);
+                Assert.Equal("Media Server", pageItem.DisplayName);
             }
         }
         finally

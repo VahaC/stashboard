@@ -5,6 +5,39 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/**
+ * Copy text to the clipboard with a fallback for insecure contexts. `navigator.clipboard`
+ * is only available over HTTPS or on localhost — a self-hosted instance reached over plain
+ * HTTP on a LAN IP doesn't have it, so we fall back to a hidden textarea + `execCommand('copy')`.
+ * Returns whether the copy succeeded.
+ */
+export async function copyToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      /* fall through to the legacy path */
+    }
+  }
+
+  try {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    // Keep it out of view and out of the layout / scroll.
+    textarea.style.position = 'fixed'
+    textarea.style.top = '-9999px'
+    textarea.setAttribute('readonly', '')
+    document.body.appendChild(textarea)
+    textarea.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    return ok
+  } catch {
+    return false
+  }
+}
+
 interface ApiProblemDetails {
   title?: string
   detail?: string

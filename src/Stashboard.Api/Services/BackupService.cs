@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Stashboard.Api.Data;
+using Stashboard.Api.Services.StatusPages;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
 using Stashboard.Core.Enums;
@@ -111,6 +112,14 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             .Where(l => l.UserId == userId)
             .ToListAsync(cancellationToken);
 
+        // V10.2 — public status pages + their service selections and publish state. The items
+        // reference services by id (remapped via idMap on import); the slug is regenerated on
+        // import if it collides (it is globally unique).
+        var statusPages = await db.StatusPages.AsNoTracking()
+            .Include(p => p.Items)
+            .Where(p => p.UserId == userId)
+            .ToListAsync(cancellationToken);
+
         var dto = new BackupDto(
             ExportedUtc: DateTime.UtcNow,
             User: user is null ? null : new UserSettingsDto(
@@ -165,7 +174,13 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 mqtt.Username, Dec(mqtt.PasswordEncrypted), mqtt.ClientId, mqtt.DiscoveryPrefix, mqtt.EntityPrefix,
                 mqtt.DeviceName, mqtt.Manufacturer),
             Apprise: apprise is null ? null : new AppriseDto(
-                apprise.Enabled, apprise.BaseUrl, Dec(apprise.UrlsEncrypted)));
+                apprise.Enabled, apprise.BaseUrl, Dec(apprise.UrlsEncrypted)),
+            StatusPages: statusPages.Select(p => new StatusPageDto(
+                p.Title, p.Description, p.Slug, p.IsPublished,
+                p.Items
+                    .OrderBy(i => i.SortOrder)
+                    .Select(i => new StatusPageItemDto(i.WebResourceId, i.DisplayName, i.SortOrder))
+                    .ToList())).ToList());
 
         return JsonSerializer.SerializeToUtf8Bytes(dto, JsonOpts);
     }
@@ -564,12 +579,57 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             });
         }
 
+        // ── V10.2 — public status pages (merge by title) ──
+        // Services are mapped by now, so each item's WebResourceId remaps to the
+        // imported service (unmapped selections are skipped). The slug is globally
+        // unique, so a colliding slug is regenerated rather than failing the import.
+        foreach (var p in dto.StatusPages ?? [])
+        {
+            if (await db.StatusPages.AnyAsync(x => x.UserId == userId && x.Title == p.Title, cancellationToken))
+                continue;
+
+            var page = new StatusPageEntity
+            {
+                UserId = userId,
+                Title = p.Title,
+                Description = p.Description,
+                Slug = await UniqueSlugAsync(p.Slug, p.Title, cancellationToken),
+                IsPublished = p.IsPublished,
+                UpdatedUtc = DateTime.UtcNow,
+            };
+            foreach (var item in (p.Items ?? []).OrderBy(i => i.SortOrder))
+            {
+                if (!idMap.TryGetValue(item.WebResourceId, out var webResourceId))
+                    continue;
+                page.Items.Add(new StatusPageItemEntity
+                {
+                    WebResourceId = webResourceId,
+                    DisplayName = item.DisplayName,
+                    SortOrder = item.SortOrder,
+                });
+            }
+            db.StatusPages.Add(page);
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         return imported;
     }
 
     private static Guid? MapOrNull(IReadOnlyDictionary<Guid, Guid> idMap, Guid? sourceId) =>
         sourceId.HasValue && idMap.TryGetValue(sourceId.Value, out var mapped) ? mapped : null;
+
+    /// <summary>V10.2 — pick a globally-unique slug for an imported status page: the original
+    /// slug if free, else a title-derived one, else a random one — looping until no collision.</summary>
+    private async Task<string> UniqueSlugAsync(string? sourceSlug, string title, CancellationToken cancellationToken)
+    {
+        var candidate = StatusPageSlug.IsValid(sourceSlug) ? sourceSlug! : StatusPageSlug.Slugify(title);
+        if (!StatusPageSlug.IsValid(candidate)) candidate = StatusPageSlug.Random();
+
+        var slug = candidate;
+        while (await db.StatusPages.AnyAsync(p => p.Slug == slug, cancellationToken))
+            slug = StatusPageSlug.Random();
+        return slug;
+    }
 
     private sealed record BackupDto(
         DateTime ExportedUtc,
@@ -583,7 +643,16 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         List<WebResourceProxmoxGuestLinkDto>? ServiceProxmoxLinks = null,
         List<ContainerProxmoxLinkDto>? ContainerProxmoxLinks = null,
         MqttDto? Mqtt = null,
-        AppriseDto? Apprise = null);
+        AppriseDto? Apprise = null,
+        // V10.2 — nullable/defaulted so a pre-V10.2 backup still deserializes.
+        List<StatusPageDto>? StatusPages = null);
+
+    // V10.2 — a public status page: its publish state, slug and the chosen services
+    // (referenced by id, remapped on import; display-name overrides preserved).
+    private sealed record StatusPageDto(
+        string Title, string? Description, string Slug, bool IsPublished, List<StatusPageItemDto> Items);
+
+    private sealed record StatusPageItemDto(Guid WebResourceId, string? DisplayName, int SortOrder);
 
     // V10.0 — app-wide Apprise notification config. URLs decrypted on export and
     // re-encrypted on import (portable across instances), like every other secret here.

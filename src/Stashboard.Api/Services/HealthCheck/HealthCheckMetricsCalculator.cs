@@ -49,6 +49,29 @@ public static class HealthCheckMetricsCalculator
             uptime24h, uptime7d, uptime30d, points.Count, allIncidents.Count, samples, cappedIncidents);
     }
 
+    /// <summary>
+    /// V10.2 — per-day uptime buckets for the public status page's recent-history bar, oldest →
+    /// newest. Each bucket is the uptime % over one UTC calendar day; the last bucket runs up to
+    /// <paramref name="nowUtc"/>. A bucket with no monitored time is null (rendered "no data").
+    /// Pure reuse of <see cref="Uptime"/> so the bar and the headline %s share one timeline.
+    /// </summary>
+    public static List<DailyUptimeBucket> DailyUptime(IReadOnlyList<Point> points, DateTime nowUtc, int days)
+    {
+        var buckets = new List<DailyUptimeBucket>(days);
+        var firstDay = nowUtc.Date.AddDays(-(days - 1));
+        for (var i = 0; i < days; i++)
+        {
+            var dayStart = firstDay.AddDays(i);
+            var dayEnd = dayStart.AddDays(1);
+            if (dayEnd > nowUtc) dayEnd = nowUtc;
+            buckets.Add(new DailyUptimeBucket(dayStart, Uptime(points, dayStart, dayEnd)));
+        }
+        return buckets;
+    }
+
+    /// <summary>One day of the recent-history bar: the day's start (UTC) and its uptime % (null = no data).</summary>
+    public readonly record struct DailyUptimeBucket(DateTime DayStartUtc, double? Uptime);
+
     /// <summary>Uptime % over [from, now], or null when no monitored (Up/Down) time falls in it.</summary>
     public static double? Uptime(IReadOnlyList<Point> points, DateTime from, DateTime now)
     {

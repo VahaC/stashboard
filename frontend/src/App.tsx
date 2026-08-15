@@ -37,6 +37,8 @@ const HelpProxmoxSsh = lazy(() => import('./pages/help/HelpProxmoxSsh').then((m)
 const HelpDockerSsh = lazy(() => import('./pages/help/HelpDockerSsh').then((m) => ({ default: m.HelpDockerSsh })))
 const HelpDockerTls = lazy(() => import('./pages/help/HelpDockerTls').then((m) => ({ default: m.HelpDockerTls })))
 const Settings = lazy(() => import('./pages/Settings').then((m) => ({ default: m.Settings })))
+const StatusPages = lazy(() => import('./pages/settings/StatusPages').then((m) => ({ default: m.StatusPages })))
+const PublicStatusPage = lazy(() => import('./pages/PublicStatusPage').then((m) => ({ default: m.PublicStatusPage })))
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -60,6 +62,8 @@ export default function App() {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/confirm-email" element={<ConfirmEmail />} />
+            {/* V10.2 — public, unauthenticated status page. Outside ProtectedRoute / AppLayout. */}
+            <Route path="/status/:slug" element={<PublicStatusPage />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/confirm-email-change" element={<ConfirmEmailChange />} />
               <Route element={<AppLayout />}>
@@ -89,6 +93,7 @@ export default function App() {
                   <Route path="proxmox-restore" element={<ProxmoxRestoreSettings />} />
                   <Route path="image-cleanup" element={<ImageCleanupSettings />} />
                   <Route path="health-checks" element={<HealthCheckSettings />} />
+                  <Route path="status-pages" element={<StatusPages />} />
                   <Route path="home-assistant" element={<MqttSettings />} />
                   <Route path="backup" element={<Backup />} />
                   <Route path="account" element={<Account />} />

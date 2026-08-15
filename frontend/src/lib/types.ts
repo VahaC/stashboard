@@ -885,6 +885,63 @@ export interface ServiceUptime {
   additional: TargetUptimeMetrics | null
 }
 
+// ── V10.2 — public status pages ─────────────────────────────────────────────
+
+/** One selected service inside a status page (management view). */
+export interface StatusPageItem {
+  webResourceId: string
+  serviceName: string
+  displayName: string | null
+  sortOrder: number
+}
+
+/** A status page as seen by its owner in the management UI. */
+export interface StatusPage {
+  id: string
+  title: string
+  description: string | null
+  slug: string
+  isPublished: boolean
+  createdUtc: string
+  updatedUtc: string
+  items: StatusPageItem[]
+}
+
+/** Create / update payload for a status page (items are the full desired selection). */
+export interface StatusPageUpsert {
+  title: string
+  description: string | null
+  slug: string | null
+  isPublished: boolean
+  items: { webResourceId: string; displayName: string | null }[]
+}
+
+/** One day of the public recent-history bar. `uptime` is 0–100 or null (no data that day). */
+export interface PublicStatusHistoryBucket {
+  dateUtc: string
+  uptime: number | null
+  status: 'up' | 'down' | 'partial' | 'unknown'
+}
+
+/** One service on the public status page — display-only, no owner-private fields. */
+export interface PublicStatusService {
+  name: string
+  status: ServiceStatus
+  uptime24h: number | null
+  uptime7d: number | null
+  uptime30d: number | null
+  history: PublicStatusHistoryBucket[]
+}
+
+/** The public status-page payload returned by `GET /api/status/{slug}`. */
+export interface PublicStatusPage {
+  title: string
+  description: string | null
+  generatedUtc: string
+  overallStatus: 'operational' | 'degraded' | 'down' | 'unknown'
+  services: PublicStatusService[]
+}
+
 /** V9.0 — app-wide MQTT / Home Assistant integration settings (broker password never returned). */
 export interface MqttSettings {
   enabled: boolean
