@@ -6,7 +6,10 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/lib/auth-store'
+import type { User } from '@/lib/types'
 import { parseApiErrors } from '@/lib/utils'
+
+type Session = { accessToken: string; refreshToken: string; user: User }
 import logo from '@/assets/logo.svg'
 import '@/styles/auth-pages.css'
 
@@ -18,6 +21,9 @@ export function Login() {
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
+  // V10.3 — when the account has 2FA enabled, the password step returns a short-lived
+  // challenge token instead of tokens; we then collect a code for the second step.
+  const [challengeToken, setChallengeToken] = useState<string | null>(null)
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -26,6 +32,10 @@ export function Login() {
     setLoading(true)
     try {
       const resp = await api.post('/api/auth/login', { email, password })
+      if (resp.data?.requiresTwoFactor) {
+        setChallengeToken(resp.data.challengeToken)
+        return
+      }
       setSession(resp.data)
       nav('/')
     } catch (e: unknown) {
@@ -35,6 +45,16 @@ export function Login() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (challengeToken) {
+    return (
+      <TwoFactorStep
+        challengeToken={challengeToken}
+        onVerified={(data) => { setSession(data); nav('/') }}
+        onCancel={() => { setChallengeToken(null); setPassword(''); setError(null) }}
+      />
+    )
   }
 
   return (
@@ -69,6 +89,81 @@ export function Login() {
               </p>
               <p>
                 No account? <Link to="/register" className="auth-link">Register</Link>
+              </p>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function TwoFactorStep({ challengeToken, onVerified, onCancel }: {
+  challengeToken: string
+  onVerified: (data: Session) => void
+  onCancel: () => void
+}) {
+  const [code, setCode] = useState('')
+  const [useRecovery, setUseRecovery] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      const resp = await api.post('/api/auth/login/2fa', { challengeToken, code: code.trim() })
+      onVerified(resp.data)
+    } catch (e: unknown) {
+      const { globalError } = parseApiErrors(e)
+      setError(globalError ?? 'Invalid code. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="dark-glow auth-page">
+      <Card className="auth-card">
+        <CardHeader>
+          <div className="auth-brand">
+            <img src={logo} alt="" className="auth-logo" />
+            <CardTitle>Two-factor authentication</CardTitle>
+          </div>
+          <CardDescription>
+            {useRecovery
+              ? 'Enter one of your recovery codes.'
+              : 'Enter the 6-digit code from your authenticator app.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={submit} className="auth-form">
+            <div className="auth-field">
+              <Label htmlFor="code">{useRecovery ? 'Recovery code' : 'Authentication code'}</Label>
+              <Input
+                id="code"
+                inputMode={useRecovery ? 'text' : 'numeric'}
+                autoComplete="one-time-code"
+                required
+                autoFocus
+                placeholder={useRecovery ? 'xxxxx-xxxxx' : '123456'}
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+              />
+            </div>
+            {error && <p className="auth-error">{error}</p>}
+            <Button type="submit" className="auth-button-full" disabled={loading || code.trim().length < 6}>
+              {loading ? 'Verifying…' : 'Verify'}
+            </Button>
+            <div className="auth-links auth-links-stack">
+              <p>
+                <button type="button" className="auth-link" onClick={() => { setUseRecovery((v) => !v); setCode(''); setError(null) }}>
+                  {useRecovery ? 'Use an authenticator code instead' : 'Use a recovery code instead'}
+                </button>
+              </p>
+              <p>
+                <button type="button" className="auth-link" onClick={onCancel}>Back to sign in</button>
               </p>
             </div>
           </form>

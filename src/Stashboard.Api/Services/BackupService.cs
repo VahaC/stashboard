@@ -56,6 +56,11 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
     public async Task<byte[]> ExportAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        // V10.3 — the user's 2FA recovery codes (hashes only). The enabled flag, encrypted
+        // secret and replay step travel on the user DTO; the codes are a separate collection.
+        var recoveryCodes = await db.TwoFactorRecoveryCodes.AsNoTracking()
+            .Where(c => c.UserId == userId)
+            .ToListAsync(cancellationToken);
         // V9.0 — app-wide MQTT / Home Assistant integration config (singleton, password
         // encrypted at rest). Included so a restore brings the integration back.
         var mqtt = await db.MqttSettings.AsNoTracking()
@@ -124,7 +129,11 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             ExportedUtc: DateTime.UtcNow,
             User: user is null ? null : new UserSettingsDto(
                 user.DisplayName, user.Theme, user.DashboardSortMode, user.DashboardGroupByCategory,
-                Dec(user.TelegramBotTokenEncrypted), user.TelegramChatId, user.TelegramNotificationsEnabled),
+                Dec(user.TelegramBotTokenEncrypted), user.TelegramChatId, user.TelegramNotificationsEnabled,
+                // V10.3 — secret decrypted on export, re-encrypted on import (portable across instances),
+                // like every other secret here. Recovery codes are already hashes, so they travel as-is.
+                user.TwoFactorEnabled, Dec(user.TwoFactorSecretEncrypted), user.TwoFactorLastUsedStep,
+                recoveryCodes.Select(c => new RecoveryCodeDto(c.CodeHash, c.UsedUtc)).ToList()),
             Categories: categories.Select(c => new CategoryDto(c.Id, c.Name, c.Color)).ToList(),
             Tags: tags.Select(t => new TagDto(t.Id, t.Name)).ToList(),
             DockerConnections: connections.Select(c => new DockerConnectionDto(
@@ -205,6 +214,25 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 user.TelegramBotTokenEncrypted = Enc(settings.TelegramBotToken);
                 user.TelegramChatId = settings.TelegramChatId;
                 user.TelegramNotificationsEnabled = settings.TelegramNotificationsEnabled;
+
+                // V10.3 — restore 2FA: re-encrypt the secret under this instance's key so the same
+                // authenticator app keeps working, and carry the replay step so the reuse window
+                // doesn't re-open on restore. Recovery codes are replaced wholesale (below).
+                user.TwoFactorSecretEncrypted = Enc(settings.TwoFactorSecret);
+                user.TwoFactorEnabled = settings.TwoFactorEnabled && user.TwoFactorSecretEncrypted is not null;
+                user.TwoFactorLastUsedStep = settings.TwoFactorLastUsedStep;
+
+                await db.TwoFactorRecoveryCodes.Where(c => c.UserId == userId).ExecuteDeleteAsync(cancellationToken);
+                if (settings.RecoveryCodes is { Count: > 0 } codes)
+                {
+                    foreach (var c in codes)
+                        db.TwoFactorRecoveryCodes.Add(new TwoFactorRecoveryCodeEntity
+                        {
+                            UserId = userId,
+                            CodeHash = c.CodeHash,
+                            UsedUtc = c.UsedUtc,
+                        });
+                }
             }
         }
 
@@ -668,7 +696,13 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
 
     private sealed record UserSettingsDto(
         string? DisplayName, string Theme, string DashboardSortMode, bool DashboardGroupByCategory,
-        string? TelegramBotToken, string? TelegramChatId, bool TelegramNotificationsEnabled);
+        string? TelegramBotToken, string? TelegramChatId, bool TelegramNotificationsEnabled,
+        // V10.3 — nullable/defaulted so a pre-V10.3 backup still deserializes (and restores as "2FA off").
+        bool TwoFactorEnabled = false, string? TwoFactorSecret = null, long? TwoFactorLastUsedStep = null,
+        List<RecoveryCodeDto>? RecoveryCodes = null);
+
+    // V10.3 — a single recovery code: its hash (one-way, never decryptable) and used state.
+    private sealed record RecoveryCodeDto(string CodeHash, DateTime? UsedUtc);
 
     private sealed record CategoryDto(Guid Id, string Name, string Color);
     private sealed record TagDto(Guid Id, string Name);

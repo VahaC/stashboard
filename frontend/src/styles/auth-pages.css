@@ -62,6 +62,13 @@
 
 .auth-link {
   text-decoration: underline;
+  /* Works for both <a> and <button> (the 2FA step uses buttons styled as links). */
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
 
 .auth-message {

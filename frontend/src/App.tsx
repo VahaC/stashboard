@@ -81,7 +81,7 @@ export default function App() {
                   <Route path="docker-tls" element={<HelpDockerTls />} />
                 </Route>
                 <Route path="/settings" element={<Settings />}>
-                  <Route index element={<Navigate to="/settings/notifications" replace />} />
+                  <Route index element={<Navigate to="/settings/account" replace />} />
                   <Route path="notifications" element={<NotificationSettings />} />
                   <Route path="host-terminal" element={<HostTerminalSettings />} />
                   <Route path="container-exec" element={<ContainerExecSettings />} />

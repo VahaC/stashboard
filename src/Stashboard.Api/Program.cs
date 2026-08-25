@@ -73,6 +73,7 @@ public class Program
         builder.Services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
         builder.Services.AddScoped<IUserService, UserService>();
         builder.Services.AddScoped<ITokenService, TokenService>();
+        builder.Services.AddScoped<ITwoFactorService, TwoFactorService>();
         builder.Services.AddHostedService<RefreshTokenCleanupHostedService>();
 
         // Email / notifications. Settings live in the DB (single row) and are editable from the

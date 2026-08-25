@@ -19,6 +19,7 @@ public class AccountController(
     IUserService users,
     IAccountNotificationService notifications,
     IEmailSettingsService emailSettings,
+    ITwoFactorService twoFactor,
     IStashboardMapper mapper) : ControllerBase
 {
 
@@ -183,6 +184,51 @@ public class AccountController(
             сancellationToken);
         if (!result.Succeeded) return BadRequest(new { error = result.Failure!.Message });
         return NoContent();
+    }
+
+    // ── Two-factor authentication (TOTP) ───────────────────────────────────────
+
+    /// <summary>
+    /// Starts enrollment: generates a secret and returns the otpauth URI + manual key. The secret
+    /// is stored encrypted but stays disabled until <see cref="EnableTwoFactor"/> confirms a code.
+    /// </summary>
+    [HttpPost("2fa/enroll")]
+    [Authorize]
+    public async Task<ActionResult<TwoFactorEnrollResponse>> EnrollTwoFactor(CancellationToken cancellationToken)
+    {
+        var enrollment = await twoFactor.BeginEnrollAsync(User.GetUserId(), cancellationToken);
+        if (enrollment is null) return Unauthorized();
+        return Ok(new TwoFactorEnrollResponse(enrollment.OtpauthUri, enrollment.ManualKey));
+    }
+
+    /// <summary>Confirms the first code, enables 2FA, and returns the one-time recovery codes.</summary>
+    [HttpPost("2fa/enable")]
+    [Authorize]
+    public async Task<ActionResult<RecoveryCodesResponse>> EnableTwoFactor([FromBody] EnableTwoFactorRequest req, CancellationToken cancellationToken)
+    {
+        var result = await twoFactor.EnableAsync(User.GetUserId(), req.Code, cancellationToken);
+        if (!result.Succeeded) return BadRequest(new { error = result.Failure!.Message });
+        return Ok(new RecoveryCodesResponse(result.Codes!));
+    }
+
+    /// <summary>Disables 2FA after re-entering the password; rotates the stamp + signs out all sessions.</summary>
+    [HttpPost("2fa/disable")]
+    [Authorize]
+    public async Task<IActionResult> DisableTwoFactor([FromBody] TwoFactorPasswordRequest req, CancellationToken cancellationToken)
+    {
+        var result = await twoFactor.DisableAsync(User.GetUserId(), req.CurrentPassword, cancellationToken);
+        if (!result.Succeeded) return BadRequest(new { error = result.Failure!.Message });
+        return NoContent();
+    }
+
+    /// <summary>Regenerates the recovery-code set after re-entering the password; old codes stop working.</summary>
+    [HttpPost("2fa/recovery-codes")]
+    [Authorize]
+    public async Task<ActionResult<RecoveryCodesResponse>> RegenerateRecoveryCodes([FromBody] TwoFactorPasswordRequest req, CancellationToken cancellationToken)
+    {
+        var result = await twoFactor.RegenerateRecoveryCodesAsync(User.GetUserId(), req.CurrentPassword, cancellationToken);
+        if (!result.Succeeded) return BadRequest(new { error = result.Failure!.Message });
+        return Ok(new RecoveryCodesResponse(result.Codes!));
     }
 
     // ── Email server (SMTP) settings ──────────────────────────────────────────

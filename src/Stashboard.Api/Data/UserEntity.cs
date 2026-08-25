@@ -84,5 +84,26 @@ public class UserEntity : AuditableEntity
     public string? PendingEmailTokenHash { get; set; }
     public DateTime? PendingEmailTokenExpiresUtc { get; set; }
 
+    // ── Two-factor authentication (TOTP) ───────────────────────────────────────
+
+    /// <summary>True once the user has enrolled an authenticator app and confirmed a first code.</summary>
+    public bool TwoFactorEnabled { get; set; }
+
+    /// <summary>
+    /// Encrypted-at-rest TOTP shared secret (Base32, via <c>IEncryptionService</c>). Written at
+    /// enrollment with <see cref="TwoFactorEnabled"/> still false, so an abandoned enrollment never
+    /// gates login. Never returned to the client except as the otpauth URI shown once during enroll.
+    /// </summary>
+    [MaxLength(512)]
+    public string? TwoFactorSecretEncrypted { get; set; }
+
+    /// <summary>
+    /// The last TOTP time-step that was successfully consumed. A presented code whose step is
+    /// less than or equal to this is rejected as a replay, closing the 30–90s reuse window.
+    /// </summary>
+    public long? TwoFactorLastUsedStep { get; set; }
+
     public ICollection<RefreshTokenEntity> RefreshTokens { get; set; } = new List<RefreshTokenEntity>();
+
+    public ICollection<TwoFactorRecoveryCodeEntity> TwoFactorRecoveryCodes { get; set; } = new List<TwoFactorRecoveryCodeEntity>();
 }

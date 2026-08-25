@@ -10,6 +10,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 {
     public DbSet<UserEntity> Users => Set<UserEntity>();
     public DbSet<RefreshTokenEntity> RefreshTokens => Set<RefreshTokenEntity>();
+    public DbSet<TwoFactorRecoveryCodeEntity> TwoFactorRecoveryCodes => Set<TwoFactorRecoveryCodeEntity>();
     public DbSet<EmailSettingsEntity> EmailSettings => Set<EmailSettingsEntity>();
     public DbSet<HostShellSettingsEntity> HostShellSettings => Set<HostShellSettingsEntity>();
     public DbSet<ContainerExecSettingsEntity> ContainerExecSettings => Set<ContainerExecSettingsEntity>();
@@ -113,6 +114,17 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.HasOne(t => t.User)
                 .WithMany(u => u.RefreshTokens)
                 .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<TwoFactorRecoveryCodeEntity>(e =>
+        {
+            // V10.3 — one row per recovery code. Looked up by owner on redemption.
+            e.HasIndex(c => c.UserId);
+            // Owner cascade — deleting a user removes their recovery codes, mirroring refresh tokens.
+            e.HasOne(c => c.User)
+                .WithMany(u => u.TwoFactorRecoveryCodes)
+                .HasForeignKey(c => c.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

@@ -21,4 +21,14 @@ public static class StashboardClaims
     /// password change, security event).
     /// </summary>
     public const string SecurityStamp = "stmp";
+
+    /// <summary>
+    /// Marks a token's intended use. Access tokens carry no purpose claim; the short-lived
+    /// 2FA challenge token carries <see cref="TwoFactorPendingPurpose"/> so it can never be
+    /// replayed against authenticated endpoints (and vice-versa).
+    /// </summary>
+    public const string Purpose = "purpose";
+
+    /// <summary>Purpose value for the interim token issued between the two login steps.</summary>
+    public const string TwoFactorPendingPurpose = "2fa_pending";
 }

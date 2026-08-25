@@ -17,7 +17,7 @@ Built as **ASP.NET Core 10 Web API + React SPA**, deployed as a **single Docker 
 
 ## Stack
 
-- **Backend:** ASP.NET Core 10, controllers MVC, custom auth (PBKDF2-SHA256 passwords, rotating refresh tokens with family reuse-detection, SecurityStamp server-side invalidation), JWT Bearer
+- **Backend:** ASP.NET Core 10, controllers MVC, custom auth (PBKDF2-SHA256 passwords, optional TOTP two-factor auth, rotating refresh tokens with family reuse-detection, SecurityStamp server-side invalidation), JWT Bearer
 - **Frontend:** Vite + React 19 + TypeScript + Tailwind v4 + shadcn-style UI + TanStack Query + react-router-dom v7
 - **DB:** SQLite (via EF Core 10 + WAL mode) — a single file on the `stashboard-data` volume; no separate database container
 - **Crypto:** AES-256-GCM for credentials at rest, key from env var
@@ -326,7 +326,8 @@ Cookie-less; pass `Authorization: Bearer <accessToken>` on every request.
 
 ```
 POST   /api/auth/register      { email, password }     → AuthResponse
-POST   /api/auth/login         { email, password }     → AuthResponse
+POST   /api/auth/login         { email, password }     → AuthResponse  (or a 2FA challenge when TOTP is on)
+POST   /api/auth/login/2fa     { challengeToken, code }→ AuthResponse  (TOTP or recovery code)
 POST   /api/auth/refresh       { refreshToken }        → AuthResponse
 POST   /api/auth/logout        { refreshToken }        → 204
 POST   /api/auth/logout-all                            → 204  (rotates SecurityStamp, revokes all sessions)
@@ -338,6 +339,10 @@ PUT    /api/account/theme      { theme }               → 204  ("system" | "lig
 POST   /api/account/change-password { currentPassword, newPassword }  → 204
 POST   /api/account/change-email    { newEmail, currentPassword }     → 204  (sends link to new address)
 POST   /api/account/confirm-email-change { token }     → 204
+POST   /api/account/2fa/enroll                         → { otpauthUri, manualKey }  (start TOTP enrollment)
+POST   /api/account/2fa/enable        { code }         → { recoveryCodes }  (verify first code, enable)
+POST   /api/account/2fa/disable       { currentPassword } → 204  (rotates SecurityStamp, signs out all sessions)
+POST   /api/account/2fa/recovery-codes { currentPassword } → { recoveryCodes }  (regenerate)
 DELETE /api/account            { currentPassword }     → 204
 GET    /api/account/email-settings                     → EmailSettingsResponse  (app-wide SMTP config; password masked)
 PUT    /api/account/email-settings  UpdateEmailSettings → 204  (tri-state password: keep / set / clear)
@@ -586,7 +591,9 @@ dotnet ef database update <PreviousMigrationName>    --project src/Stashboard.Ap
 
 ✅ **V10.2 — Public status page** _(shipped in 10.2.0)_ — Stashboard's private admin view becomes something you can hand to family or teammates. You assemble one or more **status pages**, each a named selection of your own services with a title, optional description and a public **slug**, then flip **Published** on — and an anonymous visitor at `/status/<slug>` sees those services' **live status**, a 30-day **uptime history bar** and **24 h / 7 d / 30 d uptime %**, under an aggregate "All systems operational" banner. The public endpoint (`GET /api/status/{slug}`) is **unauthenticated** but returns **only** whitelisted display fields — a per-service **display-name override** (so the public view never leaks your internal naming), status, uptime and the history bar — and **never** URLs, credentials, notes, categories, tags, ids or Docker/Proxmox internals. A page is a **draft** until published; an unpublished or unknown slug **404s identically**, so pages can't be enumerated. The endpoint is **rate-limited** (reusing the existing limiter) and sends a short cache header so a widely-shared link can't hammer the instance. Manage everything from the new **Settings → Status pages** sub-page (create / edit / publish / delete / copy link); pages + selections + publish state round-trip through **backup/restore**. **Out of scope:** custom domains / white-labelling, subscriber email/RSS digests, and owner-authored incident / maintenance banners. See the [CHANGELOG](./CHANGELOG.md).
 
-The roadmap continues in **[ROADMAP.md](./ROADMAP.md)** — the V7 visual Compose editor track is **complete** (V7.0–V7.9), the V8 create/clone/snapshot/restore track now covers both LXC **and** VMs (V8.0–V8.4 — create / clone / restore mirrored for both guest kinds), makes the VM Config tab writable (V8.5 — edit parameters) and adds the **browser VM console** (V8.6), the **Home Assistant integration via MQTT** covers both read-only state/update/health publishing (V9.0) **and** the derived-signal sensors — update counts, node-alert verdicts, backup freshness, estate roll-ups (V9.1), Stashboard can now **update its own container** (V9.2), and the **V10 monitoring/notification depth track** has opened with **Apprise** notification channels (V10.0), **uptime history & analytics** on the Healthcheck tab (V10.1), and a shareable **public status page** (V10.2).
+✅ **V10.3 — Two-factor authentication (TOTP)** _(shipped in 10.3.0)_ — login can now require a one-time code from an authenticator app (Google Authenticator, Authy, 1Password, Bitwarden, …) on top of the password — closing the gap that the highest-risk surface in the product (credential storage, host shell, container exec, recreate/destroy) sat behind a single password. Enroll from **Account → Two-factor authentication**: the server generates a 160-bit secret and shows a **QR code** + manual key (rendered client-side via `qrcode`), and verifies a first code before turning 2FA on. The secret is **encrypted at rest** (`Otp.NET`, RFC 6238) and only ever leaves the server as the enrollment QR. With 2FA on, login becomes two steps — `POST /api/auth/login` returns a short-lived **signed challenge** instead of tokens, and `POST /api/auth/login/2fa` exchanges a valid code for the normal `AuthResponse`; verification tolerates ±1 step of clock drift, rejects replayed codes, and shares the existing account-lockout counter. Enabling yields **ten one-time recovery codes** (shown once, hashed at rest, regenerable) for a lost device. Disabling 2FA and regenerating recovery codes **rotate the SecurityStamp and sign out every session**, like a password change; the 2FA state round-trips through **backup/restore**. **Out of scope:** WebAuthn / passkeys / hardware keys, SMS or email OTP, and org-wide enforcement. See the [CHANGELOG](./CHANGELOG.md).
+
+The roadmap continues in **[ROADMAP.md](./ROADMAP.md)** — the V7 visual Compose editor track is **complete** (V7.0–V7.9), the V8 create/clone/snapshot/restore track now covers both LXC **and** VMs (V8.0–V8.4 — create / clone / restore mirrored for both guest kinds), makes the VM Config tab writable (V8.5 — edit parameters) and adds the **browser VM console** (V8.6), the **Home Assistant integration via MQTT** covers both read-only state/update/health publishing (V9.0) **and** the derived-signal sensors — update counts, node-alert verdicts, backup freshness, estate roll-ups (V9.1), Stashboard can now **update its own container** (V9.2), and the **V10 monitoring/notification depth track** has opened with **Apprise** notification channels (V10.0), **uptime history & analytics** on the Healthcheck tab (V10.1), a shareable **public status page** (V10.2), and **TOTP two-factor authentication** (V10.3).
 ## License
 
 MIT

@@ -30,6 +30,12 @@ public enum RotateFailureReason
     UserMissing,
 }
 
+/// <summary>
+/// The decoded contents of a valid 2FA challenge token: the pending user and the
+/// security-stamp snapshot taken when the password step succeeded.
+/// </summary>
+public sealed record TwoFactorChallenge(Guid UserId, string SecurityStamp);
+
 public interface ITokenService
 {
     /// <summary>Issues a fresh access+refresh pair and starts a new family.</summary>
@@ -49,4 +55,17 @@ public interface ITokenService
 
     /// <summary>Removes refresh-token rows that have been expired or revoked beyond the retention window.</summary>
     Task<int> CleanupAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Issues the short-lived, signed challenge token returned by the password step when the
+    /// account has 2FA enabled. It carries the user id, a security-stamp snapshot, and a purpose
+    /// claim so it can never stand in for an access token. No DB state — it expires on its own.
+    /// </summary>
+    string IssueTwoFactorChallenge(UserEntity user);
+
+    /// <summary>
+    /// Validates a 2FA challenge token (signature, issuer/audience, expiry, purpose claim) and
+    /// returns its embedded user id + security-stamp snapshot, or null when invalid/expired.
+    /// </summary>
+    TwoFactorChallenge? ValidateTwoFactorChallenge(string challengeToken);
 }

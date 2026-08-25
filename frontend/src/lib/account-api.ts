@@ -2,6 +2,15 @@ import { api } from './api'
 import type { DashboardPreferences, EmailSettings, EmailSettingsUpdate, Profile, TelegramSettings } from './types'
 import type { Theme } from './theme-store'
 
+export interface TwoFactorEnrollment {
+  otpauthUri: string
+  manualKey: string
+}
+
+export interface RecoveryCodes {
+  recoveryCodes: string[]
+}
+
 export const accountApi = {
   // Anonymous flows
   forgotPassword: (email: string) => api.post('/api/account/forgot-password', { email }),
@@ -33,4 +42,14 @@ export const accountApi = {
     api.post('/api/account/confirm-email-change', { token }),
   deleteAccount: (currentPassword: string) =>
     api.delete('/api/account', { data: { currentPassword } }),
+
+  // Two-factor authentication (TOTP)
+  enrollTwoFactor: () =>
+    api.post<TwoFactorEnrollment>('/api/account/2fa/enroll').then((r) => r.data),
+  enableTwoFactor: (code: string) =>
+    api.post<RecoveryCodes>('/api/account/2fa/enable', { code }).then((r) => r.data),
+  disableTwoFactor: (currentPassword: string) =>
+    api.post('/api/account/2fa/disable', { currentPassword }),
+  regenerateRecoveryCodes: (currentPassword: string) =>
+    api.post<RecoveryCodes>('/api/account/2fa/recovery-codes', { currentPassword }).then((r) => r.data),
 }

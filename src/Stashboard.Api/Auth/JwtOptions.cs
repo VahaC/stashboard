@@ -42,5 +42,11 @@ public class JwtOptions
 
     /// <summary>Lifetime of the password-reset token. Keep short to limit exposure.</summary>
     public int PasswordResetTokenLifetimeHours { get; set; } = 2;
+
+    /// <summary>
+    /// Lifetime of the short-lived 2FA challenge token issued between the password step and the
+    /// code step of login. This is effectively how long the user has to enter their code.
+    /// </summary>
+    public int TwoFactorChallengeMinutes { get; set; } = 5;
 }
 

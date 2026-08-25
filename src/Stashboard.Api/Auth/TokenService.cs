@@ -124,6 +124,62 @@ public sealed class TokenService(
             .ExecuteDeleteAsync(cancellationToken);
     }
 
+    public string IssueTwoFactorChallenge(UserEntity user)
+    {
+        var now = time.GetUtcNow().UtcDateTime;
+        var creds = new SigningCredentials(SigningKey(_opt), SecurityAlgorithms.HmacSha256);
+        var claims = new List<Claim>
+        {
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
+            new(StashboardClaims.UserId, user.Id.ToString()),
+            new(StashboardClaims.SecurityStamp, user.SecurityStamp),
+            new(StashboardClaims.Purpose, StashboardClaims.TwoFactorPendingPurpose),
+        };
+
+        var token = new JwtSecurityToken(
+            issuer: _opt.Issuer,
+            audience: _opt.Audience,
+            claims: claims,
+            notBefore: now,
+            expires: now.AddMinutes(_opt.TwoFactorChallengeMinutes),
+            signingCredentials: creds);
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    public TwoFactorChallenge? ValidateTwoFactorChallenge(string challengeToken)
+    {
+        if (string.IsNullOrWhiteSpace(challengeToken)) return null;
+
+        // Enforce expiry against our injected clock (consistent with how the token was issued)
+        // rather than the handler's wall-clock lifetime check, so time is fully deterministic.
+        var parameters = BuildValidationParameters(_opt);
+        parameters.ValidateLifetime = false;
+
+        var handler = new JwtSecurityTokenHandler();
+        try
+        {
+            var principal = handler.ValidateToken(challengeToken, parameters, out var validated);
+
+            if (validated.ValidTo < time.GetUtcNow().UtcDateTime) return null; // expired
+
+            // Reject anything that isn't explicitly a 2FA-pending token — an access token must
+            // never be accepted here, and this token must never be accepted as an access token.
+            if (principal.FindFirstValue(StashboardClaims.Purpose) != StashboardClaims.TwoFactorPendingPurpose)
+                return null;
+
+            var rawId = principal.FindFirstValue(StashboardClaims.UserId);
+            var stamp = principal.FindFirstValue(StashboardClaims.SecurityStamp);
+            if (!Guid.TryParse(rawId, out var userId) || string.IsNullOrEmpty(stamp)) return null;
+
+            return new TwoFactorChallenge(userId, stamp);
+        }
+        catch (Exception ex) when (ex is SecurityTokenException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
     public TokenValidationParameters BuildValidationParameters() => BuildValidationParameters(_opt);
 
     public static TokenValidationParameters BuildValidationParameters(JwtOptions opt) => new()

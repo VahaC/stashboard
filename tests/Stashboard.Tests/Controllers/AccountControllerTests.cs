@@ -29,6 +29,7 @@ public class AccountControllerTests : DatabaseTestBase
 
     private UserService _users = default!;
     private EmailSettingsService _emailSettings = default!;
+    private TwoFactorService _twoFactor = default!;
     private AccountController _ctrl = default!;
 
     /// <summary>Reversible fake so tests can assert the column holds ciphertext, not plaintext.</summary>
@@ -50,7 +51,8 @@ public class AccountControllerTests : DatabaseTestBase
             _email.Object,
             _emailSettings,
             new HttpContextAccessor());
-        _ctrl = new AccountController(_users, notifications, _emailSettings, TestMapperFactory.Create());
+        _twoFactor = new TwoFactorService(_dbContext, _hasher, new PrefixEncryption(), Options.Create(_jwt), _time);
+        _ctrl = new AccountController(_users, notifications, _emailSettings, _twoFactor, TestMapperFactory.Create());
     }
 
     private void SignIn(Guid userId)
@@ -382,7 +384,7 @@ public class AccountControllerTests : DatabaseTestBase
             Options.Create(new EmailOptions { Username = null! }),
             TestMapperFactory.Create(),
             _time);
-        var controller = new AccountController(_users, new AccountNotificationService(_email.Object, settingsWithNullUsername, new HttpContextAccessor()), settingsWithNullUsername, TestMapperFactory.Create());
+        var controller = new AccountController(_users, new AccountNotificationService(_email.Object, settingsWithNullUsername, new HttpContextAccessor()), settingsWithNullUsername, _twoFactor, TestMapperFactory.Create());
 
         var result = await controller.GetEmailSettings(default);
 

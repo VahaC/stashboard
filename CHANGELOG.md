@@ -5,6 +5,36 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [10.3.0] — 2026-06-29
+
+### Added
+- **Two-factor authentication — TOTP (V10.3).** Login can now require a one-time code from an
+  authenticator app (Google Authenticator, Authy, 1Password, Bitwarden, …) on top of the password.
+  Built on `Otp.NET` (RFC 6238).
+  - **Enroll from the Account page.** `POST /api/account/2fa/enroll` generates a 160-bit secret and
+    returns an `otpauth://` URI (rendered as a QR by the client via the `qrcode` package) plus a
+    manual key; `POST /api/account/2fa/enable` verifies a first code before turning 2FA on. The
+    secret is **encrypted at rest** (`TwoFactorSecretEncrypted`, via `IEncryptionService`) and only
+    ever leaves the server as the enrollment QR — the wire otherwise carries a presence flag only.
+  - **Two-step login.** When 2FA is on, `POST /api/auth/login` returns a short-lived **signed
+    challenge** (`purpose=2fa_pending`, carrying a `SecurityStamp` snapshot) instead of tokens; the
+    new `POST /api/auth/login/2fa` exchanges a valid TOTP (or recovery) code for the normal
+    `AuthResponse`. Verification uses a ±1 step window for clock drift and rejects replayed codes
+    via `TwoFactorLastUsedStep`. Wrong codes share the existing account-lockout counter.
+  - **Recovery codes.** Enabling returns **ten** one-time codes (shown once, stored as PBKDF2
+    hashes in a new `TwoFactorRecoveryCodeEntity` table); each works once in place of a TOTP code,
+    and they're **regenerable** from the Account page.
+  - **Security-sensitive mutations.** Disabling 2FA and regenerating recovery codes require the
+    current password and **rotate the `SecurityStamp` + revoke all refresh tokens**, signing out
+    every session — consistent with password/email change.
+  - **Backup/restore:** the enabled flag, encrypted secret, replay step and recovery codes are
+    added to `BackupService` export/import (secret re-encrypted under the target instance's key)
+    and to the round-trip test, so a restored account keeps its 2FA.
+
+### Out of scope
+- WebAuthn / passkeys / hardware security keys, SMS or email OTP, and org-wide 2FA enforcement —
+  V10.3 covers per-account authenticator-app (TOTP) 2FA only.
+
 ## [10.2.0] — 2026-06-29
 
 ### Added

@@ -55,8 +55,22 @@ public class BackupServiceTests
                     DisplayName = "Alice", Theme = "dark", DashboardSortMode = "category",
                     DashboardGroupByCategory = true, TelegramBotTokenEncrypted = enc.Encrypt("bot123"),
                     TelegramChatId = "chat456", TelegramNotificationsEnabled = true,
+                    // V10.3 — 2FA state: enabled flag + encrypted secret + replay step.
+                    TwoFactorEnabled = true, TwoFactorSecretEncrypted = enc.Encrypt("JBSWY3DPEHPK3PXP"),
+                    TwoFactorLastUsedStep = 12345,
                 };
                 ctx.Users.Add(alice);
+
+                // V10.3 — two recovery codes (hashes only): one already redeemed, one still fresh.
+                ctx.TwoFactorRecoveryCodes.Add(new TwoFactorRecoveryCodeEntity
+                {
+                    UserId = alice.Id, CodeHash = "HASH-USED",
+                    UsedUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                });
+                ctx.TwoFactorRecoveryCodes.Add(new TwoFactorRecoveryCodeEntity
+                {
+                    UserId = alice.Id, CodeHash = "HASH-FRESH",
+                });
 
                 var category = new CategoryEntity { UserId = alice.Id, Name = "Media", Color = "#ffffff" };
                 var tag = new TagEntity { UserId = alice.Id, Name = "prod" };
@@ -199,6 +213,17 @@ public class BackupServiceTests
                 Assert.Equal("Alice", bob.DisplayName);
                 Assert.True(bob.DashboardGroupByCategory);
                 Assert.Equal("bot123", enc.Decrypt(bob.TelegramBotTokenEncrypted!));
+
+                // V10.3 — 2FA round-trips: enabled flag, re-encrypted secret, replay step, and the
+                // recovery-code set (hashes + used-state) replace whatever the target user had.
+                Assert.True(bob.TwoFactorEnabled);
+                Assert.Equal("JBSWY3DPEHPK3PXP", enc.Decrypt(bob.TwoFactorSecretEncrypted!));
+                Assert.Equal(12345, bob.TwoFactorLastUsedStep);
+                var recoveryCodes = await ctx.TwoFactorRecoveryCodes.AsNoTracking()
+                    .Where(c => c.UserId == userB).ToListAsync();
+                Assert.Equal(2, recoveryCodes.Count);
+                Assert.Null(recoveryCodes.Single(c => c.CodeHash == "HASH-FRESH").UsedUtc);
+                Assert.NotNull(recoveryCodes.Single(c => c.CodeHash == "HASH-USED").UsedUtc);
 
                 var conn = await ctx.DockerConnections.AsNoTracking().SingleAsync(c => c.UserId == userB);
                 Assert.Equal("home", conn.Name);

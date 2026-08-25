@@ -142,6 +142,32 @@ public sealed record ProfileResponse(
     string? PendingEmail,
     string Theme,
     DateTime CreatedUtc,
-    DateTime? LastLoginUtc
+    DateTime? LastLoginUtc,
+    bool TwoFactorEnabled
+);
+
+// ── Two-factor authentication (TOTP) ──────────────────────────────────────────
+
+/// <summary>Enrollment payload: the otpauth URI (rendered as a QR by the client) + manual key.</summary>
+public sealed record TwoFactorEnrollResponse(string OtpauthUri, string ManualKey);
+
+public sealed record EnableTwoFactorRequest(
+    [Required, StringLength(16, MinimumLength = 6)] string Code
+);
+
+/// <summary>The one-time recovery codes, shown exactly once after enable / regenerate.</summary>
+public sealed record RecoveryCodesResponse(IReadOnlyList<string> RecoveryCodes);
+
+/// <summary>Confirms a security-sensitive 2FA mutation (disable / regenerate) with the password.</summary>
+public sealed record TwoFactorPasswordRequest(
+    [Required, StringLength(128, MinimumLength = 1)] string CurrentPassword
+);
+
+/// <summary>Step-1 login response when the account has 2FA enabled — no tokens, only a challenge.</summary>
+public sealed record TwoFactorChallengeResponse(bool RequiresTwoFactor, string ChallengeToken);
+
+public sealed record TwoFactorLoginRequest(
+    [Required] string ChallengeToken,
+    [Required, StringLength(16, MinimumLength = 6)] string Code
 );
 

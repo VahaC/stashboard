@@ -306,7 +306,13 @@ view, and no way to enumerate unpublished pages.
 
 ---
 
-### Phase V10.3 — Two-factor authentication (TOTP)
+### ✅ Shipped (10.3.0) Phase V10.3 — Two-factor authentication (TOTP)
+
+**Shipped in 10.3.0.** TOTP two-factor auth (built on `Otp.NET`): enroll from the Account page
+via QR / manual key, a two-step login that exchanges a short-lived signed challenge for tokens,
+ten one-time recovery codes, and full backup round-trip of the 2FA state. The TOTP secret is
+encrypted at rest and never returned after enrollment; disable + recovery-code regeneration rotate
+the `SecurityStamp` and sign out every session.
 
 **Complexity:** Medium
 **Value:** Stashboard stores credentials (AES-256-GCM at rest), can open an
@@ -680,21 +686,470 @@ the token's owner doesn't own.
 
 ---
 
-## V11 — Proxmox Backup Server (PBS) backup monitoring
+## V11 — Docker host & container lifecycle depth
+
+> The V5 line built the Docker manager (per-host cards, container exec, host
+> terminal, Compose-aware recreate) and the V7 line a full visual Compose editor;
+> the V6/V8 line gave Proxmox guests provisioning, clone/snapshot/restore and OS
+> update tracking. The Docker side still lags the Proxmox side in the places a
+> self-hoster feels daily: there's no way to *paste an existing compose file and
+> go*, the **Linux host** those containers run on isn't update-tracked the way a
+> PVE/LXC node is, and a container's **data** has no backup/restore or host-to-host
+> move. V11 closes those gaps, bringing the Docker estate to the management depth the
+> Proxmox estate already has. Phases are independent and can ship in any order; the
+> order below front-loads the cheapest, highest-value parity wins.
+
+---
+
+### Phase V11.0 — Create containers from a pasted docker-compose.yaml
+
+**Complexity:** Medium
+**Value:** Stashboard can already build a Compose project field-by-field in the
+visual editor (V7.4 service, V7.4.1 whole project) and apply changes through the
+diff / dry-run / apply pipeline (V7.6), but the single most common real-world entry
+point is missing: a user has an existing `docker-compose.yaml` (from a project's
+README, a forum post, their own notes) and just wants to **paste it and deploy** to a
+chosen Docker host. Today that means hand-rebuilding it in the editor.
+
+**Scope:**
+
+- A **"Paste compose"** entry on the Docker / Compose-project surface: a textarea (or
+  file upload) accepting a raw `docker-compose.yaml`, a **target Docker connection**
+  picker, and an optional **project name** (defaulting to the compose `name:` or a
+  slug of the file).
+- **Parse + validate** through the same Compose model the visual editor already uses,
+  surfacing the **V7.7 linter** findings and a **V7.6 dry-run diff** ("these N
+  services / volumes / networks will be created") before anything runs — paste is an
+  *input format*, not a parallel deploy path.
+- On confirm, the project is created and brought up through the **same apply
+  pipeline** as V7.4.1 / V7.6 (so audit, change-history and Compose-aware recreate all
+  apply unchanged); it then appears as an ordinary managed Compose project.
+- Comments / anchors round-trip through the existing comment-preserving YAML layer
+  (V7.1) so the stored project matches what was pasted.
+- **Backup/restore:** nothing new — the created project is an ordinary Compose project
+  already covered by existing export/import.
+
+**Out of scope:** adopting an **externally-deployed** running stack that Stashboard
+didn't create (a separate discovery concern); `docker run`-style single-image creation
+without compose (the project model is compose-first); fetching the compose file from a
+remote URL / git (paste or upload only in V11.0).
+
+**Tests:** a valid pasted compose creates a project with the expected
+services / volumes / networks on the chosen host; a malformed file is rejected with the
+linter error and creates nothing; the dry-run diff lists exactly what will be created
+before apply; comments survive the round-trip; the deploy reuses the existing apply
+pipeline and writes the same audit row a normal create does.
+
+**Acceptance bar:** a user pastes an existing `docker-compose.yaml`, picks a Docker
+host, sees a validated preview of what will be created, and deploys it as a managed
+Compose project — without rebuilding it service-by-service in the editor.
+
+---
+
+### Phase V11.1 — Docker host OS update monitoring (apt / dnf)
+
+**Complexity:** Medium
+**Value:** Stashboard tracks pending OS package updates for **Proxmox nodes and LXCs**
+(V6.0 / V6.8.x apt checks) and notifies on them, but the **Linux hosts running Docker**
+— often the busiest boxes in a homelab — have no equivalent: you can see
+container-*image* updates (the V1–V5 core) yet not "the host has 37 pending apt
+updates, 3 security". This closes the most-asked parity gap and reuses the Proxmox
+update-tracking + notification machinery rather than building a new one.
+
+**Scope:**
+
+- For a Docker connection reachable over **SSH** (the same transport the V5.3 host
+  terminal already uses), a periodic **host-update collector** reads pending OS
+  updates — **apt** (Debian/Ubuntu) and **dnf/yum** (Fedora/RHEL family) — as a total
+  count and a **security-update** subset, plus a **reboot-required** flag where the
+  distro exposes it.
+- Surfaced on the **Docker host card / instance modal**, mirroring the Proxmox node
+  update badge: pending count, security count, last-checked time, and the package list
+  on expand.
+- A **host-update notification** through the existing channels, reusing the
+  established **per-channel toggle + throttle-key-stamped-only-after-success** pattern
+  (fires once per change, not every tick), alongside a **per-host monitoring toggle**
+  (mirroring the V6.7 per-LXC update toggle) so a user can opt a host in or out.
+- An **MQTT sensor** following the V9.0 / V9.1 pipeline (pending-updates count + a
+  security `problem` binary_sensor) on the host's device, so Home Assistant can
+  automate on it — consistent with how Proxmox node updates already publish.
+- **Backup/restore:** the per-host monitoring toggle round-trips with the connection
+  settings and its test (§10.3); the live update counts are runtime-derived and not
+  exported.
+
+**Out of scope:** **applying** host OS updates from Stashboard (read + notify only —
+running `apt upgrade` on a host is a heavier, separately-gated phase; the Proxmox
+"Update now" V6.7.1 is LXC/PVE-specific); non-SSH Docker hosts (a TCP-only Docker
+socket has no shell to read packages — surfaced as "host updates unavailable");
+Windows / other container hosts; per-package changelogs.
+
+**Tests:** the collector parses apt and dnf pending-update output into total + security
+counts and the reboot-required flag; a host with monitoring off is skipped; a change in
+pending count fires exactly one notification per transition (throttle stamped on
+success); the per-host toggle and MQTT sensor publish / clear correctly; an SSH-less
+connection reports "unavailable" without erroring; the toggle survives the backup
+round-trip.
+
+**Acceptance bar:** a Docker host reachable over SSH shows its pending OS-update count
+(with the security subset and reboot-required flag), notifies once when that changes,
+exposes it as a Home Assistant sensor, and can be toggled per host — exactly the way a
+Proxmox node's updates already behave.
+
+---
+
+### Phase V11.2 — Backup & restore Docker containers (config + volume data)
+
+**Complexity:** High
+**Value:** A container's image is disposable, but its **data is not** — and Stashboard
+has no way to capture it. Proxmox guests have clone / snapshot / restore (V8) and PBS
+monitoring (V12); Docker has nothing. This adds a real backup/restore for managed
+containers / projects covering **both the definition and the data**, because a backup
+that drops the user's volumes is worse than none.
+
+**Scope:**
+
+- A **backup** action on a managed container / Compose project capturing **(a)** the
+  **definition** — the compose / run config Stashboard already stores — and **(b)** the
+  **named-volume data**, archived by streaming each volume through a short-lived
+  **helper container** (`tar` of the mountpoint — the standard portable approach, no
+  host-filesystem assumptions) into a single timestamped artifact.
+- A **destination**: a **mounted host path** (a volume the user maps in compose)
+  and/or an **S3-compatible** target (endpoint / bucket / key / secret, the secret
+  encrypted at rest and never returned) — reusing the **V13.1** scheduled-backup
+  destination model so the two share config and code.
+- **Restore**: recreate the project from its stored definition on a chosen host and
+  **repopulate its volumes** from the archive (with an explicit confirm when restoring
+  over an existing project, since it overwrites data), tracked to completion and
+  reusing the Compose-aware recreate path (V5.2).
+- **Gated + audited** like every mutating Docker / Proxmox surface: **off by default**
+  behind a server-wide flag **and** a per-connection opt-in (mirroring
+  `AllowContainerRemoval`), every backup / restore writing an immutable audit row
+  (who / when / host / project / action / outcome) surfaced in **Settings → Audit**.
+- Optional **scheduling + retention** by reusing the **V13.1** scheduled-backup engine
+  (keep-last-N, prune older) rather than a second scheduler.
+- **Backup/restore (of Stashboard's own config):** the gating flag + destination config
+  (secret encrypted) round-trip through `BackupService` and its test (§10.3); the
+  produced container-backup **artifacts** are the output, not re-exported.
+
+**Out of scope:** **bind-mount** data living outside Docker-managed volumes (Stashboard
+can note the path but can't own arbitrary host directories — documented); live /
+app-consistent database snapshots (the helper-tar is a filesystem-level copy — a
+stop-then-backup option mitigates, but app-consistent dumps stay the service's own
+concern); cross-architecture portability (restore assumes a compatible host — see
+V11.3); backing up the image layers themselves (images are re-pullable; only data +
+definition are captured).
+
+**Tests:** a backup captures the project definition plus every named volume's contents
+into one artifact at the configured destination; a restore recreates the project and
+repopulates volume data byte-for-byte on a target host; restoring over an existing
+project requires confirmation and is audited; backup / restore are refused (403) when
+the server-wide flag or per-connection opt-in is off; retention prunes beyond keep-N
+without deleting newer; the S3 secret is encrypted at rest (presence flag only); the
+gating flag + destination survive the config backup round-trip.
+
+**Acceptance bar:** a user can back up a managed container / project — definition
+**and** volume data — to a mounted path or S3, optionally on a schedule with retention,
+and later restore it (data intact) to a chosen Docker host, with the whole operation
+gated off by default and every run in the audit log.
+
+---
+
+### Phase V11.3 — Clone / move containers between Docker hosts
+
+**Complexity:** High
+**Value:** With per-host management (V5.9) and backup/restore of definition + data
+(V11.2) in place, the natural capstone is moving a workload **between Docker hosts** —
+retire an old box, rebalance load, promote a test stack to the main host — without
+manually exporting images, copying volumes and rewriting compose by hand. This is the
+Docker analogue of the V8 LXC/VM clone / migrate line.
+
+**Scope:**
+
+- A **clone** (copy, source kept) and **move** (copy, then remove source after a
+  successful verify) action on a managed container / project, choosing a **target
+  Docker connection**.
+- Reuses the **V11.2** capture / restore mechanics for the **volume data + definition**,
+  and transfers the **image** by the most reliable available route — pulling the same
+  tag on the target from its registry when possible, falling back to a
+  **`docker save | docker load`** stream between hosts when the image isn't
+  registry-available — so the target ends up with the same image + data + compose.
+- **Move** removes the source **only after** the target project is up and a basic
+  health / verify check passes; a failure leaves the source untouched (no data lost
+  mid-move). Target name / port collisions are surfaced for resolution before apply.
+- **Gated + audited** identically to V11.2 (server-wide flag + per-connection opt-in on
+  **both** source and target; immutable audit row with source / target / action /
+  outcome in **Settings → Audit**).
+- **Backup/restore (config):** the gating flag round-trips with the connection
+  settings; audit rows are runtime records and not exported.
+
+**Out of scope:** **live** migration (zero-downtime / running-state transfer — Docker
+has no CRIU-grade story here; this is stop → copy → start); cross-architecture moves
+(amd64 → arm64 image incompatibility is flagged, not solved); moving **bind-mount** data
+outside managed volumes (same limit as V11.2); orchestrator migration (Swarm /
+Kubernetes); splicing into an existing project on the target (clone / move creates a
+project, it doesn't merge).
+
+**Tests:** a clone reproduces the project (image + named-volume data + compose) on the
+target host with the source left running; a move removes the source only after the
+target is verified up, and a forced target failure leaves the source intact; image
+transfer works both via registry pull and via save / load fallback; name / port
+collisions on the target are reported before apply; both actions are refused (403)
+unless source and target are opted in; every attempt writes an audit row; the gating
+flag survives the backup round-trip.
+
+**Acceptance bar:** a user can clone or move a managed container / project to another
+Docker host — image, volume data and compose all arriving intact — with move removing
+the source only after the target verifies healthy, and the whole operation gated off by
+default and fully audited.
+
+---
+
+### Phase V11.4 — Adopt existing (unmanaged) containers & stacks
+
+**Complexity:** Medium–High
+**Value:** V11.0 covers *creating* a project from pasted compose, but every Docker host
+already runs containers Stashboard didn't create — started by hand, by another tool, or
+from a compose file living elsewhere. Today those are read-only at best and can't go
+through the Compose editor / recreate / backup machinery. Adopting them brings the
+**existing** estate under management without tearing it down and rebuilding it.
+
+**Scope:**
+
+- A **discovery** pass over a Docker connection listing containers / stacks **not**
+  already managed by Stashboard, grouped by their `com.docker.compose.project` label
+  where present (so an externally-deployed compose stack is recognised as one unit) and
+  as standalone containers otherwise.
+- An **adopt** action that **reconstructs a Compose definition** from the running
+  container(s) — image, env, ports, volumes, networks, restart policy, labels — via
+  `docker inspect`, and stores it as a managed project (reusing the V11.0 / V7.x model)
+  **without recreating the container** (adoption is metadata-only; the running workload
+  is untouched).
+- A **review-before-adopt** step surfacing the reconstructed compose through the
+  **V7.7 linter** so the user can see / adjust anything inspect couldn't perfectly
+  round-trip (e.g. build-time-only args) before it's saved.
+- Once adopted, the project behaves like any managed one: editable in the Compose
+  editor, recreate-able (V5.2), backup-able (V11.2), update-tracked.
+- **Backup/restore:** an adopted project is an ordinary managed project already covered
+  by existing export/import.
+
+**Out of scope:** perfect reconstruction of build-only / multi-stage `build:` context
+(adoption captures the *running* image + runtime config, not the original Dockerfile);
+adopting Swarm services / Kubernetes workloads; auto-adopting on a schedule (adoption is
+an explicit, reviewed action — no silent imports).
+
+**Tests:** discovery lists only unmanaged containers and groups compose-labelled ones
+into their project; adopt reconstructs a compose definition matching the running
+container's image / env / ports / volumes / networks and does **not** recreate or
+restart it; the reconstructed compose passes through the linter and is editable
+afterwards; an adopted project can then be recreated and backed up through the existing
+paths; re-running discovery no longer lists an adopted container.
+
+**Acceptance bar:** a user points Stashboard at a host full of hand-started containers,
+sees them grouped, reviews the reconstructed compose, and adopts them into managed
+projects — with the running workloads never interrupted and full editor / recreate /
+backup support from then on.
+
+---
+
+### Phase V11.5 — Scheduled / automatic image updates (gated + rollback)
+
+**Complexity:** Medium
+**Value:** Stashboard already **detects** that a newer image exists (the V1–V5 core) and
+can update on a manual click (V5.4 bulk), but the most-requested next step is a
+**policy**: keep selected containers up to date automatically, the way Watchtower does,
+without the user babysitting it. The missing pieces are scheduling, safety (pre-pull +
+health-gated recreate), and **automatic rollback** when an update breaks a container.
+
+**Scope:**
+
+- A **per-container / per-project auto-update opt-in** (off by default) and an app-wide
+  **schedule** (e.g. a nightly window), so only explicitly-enrolled workloads update
+  automatically.
+- The update runs through the existing detect → **pull** → **Compose-aware recreate**
+  (V5.2) path; before recreate the new image is **pre-pulled** so a slow / failed pull
+  never leaves the container down, and the prior image tag / digest is **pinned for
+  rollback**.
+- **Health-gated + auto-rollback:** after recreate, the container's health check (V5.6)
+  must pass within a window; on failure Stashboard **rolls back** to the pinned previous
+  image and recreates, then notifies — so a bad update self-heals instead of leaving a
+  dead service.
+- **Gated + audited:** auto-update sits behind a server-wide flag **and** the
+  per-container opt-in (mirroring the V11.2 / `AllowContainerRemoval` model); every
+  automatic update (and rollback) writes an immutable audit row (who-enrolled / when /
+  from→to digest / outcome) in **Settings → Audit**, and notifies on success / rollback
+  through the existing channels.
+- **Backup/restore:** the per-container opt-in + schedule round-trip with the
+  connection / settings export and its test (§10.3).
+
+**Out of scope:** pinning to arbitrary update *channels* / semver ranges beyond "newest
+matching the watched tag pattern" (the existing tag-pattern filter, V5.3.1, defines what
+'newer' means); updating **non-managed** containers (enroll requires a managed / adopted
+project — V11.4); blue-green / multi-replica rollout (single-container recreate, as
+today).
+
+**Tests:** only opted-in containers update on the schedule; the new image is pre-pulled
+before the old container stops; a healthy update is kept and audited; an update that
+fails its health check is rolled back to the pinned previous digest and the container
+returns healthy; every automatic update and rollback writes an audit row and notifies;
+auto-update is refused when the server-wide flag is off; the opt-in + schedule survive
+the backup round-trip.
+
+**Acceptance bar:** a user enrols selected containers in auto-update, and on the
+configured schedule Stashboard pulls, recreates and verifies them — keeping the update
+when healthy, automatically rolling back when not, and logging / notifying every action
+— all gated off by default.
+
+---
+
+### Phase V11.6 — Container image vulnerability scanning (CVE)
+
+**Complexity:** Medium
+**Value:** "A newer image exists" (the update checker) and "is the current image safe?"
+are different questions, and Stashboard only answers the first. Scanning managed images
+against a known-CVE database turns the Docker page into a security surface: a user sees
+*which* containers run images with critical vulnerabilities and can prioritise the
+updates that actually matter. Pairs directly with V11.5 (update *because* of a CVE, not
+just because a tag moved).
+
+**Scope:**
+
+- An **image scan** (using a bundled scanner such as Trivy or Grype against its
+  vulnerability DB) run per managed image on a cadence and on demand, producing a
+  **severity rollup** (critical / high / medium / low counts) + the top findings (CVE
+  id, package, fixed-in version).
+- **Surfacing:** a vulnerability badge on the container card / Docker page ("3
+  critical") and a details view listing findings, with a direct hand-off to the V11.5
+  update when a fix is available in a newer tag.
+- A **vulnerability notification** through the existing channels, reusing the per-channel
+  toggle + throttle-key-on-success pattern (fires when a new critical / high appears, not
+  every scan), with a configurable severity threshold (default: critical / high) on the
+  Notifications / Settings surface.
+- The scanner's **DB refresh** and scan cadence are configurable; scans are best-effort
+  and degrade gracefully (a scanner / DB-download failure surfaces "scan unavailable",
+  never blocks the dashboard).
+- **Backup/restore:** the scan settings (cadence, severity threshold) round-trip with the
+  relevant settings export (§10.3); the scan *results* are runtime-derived telemetry and
+  are **not** exported.
+
+**Out of scope:** scanning arbitrary registries' full catalogues (only images in use by
+managed / adopted containers); SBOM generation / export; license / secret scanning (CVE
+only); runtime / behavioural security (this is static image scanning, not a runtime IDS);
+air-gapped DB mirroring beyond pointing the scanner at a configurable DB source.
+
+**Tests:** a scan of a known-vulnerable image returns the expected severity rollup and
+top findings; a clean image reports zero; a new critical finding fires exactly one
+notification (throttle stamped on success) and respects the severity threshold; a
+scanner / DB failure surfaces "unavailable" without erroring the page; results are
+owner-scoped; the scan settings survive the backup round-trip while results are not
+exported.
+
+**Acceptance bar:** a user opens the Docker page and sees, per container, how many
+critical / high CVEs its image carries, gets notified when a new critical appears, and
+can jump straight to updating the affected container — with scanning failing soft and
+never blocking the rest of the UI.
+
+---
+
+### Phase V11.7 — Networks & volumes management (+ orphaned-volume reclaim)
+
+**Complexity:** Medium
+**Value:** The Compose editor manages a project's *own* top-level networks / volumes
+(V7.3), but the **host's** Docker networks and volumes have no first-class view — you
+can't see what exists, what's attached to what, or (the expensive one) which **named
+volumes are orphaned**, silently holding stale data and disk. With V11.2 now backing
+volumes up, managing them is the natural complement.
+
+**Scope:**
+
+- A **Networks** view per Docker connection: list networks with driver / scope / subnet
+  and **which containers are attached**; create / remove a user-defined network; inspect
+  details. System networks (bridge / host / none) are shown read-only.
+- A **Volumes** view per connection: list named volumes with driver, **size on disk**
+  (reuse the V7.3 raw-Engine-API disk-usage read), and **which container(s) reference
+  each** — with **orphaned volumes** (referenced by nothing) clearly flagged.
+- **Reclaim** actions: prune unused networks and **remove orphaned volumes**, each behind
+  a per-action confirm and gated by the existing removal flag (`AllowContainerRemoval`
+  -style) so destroying data is never one careless click; every removal is audited
+  (**Settings → Audit**). Offer **"back up before removing"** by handing the volume to
+  the V11.2 backup path first.
+- **Backup/restore:** no new exportable config — this manages live Docker objects; the
+  gating flag follows the existing connection-settings round-trip.
+
+**Out of scope:** editing an existing network's subnet / driver in place (Docker requires
+recreate — create / remove only); CSI / cluster volume drivers; bind-mount directories on
+the host filesystem (not Docker-managed volumes — same boundary as V11.2); automatic
+scheduled pruning (manual, confirmed actions only — no silent data deletion).
+
+**Tests:** the networks view lists networks with their attached containers and blocks
+removal of a system or in-use network; the volumes view lists volumes with size and
+references and flags orphaned ones; removing an orphaned volume is gated, confirmed,
+audited, and optionally backed up first; pruning unused networks leaves in-use ones
+intact; the gating flag survives the connection-settings round-trip.
+
+**Acceptance bar:** a user can see every Docker network and volume on a host, what's
+attached to each, which volumes are orphaned and how much disk they waste, and reclaim
+them — with data-destroying actions gated, confirmed, audited, and a one-click
+backup-first option.
+
+---
+
+### Phase V11.8 — Host drain / bulk migrate
+
+**Complexity:** Low–Medium
+**Value:** V11.3 moves one workload between hosts; the operational need behind it is
+usually bigger — *"I'm taking this box down for maintenance (or retiring it), move
+everything off."* A **host-drain** does that in one guided operation instead of N manual
+moves, reusing the V11.3 mechanics wholesale.
+
+**Scope:**
+
+- A **drain** action on a Docker connection: pick a **target host**, review the full set
+  of managed / adopted projects on the source, and **move them all** (V11.3 move
+  semantics — image + volume data + compose, source removed only after each target
+  verifies healthy), with a clear per-project progress / verify list.
+- **Partial-failure safe:** projects that fail to come up on the target are **left
+  running on the source** and flagged, so a drain never silently loses a workload; the
+  operation reports exactly what moved and what didn't.
+- Optional **"copy (clone) instead of move"** for a non-destructive evacuation (e.g.
+  building a replacement host before retiring the old one).
+- **Gated + audited** identically to V11.3 (server-wide flag + per-connection opt-in on
+  both hosts; one audit row per project moved, plus a drain-summary row).
+- **Backup/restore:** the gating flag round-trips with connection settings; audit rows
+  are runtime records and not exported.
+
+**Out of scope:** automatic target **selection** / load-aware placement (the user picks
+the target — no scheduler); draining to **multiple** targets in one run (single target
+per drain); live migration (inherits the stop → copy → start limit from V11.3); ordering
+by inter-service dependency beyond what compose-project grouping already gives.
+
+**Tests:** a drain moves every managed project from source to target using V11.3
+semantics and removes each source project only after its target verifies healthy; a
+project that fails on the target stays running on the source and is flagged in the
+summary; clone-mode leaves all sources running; the operation is gated, requires both
+hosts opted in, and writes per-project + summary audit rows; the gating flag survives the
+backup round-trip.
+
+**Acceptance bar:** a user can evacuate an entire Docker host to another in one guided,
+gated operation — every workload arriving intact on the target, anything that fails left
+safely running on the source, and the whole drain audited project-by-project.
+
+---
+
+## V12 — Proxmox Backup Server (PBS) backup monitoring
 
 > PBS is currently handled only as a **generic node** (V6.8.3): CPU/RAM/disk/uptime,
 > RRD telemetry, disks+SMART, network, apt updates, node alerts, and its datastores
 > shown as a storage-pool analogue via `/status/datastore-usage`. Its actual purpose —
 > **backups** — is invisible: `ListBackupsAsync` / `ListStorageContentAsync` both
 > deliberately **skip `pbs:`** ("needs its own auth/namespace surface — out of scope").
-> V11 closes that gap, turning a PBS connection from "another node with a full disk"
+> V12 closes that gap, turning a PBS connection from "another node with a full disk"
 > into a real backup monitor, and fixing the V9.1 backup-age signal for guests that
 > back up to PBS rather than to a PVE-side vzdump store. Phases build on each other;
-> V11.0 is the foundation the rest read from.
+> V12.0 is the foundation the rest read from.
 
 ---
 
-### Phase V11.0 — Datastore snapshot browser + verify status
+### Phase V12.0 — Datastore snapshot browser + verify status
 
 **Complexity:** Medium
 **Value:** The core PBS screen Stashboard has never had — *what is actually backed up,
@@ -723,7 +1178,7 @@ verification is a silently corrupt backup).
 
 **Out of scope:** restoring **from** a PBS snapshot into PVE (heavier, separate — V8 restore
 is vzdump-file based); PBS datastore namespaces beyond the default unless trivially listable;
-editing/deleting snapshots (V11.4 covers actions, and delete stays out by default).
+editing/deleting snapshots (V12.4 covers actions, and delete stays out by default).
 
 **Tests:** the PBS client lists groups and snapshots with the correct `PBSAPIToken` auth
 scheme; a snapshot's verify state maps to ok/failed/unverified; the per-datastore roll-up
@@ -737,7 +1192,7 @@ summary of how many backups are unverified or failed verification.
 
 ---
 
-### Phase V11.1 — Backup-to-PBS cross-link on PVE guests (truthful backup-age)
+### Phase V12.1 — Backup-to-PBS cross-link on PVE guests (truthful backup-age)
 
 **Complexity:** Medium
 **Value:** V9.1 derives a guest's backup age from the newest **vzdump file** on a PVE
@@ -763,7 +1218,7 @@ the guest's own card, mirroring the V7.9 Docker↔Proxmox cross-link.
 
 **Out of scope:** cross-cluster identity reconciliation beyond vmid/type+datastore; linking
 Docker containers to PBS (PBS backs Proxmox guests, not containers); historical
-backup-success charts (V11.3 surfaces the job history instead).
+backup-success charts (V12.3 surfaces the job history instead).
 
 **Tests:** a guest auto-correlates to its PBS snapshots by vmid+type; an explicit override
 wins over auto-match and round-trips through backup; the V9.1 backup-age uses the PBS snapshot
@@ -777,7 +1232,7 @@ than reading empty.
 
 ---
 
-### Phase V11.2 — GC / prune health + datastore alerting
+### Phase V12.2 — GC / prune health + datastore alerting
 
 **Complexity:** Medium
 **Value:** A PBS datastore that stops running **garbage collection** silently stops
@@ -819,7 +1274,7 @@ the same channels as every other Proxmox node alert.
 
 ---
 
-### Phase V11.3 — PBS tasks / jobs feed (backup / verify / sync / GC / prune)
+### Phase V12.3 — PBS tasks / jobs feed (backup / verify / sync / GC / prune)
 
 **Complexity:** Medium
 **Value:** PBS runs scheduled **verify, sync, GC and prune** jobs (and receives backup
@@ -839,7 +1294,7 @@ plumbing already in the client.
 - Owner-scoped read endpoints; live/best-effort, paginated, no persistence.
 - **Backup/restore:** nothing to export (live telemetry).
 
-**Out of scope:** triggering jobs (V11.4); editing job schedules/config (stays in PBS);
+**Out of scope:** triggering jobs (V12.4); editing job schedules/config (stays in PBS);
 cross-PBS sync **configuration**; long-term job-history retention/charts.
 
 **Tests:** the PBS task feed lists the expected worker types with correct status mapping; a
@@ -851,10 +1306,10 @@ with pass/fail status and a readable log, so a failed nightly job is visible at 
 
 ---
 
-### Phase V11.4 — One-click Verify / GC / Prune (gated + audited)
+### Phase V12.4 — One-click Verify / GC / Prune (gated + audited)
 
 **Complexity:** Medium
-**Value:** Once you can *see* a stale GC or an unverified snapshot (V11.0–V11.2), the natural
+**Value:** Once you can *see* a stale GC or an unverified snapshot (V12.0–V12.2), the natural
 next step is to fix it without SSHing into PBS. This adds the small set of safe, idempotent
 maintenance actions — **Verify**, **Garbage-collect**, **Prune** — one click, gated and
 audited like every other mutating Proxmox surface.
@@ -892,10 +1347,10 @@ when the gate is off.
 
 ---
 
-### Phase V11.5 — PBS-derived MQTT sensors
+### Phase V12.5 — PBS-derived MQTT sensors
 
 **Complexity:** Low–Medium
-**Value:** Everything V11.0–V11.3 collects is exactly the kind of **sparse, derived signal**
+**Value:** Everything V12.0–V12.3 collects is exactly the kind of **sparse, derived signal**
 the V9.0/V9.1 MQTT pipeline is built for. Publishing it to Home Assistant lets a user automate
 over PBS's own conclusions — "alert me if any datastore has a failed verification", "warn if GC
 hasn't run in a week", "remind me if a datastore took no backup last night" — without
@@ -910,9 +1365,9 @@ cleanup). New entity kinds on the **existing PBS node device** plus per-datastor
    snapshots).
 2. **Last-GC age** — a `timestamp` `sensor` per datastore (newest successful GC), `device_class:
    timestamp` so HA renders "x days ago".
-3. **Last-successful-backup age** — a `timestamp` `sensor` per datastore (and feeding the V11.1
+3. **Last-successful-backup age** — a `timestamp` `sensor` per datastore (and feeding the V12.1
    per-guest backup-age where a link exists).
-4. **Datastore alert** — a `problem` `binary_sensor` per datastore carrying the V11.2 verdict
+4. **Datastore alert** — a `problem` `binary_sensor` per datastore carrying the V12.2 verdict
    (VerifyFailed / GcStale / BackupStale) with the category breakdown as `json_attributes`,
    exactly like the V9.1 node-alert sensor.
 
@@ -920,9 +1375,9 @@ cleanup). New entity kinds on the **existing PBS node device** plus per-datastor
 off, same rationale as the V9.1 raw-telemetry note; control/command topics (deferred).
 
 **Tests:** each PBS sensor publishes the expected value and refreshes on a check cycle; the
-datastore `problem` sensor flips with the V11.2 verdict and clears when resolved; all entities
+datastore `problem` sensor flips with the V12.2 verdict and clears when resolved; all entities
 reference the shared availability topic and clear their retained topics when the datastore /
-connection disappears; the per-guest backup-age reflects the PBS link from V11.1.
+connection disappears; the per-guest backup-age reflects the PBS link from V12.1.
 
 **Acceptance bar:** with the V9.0 integration on, Home Assistant additionally exposes
 per-datastore failed-verify counts, last-GC age, last-successful-backup age, and a datastore
@@ -931,10 +1386,10 @@ when Stashboard stops.
 
 ---
 
-### Phase V11.6 — PVE→PBS backup jobs (back up *to* PBS from Stashboard)
+### Phase V12.6 — PVE→PBS backup jobs (back up *to* PBS from Stashboard)
 
 **Complexity:** Medium–High
-**Value:** V11.0–V11.5 make PBS backups **observable**; this phase lets Stashboard
+**Value:** V12.0–V12.5 make PBS backups **observable**; this phase lets Stashboard
 **create** them — the one thing a user genuinely wants once they can see their backup
 estate: trigger a backup now, and schedule recurring ones, targeting a PBS datastore,
 without leaving Stashboard for the PVE web UI. **Important boundary:** PBS itself never
@@ -948,7 +1403,7 @@ connection whose storage targets a PBS datastore**; a PBS-only connection cannot
 - **Backup now** on an LXC/VM: `POST /nodes/{node}/vzdump` for the guest into a chosen
   PBS-backed storage, with mode (snapshot / suspend / stop), compression, and an optional
   note — returns a UPID tracked to completion via the existing task-status polling, with the
-  log viewable through the V11.3 task feed.
+  log viewable through the V12.3 task feed.
 - **Scheduled backup-job CRUD** against `/cluster/backup`: list / create / edit / delete jobs
   selecting guests (or a pool / all), a **PBS-backed storage** as the target, a schedule
   (the same calendar-event grammar Proxmox uses), retention (`prune-backups` / `keep-*`),
@@ -957,8 +1412,8 @@ connection whose storage targets a PBS datastore**; a PBS-only connection cannot
   datastore.
 - **Gating + audit:** backup-now and job mutations are **off by default** behind a
   server-wide flag (a `Stashboard:Allow…` flag, mirroring `AllowContainerRemoval`) **and** a
-  per-connection opt-in, consistent with the V11.4 / clone / restore gating; every action
-  writes an immutable audit row (extending the V11.4 `ProxmoxMaintenanceAuditEntity` or a
+  per-connection opt-in, consistent with the V12.4 / clone / restore gating; every action
+  writes an immutable audit row (extending the V12.4 `ProxmoxMaintenanceAuditEntity` or a
   sibling `ProxmoxBackupJobAuditEntity`: who / when / connection / guest-or-job / action /
   UPID / outcome) and shows up in the **Settings → Audit** viewer.
 - **Backup/restore:** the gating flag round-trips with the connection settings; **job
@@ -966,9 +1421,9 @@ connection whose storage targets a PBS datastore**; a PBS-only connection cannot
   (Stashboard configures PVE, it doesn't shadow-store the schedule); audit rows are runtime
   records and not exported.
 
-**Out of scope:** restoring **from** a PBS snapshot (separate, V8-style restore track — V11
+**Out of scope:** restoring **from** a PBS snapshot (separate, V8-style restore track — V12
 stays backup-create + monitor); file-level / single-file restore; editing PBS-side **prune
-schedules** (those stay in PBS — see V11.4); backup jobs targeting non-PBS storage (V11.6 is
+schedules** (those stay in PBS — see V12.4); backup jobs targeting non-PBS storage (V12.6 is
 the PBS story; generic vzdump-to-local is not in scope here); cluster-wide job orchestration
 beyond what `/cluster/backup` already models.
 
@@ -983,14 +1438,14 @@ the backup round-trip.
 **Acceptance bar:** with the feature enabled and a PVE connection opted in, a user can trigger
 an immediate backup of a guest into a PBS datastore and create/edit/delete a recurring backup
 job targeting PBS — entirely from Stashboard, with every action gated and audited, and the
-resulting snapshots then visible through V11.0 and fresh on the V11.1 backup-age signal.
+resulting snapshots then visible through V12.0 and fresh on the V12.1 backup-age signal.
 
 ---
 
-## V12 — Notification depth, dashboard breadth & convenience
+## V13 — Notification depth, dashboard breadth & convenience
 
 > A grab-bag of independent, higher-value-but-larger-scope items that don't belong to the
-> monitoring (V10), HA-integration (V9) or PBS (V11) tracks: smarter notification gating
+> monitoring (V10), HA-integration (V9) or PBS (V12) tracks: smarter notification gating
 > (maintenance windows + root-cause suppression + severity routing), automated config
 > backups, broadening the dashboard from "monitored services only" to a real homelab launcher
 > (link cards + spaces + live widgets), and Wake-on-LAN. Phases are independent and can ship in
@@ -998,7 +1453,7 @@ resulting snapshots then visible through V11.0 and fresh on the V11.1 backup-age
 
 ---
 
-### Phase V12.0 — Maintenance windows + alert suppression
+### Phase V13.0 — Maintenance windows + alert suppression
 
 **Complexity:** Medium
 **Value:** Every failure notifies immediately today, with no way to say "I'm doing planned
@@ -1043,14 +1498,14 @@ guest — with normal alerting fully restored the moment the window ends or the 
 
 ---
 
-### Phase V12.1 — Scheduled automatic config backups
+### Phase V13.1 — Scheduled automatic config backups
 
 **Complexity:** Medium
 **Value:** Stashboard's own config backup is **manual JSON export per user** today — easy to
 forget, and the one thing whose loss (with the encryption key) is unrecoverable. A scheduled,
 rotated automatic backup to a mounted path or S3-compatible target closes the classic homelab
 "I never took a backup" gap. (Proxmox `vzdump` *scheduling* is a separate concern and lives in
-**V11.6** — V12.1 is about backing up **Stashboard itself**.)
+**V12.6** — V13.1 is about backing up **Stashboard itself**.)
 
 **Scope:**
 
@@ -1085,7 +1540,7 @@ old ones pruned — and gets notified if a backup ever fails.
 
 ---
 
-### Phase V12.2 — Link-only cards + dashboard spaces
+### Phase V13.2 — Link-only cards + dashboard spaces
 
 **Complexity:** Medium
 **Value:** Every dashboard card today is a **monitored `WebResource`** with a health check.
@@ -1109,7 +1564,7 @@ forcing a health check on things that don't have one.
 - **Backup/restore:** link cards + space definitions + membership are added to `BackupService`
   export/import and its round-trip test (§10.3).
 
-**Out of scope:** the live-data widgets on cards (that's V12.5 — V12.2 is a static link with an
+**Out of scope:** the live-data widgets on cards (that's V13.5 — V13.2 is a static link with an
 icon); importing a Homepage/Heimdall config; per-space access sharing (no role system exists);
 nested spaces.
 
@@ -1124,7 +1579,7 @@ everything they run, monitored or not.
 
 ---
 
-### Phase V12.3 — Notification routing rules (severity → channel)
+### Phase V13.3 — Notification routing rules (severity → channel)
 
 **Complexity:** Medium
 **Value:** V10.0 (Apprise) explicitly fans **every** notification to **all** configured
@@ -1148,7 +1603,7 @@ the right alerts reach the right place without drowning a chat in low-signal noi
 - **Backup/restore:** routing rules are added to `BackupService` export/import and its
   round-trip test (§10.3).
 
-**Out of scope:** time-of-day routing (that overlaps maintenance windows, V12.0); per-recipient
+**Out of scope:** time-of-day routing (that overlaps maintenance windows, V13.0); per-recipient
 routing / multiple users' inboxes (single-owner channels); escalation chains ("page me if
 unacked in 10 min").
 
@@ -1164,7 +1619,7 @@ all-channels behaviour preserved until they opt into routing.
 
 ---
 
-### Phase V12.4 — Wake-on-LAN for physical hosts
+### Phase V13.4 — Wake-on-LAN for physical hosts
 
 **Complexity:** Low–Medium
 **Value:** Starting a VM/LXC is already a one-click action, but **waking the physical box** it
@@ -1199,7 +1654,7 @@ see the packet was sent, and confirm via the existing reachability check that th
 
 ---
 
-### Phase V12.5 — Live service widgets on cards
+### Phase V13.5 — Live service widgets on cards
 
 **Complexity:** High
 **Value:** The biggest differentiator and the biggest scope: pull **live data** from popular
@@ -1224,7 +1679,7 @@ It turns a card from "is it up?" into "what is it doing right now?".
 
 **Out of scope:** a generic user-scriptable widget / arbitrary JSON-path scraping (a possible
 later phase); writing/controlling the target service from the widget (read-only counters only);
-a huge provider catalogue in one go — V12.5 ships a curated starter set and grows incrementally.
+a huge provider catalogue in one go — V13.5 ships a curated starter set and grows incrementally.
 
 **Tests:** a configured Sonarr/qBittorrent widget fetches and renders its summary metrics; keys
 are encrypted at rest and never sent to the client; a provider outage degrades to "unavailable"

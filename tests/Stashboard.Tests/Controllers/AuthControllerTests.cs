@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Stashboard.Api.Auth;
@@ -23,16 +24,43 @@ public class AuthControllerTests : DatabaseTestBase
         LockoutMinutes = 10,
     };
 
+    // A valid Base32 TOTP secret used to seed 2FA-enabled users deterministically.
+    private const string TotpSecret = "JBSWY3DPEHPK3PXP";
+
     private AuthController _ctrl = default!;
     private UserService _users = default!;
     private TokenService _tokens = default!;
+    private TwoFactorService _twoFactor = default!;
 
     public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         _users = new UserService(_dbContext, _hasher, _encryption, Options.Create(_opt), _time);
         _tokens = new TokenService(Options.Create(_opt), _dbContext, _time, NullLogger<TokenService>.Instance);
-        _ctrl = new AuthController(_users, _tokens, TestMapperFactory.Create(), Options.Create(_opt));
+        _twoFactor = new TwoFactorService(_dbContext, _hasher, _encryption, Options.Create(_opt), _time);
+        _ctrl = new AuthController(_users, _tokens, _twoFactor, TestMapperFactory.Create(), Options.Create(_opt));
+    }
+
+    private static string CurrentTotp(string base32) =>
+        new OtpNet.Totp(OtpNet.Base32Encoding.ToBytes(base32)).ComputeTotp();
+
+    /// <summary>Registers a user and flips on 2FA with a known secret (no replay step consumed yet).</summary>
+    private async Task<Guid> RegisterWithTwoFactor(string email = "u@x", string password = "P@ssword1")
+    {
+        var reg = await _ctrl.Register(new RegisterRequest(email, password), default);
+        var id = ((AuthResponse)((OkObjectResult)reg.Result!).Value!).User.Id;
+        var user = await _dbContext.Users.Where(u => u.Id == id).FirstAsync();
+        user.TwoFactorEnabled = true;
+        user.TwoFactorSecretEncrypted = _encryption.Encrypt(TotpSecret);
+        await _dbContext.SaveChangesAsync();
+        return id;
+    }
+
+    private async Task<string> ChallengeTokenFor(string email = "u@x", string password = "P@ssword1")
+    {
+        var login = await _ctrl.Login(new LoginRequest(email, password), default);
+        var ok = Assert.IsType<OkObjectResult>(login.Result);
+        return Assert.IsType<TwoFactorChallengeResponse>(ok.Value).ChallengeToken;
     }
 
     private sealed class PrefixEncryption : Stashboard.Core.Abstractions.IEncryptionService
@@ -195,6 +223,114 @@ public class AuthControllerTests : DatabaseTestBase
         var result = await _ctrl.Me(default);
 
         Assert.IsType<UnauthorizedResult>(result.Result);
+    }
+
+    // ── Two-factor login flow ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Login_TwoFactorEnabled_ReturnsChallengeWithoutTokens()
+    {
+        await RegisterWithTwoFactor();
+
+        var result = await _ctrl.Login(new LoginRequest("u@x", "P@ssword1"), default);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var challenge = Assert.IsType<TwoFactorChallengeResponse>(ok.Value);
+        Assert.True(challenge.RequiresTwoFactor);
+        Assert.NotEmpty(challenge.ChallengeToken);
+    }
+
+    [Fact]
+    public async Task LoginTwoFactor_ValidCode_IssuesTokens()
+    {
+        await RegisterWithTwoFactor();
+        var token = await ChallengeTokenFor();
+
+        var result = await _ctrl.LoginTwoFactor(new TwoFactorLoginRequest(token, CurrentTotp(TotpSecret)), default);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var body = Assert.IsType<AuthResponse>(ok.Value);
+        Assert.NotEmpty(body.AccessToken);
+        Assert.NotEmpty(body.RefreshToken);
+    }
+
+    [Fact]
+    public async Task LoginTwoFactor_WrongCode_Returns401()
+    {
+        await RegisterWithTwoFactor();
+        var token = await ChallengeTokenFor();
+
+        var result = await _ctrl.LoginTwoFactor(new TwoFactorLoginRequest(token, "000000"), default);
+
+        Assert.IsType<UnauthorizedObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task LoginTwoFactor_RepeatedWrongCodes_LocksAccount()
+    {
+        await RegisterWithTwoFactor();
+        var token = await ChallengeTokenFor();
+
+        // MaxFailedAccessAttempts == 3 in the test options — the third wrong code trips the lockout.
+        await _ctrl.LoginTwoFactor(new TwoFactorLoginRequest(token, "000000"), default);
+        await _ctrl.LoginTwoFactor(new TwoFactorLoginRequest(token, "000000"), default);
+        var locked = await _ctrl.LoginTwoFactor(new TwoFactorLoginRequest(token, "000000"), default);
+
+        var status = Assert.IsType<ObjectResult>(locked.Result);
+        Assert.Equal(StatusCodes.Status423Locked, status.StatusCode);
+    }
+
+    [Fact]
+    public async Task LoginTwoFactor_RecoveryCode_WorksOnceThenFails()
+    {
+        var id = await RegisterWithTwoFactor();
+        _dbContext.TwoFactorRecoveryCodes.Add(new Stashboard.Api.Data.TwoFactorRecoveryCodeEntity
+        {
+            UserId = id, CodeHash = _hasher.Hash("ABCDEFGHIJ"),
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var first = await _ctrl.LoginTwoFactor(new TwoFactorLoginRequest(await ChallengeTokenFor(), "ABCDE-FGHIJ"), default);
+        Assert.IsType<OkObjectResult>(first.Result);
+
+        var second = await _ctrl.LoginTwoFactor(new TwoFactorLoginRequest(await ChallengeTokenFor(), "ABCDE-FGHIJ"), default);
+        Assert.IsType<UnauthorizedObjectResult>(second.Result);
+    }
+
+    [Fact]
+    public async Task LoginTwoFactor_ChallengeStaleAfterSecurityStampChange_Returns401()
+    {
+        var id = await RegisterWithTwoFactor();
+        var token = await ChallengeTokenFor();
+
+        // A password change / logout-all between the two steps rotates the stamp.
+        await _users.RotateSecurityStampAsync(id);
+
+        var result = await _ctrl.LoginTwoFactor(new TwoFactorLoginRequest(token, CurrentTotp(TotpSecret)), default);
+
+        Assert.IsType<UnauthorizedObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task LoginTwoFactor_InvalidChallengeToken_Returns401()
+    {
+        var result = await _ctrl.LoginTwoFactor(new TwoFactorLoginRequest("not-a-real-token", "123456"), default);
+
+        Assert.IsType<UnauthorizedObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task LoginTwoFactor_ExpiredChallenge_Returns401()
+    {
+        await RegisterWithTwoFactor();
+        var token = await ChallengeTokenFor();
+
+        // Past the challenge lifetime (default 5 min) — the token is no longer accepted.
+        _time.Advance(TimeSpan.FromMinutes(_opt.TwoFactorChallengeMinutes + 1));
+
+        var result = await _ctrl.LoginTwoFactor(new TwoFactorLoginRequest(token, CurrentTotp(TotpSecret)), default);
+
+        Assert.IsType<UnauthorizedObjectResult>(result.Result);
     }
 }
 

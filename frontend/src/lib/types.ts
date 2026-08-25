@@ -149,6 +149,8 @@ export interface Profile {
   theme: string
   createdUtc: string
   lastLoginUtc: string | null
+  /** V10.3 — whether TOTP two-factor auth is enabled. Presence flag only; the secret never leaves the server. */
+  twoFactorEnabled: boolean
 }
 
 export interface DashboardPreferences {

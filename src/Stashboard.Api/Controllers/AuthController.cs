@@ -10,7 +10,7 @@ namespace Stashboard.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(IUserService users, ITokenService tokens, IStashboardMapper mapper, IOptions<JwtOptions> jwtOptions) : ControllerBase
+public class AuthController(IUserService users, ITokenService tokens, ITwoFactorService twoFactor, IStashboardMapper mapper, IOptions<JwtOptions> jwtOptions) : ControllerBase
 {
     private readonly JwtOptions _jwt = jwtOptions.Value;
     [HttpPost("register")]
@@ -45,6 +45,43 @@ public class AuthController(IUserService users, ITokenService tokens, IStashboar
         }
         if (_jwt.RequireConfirmedEmail && !result.User!.EmailConfirmed)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Email not confirmed.", reason = nameof(AuthFailureReason.EmailNotConfirmed) });
+
+        // Password is correct, but if 2FA is on we don't issue tokens yet — hand back a short-lived
+        // challenge and require the second step to exchange a valid code for the real token pair.
+        if (result.User!.TwoFactorEnabled)
+            return Ok(new TwoFactorChallengeResponse(true, tokens.IssueTwoFactorChallenge(result.User!)));
+
+        var pair = await tokens.IssueAsync(result.User!, сancellationToken);
+        return Ok(BuildResponse(pair, result.User!));
+    }
+
+    /// <summary>
+    /// Second login step for 2FA-enabled accounts: exchanges a valid TOTP (or recovery) code,
+    /// together with the challenge token from <see cref="Login"/>, for the normal token pair.
+    /// </summary>
+    [HttpPost("login/2fa")]
+    [AllowAnonymous]
+    public async Task<ActionResult<AuthResponse>> LoginTwoFactor([FromBody] TwoFactorLoginRequest req, CancellationToken сancellationToken)
+    {
+        var challenge = tokens.ValidateTwoFactorChallenge(req.ChallengeToken);
+        if (challenge is null) return Unauthorized(new { error = "Invalid or expired challenge. Please sign in again." });
+
+        var user = await users.FindByIdAsync(challenge.UserId, сancellationToken);
+        // A security-stamp change between the two steps (password/email change, logout-all, disable)
+        // kills the challenge — it was minted against a now-stale stamp.
+        if (user is null || !string.Equals(user.SecurityStamp, challenge.SecurityStamp, StringComparison.Ordinal))
+            return Unauthorized(new { error = "Invalid or expired challenge. Please sign in again." });
+
+        var result = await twoFactor.CompleteLoginAsync(challenge.UserId, req.Code, сancellationToken);
+        if (!result.Succeeded)
+        {
+            return result.Failure!.Reason switch
+            {
+                AuthFailureReason.AccountLocked => StatusCode(StatusCodes.Status423Locked, new { error = result.Failure.Message }),
+                _ => Unauthorized(new { error = result.Failure.Message }),
+            };
+        }
+
         var pair = await tokens.IssueAsync(result.User!, сancellationToken);
         return Ok(BuildResponse(pair, result.User!));
     }

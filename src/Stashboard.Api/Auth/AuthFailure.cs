@@ -12,6 +12,8 @@ public enum AuthFailureReason
     EmailNotConfirmed,
     InvalidToken,
     UserNotFound,
+    TwoFactorRequired,
+    InvalidTwoFactorCode,
 }
 
 public sealed record AuthFailure(AuthFailureReason Reason, string Message);
