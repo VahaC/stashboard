@@ -1,5 +1,14 @@
 import { api } from './api'
-import type { DashboardPreferences, EmailSettings, EmailSettingsUpdate, Profile, TelegramSettings } from './types'
+import type {
+  CreatedPersonalAccessToken,
+  DashboardPreferences,
+  EmailSettings,
+  EmailSettingsUpdate,
+  PatScope,
+  PersonalAccessToken,
+  Profile,
+  TelegramSettings,
+} from './types'
 import type { Theme } from './theme-store'
 
 export interface TwoFactorEnrollment {
@@ -9,6 +18,15 @@ export interface TwoFactorEnrollment {
 
 export interface RecoveryCodes {
   recoveryCodes: string[]
+}
+
+/** Payload for minting a personal access token. */
+export interface CreateTokenRequest {
+  name: string
+  scope: PatScope
+  /** Absolute expiry (ISO) or null for a token that never expires. */
+  expiresUtc: string | null
+  currentPassword: string
 }
 
 export const accountApi = {
@@ -52,4 +70,11 @@ export const accountApi = {
     api.post('/api/account/2fa/disable', { currentPassword }),
   regenerateRecoveryCodes: (currentPassword: string) =>
     api.post<RecoveryCodes>('/api/account/2fa/recovery-codes', { currentPassword }).then((r) => r.data),
+
+  // V10.4 — personal access tokens
+  listTokens: () => api.get<PersonalAccessToken[]>('/api/account/tokens').then((r) => r.data),
+  createToken: (req: CreateTokenRequest) =>
+    api.post<CreatedPersonalAccessToken>('/api/account/tokens', req).then((r) => r.data),
+  revokeToken: (id: string) => api.post(`/api/account/tokens/${id}/revoke`),
+  deleteToken: (id: string) => api.delete(`/api/account/tokens/${id}`),
 }

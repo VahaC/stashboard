@@ -360,7 +360,16 @@ leaving the server in plaintext.
 
 ---
 
-### Phase V10.4 — API tokens (personal access tokens)
+### ✅ Shipped (10.4.0) Phase V10.4 — API tokens (personal access tokens)
+
+**Shipped in 10.4.0.** Long-lived, scoped, revocable personal access tokens (`sb_pat_…`) minted
+from the Account page (name + `read`/`full` scope + optional expiry; secret shown once, stored as a
+peppered HMAC-SHA256 hash). A policy authentication scheme routes each request to the JWT or PAT
+handler by bearer prefix; scope is enforced by HTTP method (`read` → `403` on mutations). Revocation
+and expiry take effect on the next request; `LastUsedUtc` is stamped (throttled). PATs are
+independent of `SecurityStamp` (survive password change / logout-all) but cascade away with the
+account, are refused on the host-shell / container-exec ticket endpoints and account-security
+mutations, and are not exported in backup/restore.
 
 **Complexity:** Medium
 **Value:** Every API call today is authenticated with a short-lived JWT obtained

@@ -539,6 +539,7 @@ function ConnectionBlock({
 
   // V6.10 — open the LXC modal when the page resolves a `?…&vmid=` deep link
   // to one of this connection's guests.
+  /* eslint-disable react-hooks/set-state-in-effect -- syncing UI state from the URL deep link (external system) */
   useEffect(() => {
     if (deepLinkVmId == null) return
     const target = lxcGuests.find((g) => g.vmId === deepLinkVmId)
@@ -546,6 +547,7 @@ function ConnectionBlock({
     onDeepLinkHandled()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkVmId])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const sshConfigured = !!(connection.hasSshPrivateKey && connection.sshHost && connection.sshUsername)
   const canApplyUpdates = (features.data?.allowProxmoxUpdates ?? false) && connection.allowUpdates && sshConfigured
@@ -890,6 +892,7 @@ export function Proxmox() {
     ? `${deepLinkConnectionId}::${deepLinkVmid}`
     : null
 
+  /* eslint-disable react-hooks/set-state-in-effect -- syncing UI state from the URL deep link (external system) */
   useEffect(() => {
     if (!deepLinkKey || deepLinkKey === handledDeepLink) return
     if (isLoading) return
@@ -905,6 +908,7 @@ export function Proxmox() {
     deepLinkKey, handledDeepLink, isLoading, connections,
     deepLinkConnectionId, deepLinkVmid, searchParams, setSearchParams,
   ])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const visibleConnections = activeHost === 'all'
     ? connections

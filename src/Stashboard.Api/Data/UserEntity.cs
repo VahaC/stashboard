@@ -106,4 +106,7 @@ public class UserEntity : AuditableEntity
     public ICollection<RefreshTokenEntity> RefreshTokens { get; set; } = new List<RefreshTokenEntity>();
 
     public ICollection<TwoFactorRecoveryCodeEntity> TwoFactorRecoveryCodes { get; set; } = new List<TwoFactorRecoveryCodeEntity>();
+
+    /// <summary>V10.4 — personal access tokens minted by the user for scripting the REST API.</summary>
+    public ICollection<PersonalAccessTokenEntity> PersonalAccessTokens { get; set; } = new List<PersonalAccessTokenEntity>();
 }

@@ -58,6 +58,7 @@ public abstract class DatabaseTestBase : IAsyncLifetime
         await db.Tags.ExecuteDeleteAsync();
         await db.Categories.ExecuteDeleteAsync();
         await db.RefreshTokens.ExecuteDeleteAsync();
+        await db.PersonalAccessTokens.ExecuteDeleteAsync();
         await db.Users.ExecuteDeleteAsync();
         await db.EmailSettings.ExecuteDeleteAsync();
         await db.HostShellSettings.ExecuteDeleteAsync();
@@ -79,8 +80,6 @@ public abstract class DatabaseTestBase : IAsyncLifetime
         await db.MqttSettings.ExecuteDeleteAsync();
         // V6.6 — same for the Proxmox Console master-switch singleton.
         await db.ProxmoxConsoleSettings.ExecuteDeleteAsync();
-        // V10.0 — same for the Apprise settings singleton.
-        await db.AppriseSettings.ExecuteDeleteAsync();
     }
 
     private static string BuildTestConnectionString()

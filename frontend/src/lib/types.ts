@@ -158,6 +158,29 @@ export interface DashboardPreferences {
   groupByCategory: boolean
 }
 
+/** V10.4 — personal access token scope and lifecycle. */
+export type PatScope = 'read' | 'full'
+export type PatStatus = 'active' | 'revoked' | 'expired'
+
+export interface PersonalAccessToken {
+  id: string
+  name: string
+  /** Non-secret hint shown in the list, e.g. "sb_pat_AB12". */
+  displayHint: string
+  scope: PatScope
+  expiresUtc: string | null
+  lastUsedUtc: string | null
+  revokedUtc: string | null
+  createdUtc: string
+  status: PatStatus
+}
+
+/** Create response — includes the plaintext secret, shown exactly once. */
+export interface CreatedPersonalAccessToken {
+  token: PersonalAccessToken
+  secret: string
+}
+
 export interface TelegramSettings {
   botToken: string | null
   chatId: string | null

@@ -263,6 +263,7 @@ export function DockerInstances() {
     : null
   const deepLinkContainers = useDockerInstanceContainers(deepLinkConnectionId)
 
+  /* eslint-disable react-hooks/set-state-in-effect -- syncing UI state from the URL deep link (external system) */
   useEffect(() => {
     if (!deepLinkKey) return
     if (deepLinkKey === handledDeepLink) return
@@ -300,6 +301,7 @@ export function DockerInstances() {
     deepLinkContainers.isLoading, deepLinkKey, handledDeepLink, modal,
     searchParams, setSearchParams,
   ])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const visibleConnections = activeHost === 'all'
     ? conns

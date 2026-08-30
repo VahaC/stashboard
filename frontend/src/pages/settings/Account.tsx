@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import QRCode from 'qrcode'
+import { MoreVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { FloatingMenu } from '@/components/shared/FloatingMenu'
+import { useConfirm, type ConfirmOptions } from '@/components/shared/ConfirmDialog'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { accountApi, type TwoFactorEnrollment } from '@/lib/account-api'
 import { useAuthStore } from '@/lib/auth-store'
 import { useThemeStore, type Theme } from '@/lib/theme-store'
 import { parseApiErrors } from '@/lib/utils'
-import type { Profile } from '@/lib/types'
+import type { CreatedPersonalAccessToken, PatScope, PersonalAccessToken, Profile } from '@/lib/types'
 import '@/styles/account-page.css'
 
 export function Account() {
@@ -100,6 +104,20 @@ export function Account() {
               onSignedOut={() => { clear(); nav('/login') }}
             />
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>API tokens</CardTitle>
+          <CardDescription>
+            Personal access tokens let scripts and automation call the Stashboard REST API without your
+            password. Send one as <code>Authorization: Bearer sb_pat_…</code>. Tokens never grant the host
+            terminal or container shell, and aren't included in backups.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ApiTokensSection />
         </CardContent>
       </Card>
 
@@ -461,5 +479,256 @@ function TwoFactorPasswordForm<T>({ label, note, buttonText, destructive, action
         {busy ? 'Working…' : buttonText}
       </Button>
     </form>
+  )
+}
+
+// ── V10.4 — Personal access tokens ──────────────────────────────────────────
+
+type ExpiryPreset = '30' | '60' | '90' | 'never' | 'custom'
+
+/** Resolves a preset (+ optional custom date) to an absolute ISO expiry, or null for "never". */
+function resolveExpiry(preset: ExpiryPreset, customDate: string): string | null {
+  if (preset === 'never') return null
+  if (preset === 'custom') return customDate ? new Date(`${customDate}T23:59:59`).toISOString() : null
+  return new Date(Date.now() + Number(preset) * 86_400_000).toISOString()
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+function ApiTokensSection() {
+  const [tokens, setTokens] = useState<PersonalAccessToken[] | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [created, setCreated] = useState<CreatedPersonalAccessToken | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const reload = () => accountApi.listTokens().then(setTokens).catch(() => setTokens([]))
+  useEffect(() => { reload() }, [])
+
+  // One-time secret display — shown right after creation, then gone forever.
+  if (created) {
+    return <NewTokenPanel created={created} onDone={() => { setCreated(null); reload() }} />
+  }
+
+  if (creating) {
+    return (
+      <CreateTokenForm
+        onCancel={() => setCreating(false)}
+        onCreated={(result) => { setCreating(false); setCreated(result) }}
+      />
+    )
+  }
+
+  return (
+    <div className="account-form account-form-spaced">
+      {tokens === null ? (
+        <p className="twofa-step">Loading…</p>
+      ) : tokens.length === 0 ? (
+        <p className="twofa-step">No tokens yet. Create one to script against the API.</p>
+      ) : (
+        <div className="pat-table-wrap">
+          <table className="pat-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Token</th>
+                <th>Scope</th>
+                <th>Status</th>
+                <th>Expires</th>
+                <th>Last used</th>
+                <th aria-label="Actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {tokens.map((t) => (
+                <TokenRow key={t.id} token={t} onChanged={reload} onError={setError} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {error && <p className="account-form-error">{error}</p>}
+      <div className="twofa-actions">
+        <Button onClick={() => { setError(null); setCreating(true) }}>Create token</Button>
+      </div>
+    </div>
+  )
+}
+
+function TokenRow({ token, onChanged, onError }: {
+  token: PersonalAccessToken
+  onChanged: () => void
+  onError: (msg: string) => void
+}) {
+  const confirm = useConfirm()
+  const [busy, setBusy] = useState(false)
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null)
+  const confirmRun = (options: ConfirmOptions, action: () => Promise<unknown>) => {
+    setMenuPos(null)
+    void (async () => {
+      if (!(await confirm(options))) return
+      setBusy(true)
+      try { await action(); onChanged() }
+      catch (e: unknown) { onError(parseApiErrors(e).globalError ?? 'Action failed.') }
+      finally { setBusy(false) }
+    })()
+  }
+  return (
+    <tr>
+      <td className="pat-name">{token.name}</td>
+      <td><code className="pat-hint">{token.displayHint}…</code></td>
+      <td>
+        <Badge variant={token.scope === 'full' ? 'default' : 'secondary'}>{token.scope}</Badge>
+      </td>
+      <td>
+        {token.status === 'active'
+          ? <Badge variant="outline">active</Badge>
+          : <Badge variant={token.status === 'revoked' ? 'destructive' : 'secondary'}>{token.status}</Badge>}
+      </td>
+      <td>{token.expiresUtc ? formatDate(token.expiresUtc) : 'Never'}</td>
+      <td>{token.lastUsedUtc ? formatDate(token.lastUsedUtc) : 'Never'}</td>
+      <td className="pat-actions-cell">
+        <button
+          type="button"
+          className="pat-menu-trigger"
+          aria-label={`Actions for ${token.name}`}
+          disabled={busy}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect()
+            setMenuPos((p) => (p ? null : { x: r.right, y: r.bottom + 4 }))
+          }}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </button>
+        {menuPos && (
+          <FloatingMenu className="pat-menu" pos={menuPos} onClose={() => setMenuPos(null)}>
+            {token.status === 'active' && (
+              <button
+                className="pat-menu-item"
+                onClick={() => confirmRun(
+                  {
+                    title: 'Revoke token?',
+                    message: `“${token.name}” will stop working immediately for any script using it.`,
+                    confirmLabel: 'Revoke',
+                    destructive: true,
+                  },
+                  () => accountApi.revokeToken(token.id))}
+              >
+                Revoke
+              </button>
+            )}
+            <button
+              className="pat-menu-item pat-menu-item--danger"
+              onClick={() => confirmRun(
+                {
+                  title: 'Delete token?',
+                  message: `“${token.name}” will be permanently removed${token.status === 'active' ? ' and stop working immediately' : ''}.`,
+                  confirmLabel: 'Delete',
+                  destructive: true,
+                },
+                () => accountApi.deleteToken(token.id))}
+            >
+              Delete
+            </button>
+          </FloatingMenu>
+        )}
+      </td>
+    </tr>
+  )
+}
+
+function CreateTokenForm({ onCancel, onCreated }: {
+  onCancel: () => void
+  onCreated: (result: CreatedPersonalAccessToken) => void
+}) {
+  const [name, setName] = useState('')
+  const [scope, setScope] = useState<PatScope>('read')
+  const [preset, setPreset] = useState<ExpiryPreset>('30')
+  const [customDate, setCustomDate] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    if (preset === 'custom' && !customDate) { setError('Pick an expiry date.'); return }
+    setBusy(true)
+    try {
+      const result = await accountApi.createToken({
+        name: name.trim(),
+        scope,
+        expiresUtc: resolveExpiry(preset, customDate),
+        currentPassword: password,
+      })
+      onCreated(result)
+    } catch (e: unknown) {
+      setError(parseApiErrors(e).globalError ?? 'Failed to create token.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="account-form account-form-spaced">
+      <div className="account-field">
+        <Label htmlFor="pat-name">Name</Label>
+        <Input id="pat-name" required placeholder="e.g. Grafana scraper" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      </div>
+      <div className="account-field">
+        <Label htmlFor="pat-scope">Scope</Label>
+        <select id="pat-scope" className="ui-input" value={scope} onChange={(e) => setScope(e.target.value as PatScope)}>
+          <option value="read">Read-only — GET requests only</option>
+          <option value="full">Full — read and modify data</option>
+        </select>
+      </div>
+      <div className="account-field">
+        <Label htmlFor="pat-expiry">Expiry</Label>
+        <select id="pat-expiry" className="ui-input" value={preset} onChange={(e) => setPreset(e.target.value as ExpiryPreset)}>
+          <option value="30">30 days</option>
+          <option value="60">60 days</option>
+          <option value="90">90 days</option>
+          <option value="never">Never</option>
+          <option value="custom">Custom…</option>
+        </select>
+        {preset === 'custom' && (
+          <Input type="date" value={customDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setCustomDate(e.target.value)} />
+        )}
+      </div>
+      <div className="account-field">
+        <Label htmlFor="pat-password">Current password</Label>
+        <Input id="pat-password" type="password" required placeholder="Confirm it's you" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </div>
+      {error && <p className="account-form-error">{error}</p>}
+      <div className="twofa-actions">
+        <Button type="submit" disabled={busy || name.trim().length === 0 || password.length === 0}>
+          {busy ? 'Creating…' : 'Create token'}
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button>
+      </div>
+    </form>
+  )
+}
+
+function NewTokenPanel({ created, onDone }: { created: CreatedPersonalAccessToken; onDone: () => void }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => navigator.clipboard?.writeText(created.secret).then(() => {
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }).catch(() => {})
+  return (
+    <div className="account-form account-form-spaced">
+      <p className="twofa-step">
+        <strong>Copy your token now.</strong> This is the only time the full secret is shown — once you close this it can't be retrieved.
+      </p>
+      <code className="pat-secret">{created.secret}</code>
+      <div className="twofa-actions">
+        <Button type="button" variant="outline" onClick={copy}>{copied ? 'Copied!' : 'Copy token'}</Button>
+        <Button type="button" onClick={onDone}>I've saved it</Button>
+      </div>
+      <p className="twofa-note">Use it as <code>Authorization: Bearer {created.secret.slice(0, 11)}…</code></p>
+    </div>
   )
 }

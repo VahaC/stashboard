@@ -17,7 +17,7 @@ Built as **ASP.NET Core 10 Web API + React SPA**, deployed as a **single Docker 
 
 ## Stack
 
-- **Backend:** ASP.NET Core 10, controllers MVC, custom auth (PBKDF2-SHA256 passwords, optional TOTP two-factor auth, rotating refresh tokens with family reuse-detection, SecurityStamp server-side invalidation), JWT Bearer
+- **Backend:** ASP.NET Core 10, controllers MVC, custom auth (PBKDF2-SHA256 passwords, optional TOTP two-factor auth, rotating refresh tokens with family reuse-detection, SecurityStamp server-side invalidation, scoped personal access tokens), JWT Bearer
 - **Frontend:** Vite + React 19 + TypeScript + Tailwind v4 + shadcn-style UI + TanStack Query + react-router-dom v7
 - **DB:** SQLite (via EF Core 10 + WAL mode) — a single file on the `stashboard-data` volume; no separate database container
 - **Crypto:** AES-256-GCM for credentials at rest, key from env var
@@ -322,7 +322,11 @@ Full walkthrough — composite services, TLS for remote hosts, SSH-tunnelled hos
 
 ## API surface
 
-Cookie-less; pass `Authorization: Bearer <accessToken>` on every request.
+Cookie-less; pass `Authorization: Bearer <accessToken>` on every request — or
+`Authorization: Bearer sb_pat_…` with a **personal access token** (V10.4) to script the REST API.
+A PAT resolves to its owning user; a `read`-scoped token is rejected (`403`) on mutating methods,
+and PATs are refused on the host-shell / container-exec ticket endpoints and account-security
+mutations.
 
 ```
 POST   /api/auth/register      { email, password }     → AuthResponse
@@ -346,6 +350,11 @@ POST   /api/account/2fa/recovery-codes { currentPassword } → { recoveryCodes }
 DELETE /api/account            { currentPassword }     → 204
 GET    /api/account/email-settings                     → EmailSettingsResponse  (app-wide SMTP config; password masked)
 PUT    /api/account/email-settings  UpdateEmailSettings → 204  (tri-state password: keep / set / clear)
+
+GET    /api/account/tokens                             → PersonalAccessTokenResponse[]  (V10.4; JWT-only)
+POST   /api/account/tokens     { name, scope, expiresUtc?, currentPassword } → { token, secret }  (secret shown once)
+POST   /api/account/tokens/{id}/revoke                 → 204  (immediate; fails the token's next request)
+DELETE /api/account/tokens/{id}                        → 204  (purge from history)
 
 POST   /api/account/forgot-password      { email }            → 204  (always — no email enumeration)
 POST   /api/account/reset-password       { email, token, newPassword } → 204
@@ -593,7 +602,9 @@ dotnet ef database update <PreviousMigrationName>    --project src/Stashboard.Ap
 
 ✅ **V10.3 — Two-factor authentication (TOTP)** _(shipped in 10.3.0)_ — login can now require a one-time code from an authenticator app (Google Authenticator, Authy, 1Password, Bitwarden, …) on top of the password — closing the gap that the highest-risk surface in the product (credential storage, host shell, container exec, recreate/destroy) sat behind a single password. Enroll from **Account → Two-factor authentication**: the server generates a 160-bit secret and shows a **QR code** + manual key (rendered client-side via `qrcode`), and verifies a first code before turning 2FA on. The secret is **encrypted at rest** (`Otp.NET`, RFC 6238) and only ever leaves the server as the enrollment QR. With 2FA on, login becomes two steps — `POST /api/auth/login` returns a short-lived **signed challenge** instead of tokens, and `POST /api/auth/login/2fa` exchanges a valid code for the normal `AuthResponse`; verification tolerates ±1 step of clock drift, rejects replayed codes, and shares the existing account-lockout counter. Enabling yields **ten one-time recovery codes** (shown once, hashed at rest, regenerable) for a lost device. Disabling 2FA and regenerating recovery codes **rotate the SecurityStamp and sign out every session**, like a password change; the 2FA state round-trips through **backup/restore**. **Out of scope:** WebAuthn / passkeys / hardware keys, SMS or email OTP, and org-wide enforcement. See the [CHANGELOG](./CHANGELOG.md).
 
-The roadmap continues in **[ROADMAP.md](./ROADMAP.md)** — the V7 visual Compose editor track is **complete** (V7.0–V7.9), the V8 create/clone/snapshot/restore track now covers both LXC **and** VMs (V8.0–V8.4 — create / clone / restore mirrored for both guest kinds), makes the VM Config tab writable (V8.5 — edit parameters) and adds the **browser VM console** (V8.6), the **Home Assistant integration via MQTT** covers both read-only state/update/health publishing (V9.0) **and** the derived-signal sensors — update counts, node-alert verdicts, backup freshness, estate roll-ups (V9.1), Stashboard can now **update its own container** (V9.2), and the **V10 monitoring/notification depth track** has opened with **Apprise** notification channels (V10.0), **uptime history & analytics** on the Healthcheck tab (V10.1), a shareable **public status page** (V10.2), and **TOTP two-factor authentication** (V10.3).
+✅ **V10.4 — Personal access tokens** _(shipped in 10.4.0)_ — drive the REST API from a script or external monitoring without storing a password and replaying the login. Mint long-lived, scoped, revocable **PATs** from a new **Account → API tokens** card: each has a name, a scope (`read` / `full`) and an optional expiry (30 / 60 / 90 days, never, or custom), and creating one re-asks for your password. The secret (`sb_pat_…`) is **shown once** and stored only as a peppered **HMAC-SHA256 hash** (the refresh-token model); the list shows a non-secret hint, scope, expiry, **last-used** time and status. Authenticate with `Authorization: Bearer sb_pat_…` — a policy scheme routes each request to the JWT or PAT handler by prefix, so every existing `[Authorize]` endpoint resolves a PAT to its owner, and **scope is enforced by HTTP method** (a `read` token is `403`'d on any mutation). Revocation/expiry is **immediate** (the token fails its next request, `401`); `LastUsedUtc` is stamped (throttled). PATs are deliberately **independent of `SecurityStamp`** — a password change / logout-all doesn't revoke them, so automation survives session rotation — but **account deletion removes them** (FK cascade). By construction a PAT (even `full`) is **refused** on the **host-terminal / container-exec** ticket endpoints and on account-security mutations (password / email / 2FA / deletion / token & secret settings). As bearer secrets they are **not** exported in backup/restore. **Out of scope:** OAuth client-credentials / third-party authorization, per-endpoint ACLs beyond the coarse scopes, and usage analytics beyond last-used. See the [CHANGELOG](./CHANGELOG.md).
+
+The roadmap continues in **[ROADMAP.md](./ROADMAP.md)** — the V7 visual Compose editor track is **complete** (V7.0–V7.9), the V8 create/clone/snapshot/restore track now covers both LXC **and** VMs (V8.0–V8.4 — create / clone / restore mirrored for both guest kinds), makes the VM Config tab writable (V8.5 — edit parameters) and adds the **browser VM console** (V8.6), the **Home Assistant integration via MQTT** covers both read-only state/update/health publishing (V9.0) **and** the derived-signal sensors — update counts, node-alert verdicts, backup freshness, estate roll-ups (V9.1), Stashboard can now **update its own container** (V9.2), and the **V10 monitoring/notification depth track** has opened with **Apprise** notification channels (V10.0), **uptime history & analytics** on the Healthcheck tab (V10.1), a shareable **public status page** (V10.2), **TOTP two-factor authentication** (V10.3), and **personal access tokens** for scripting the API (V10.4).
 ## License
 
 MIT

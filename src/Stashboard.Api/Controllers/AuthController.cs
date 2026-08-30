@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Stashboard.Api.Auth;
+using Stashboard.Api.Auth.PersonalAccessTokens;
 using Stashboard.Api.Contracts;
 using Stashboard.Api.Data;
 using Stashboard.Api.Mapping;
@@ -105,6 +106,7 @@ public class AuthController(IUserService users, ITokenService tokens, ITwoFactor
 
     [HttpPost("logout-all")]
     [Authorize]
+    [DenyPersonalAccessToken]
     public async Task<IActionResult> LogoutAll(CancellationToken сancellationToken)
     {
         var userId = User.GetUserId();

@@ -26,7 +26,7 @@ export type ContainerLifecycleActionsProps = {
 }
 
 export function ContainerLifecycleActions({
-  containerName: _containerName, running, restarting = false, allowRemoval, busy, size = 'sm', density = 'full', className, onAction, onRemoveRequest,
+    containerName, running, restarting = false, allowRemoval, busy, size = 'sm', density = 'full', className, onAction, onRemoveRequest,
 }: ContainerLifecycleActionsProps) {
   const compact = density === 'compact'
   const remove = () => {
@@ -74,6 +74,7 @@ export function ContainerLifecycleActions({
           disabled={busy}
           onClick={remove}
           title="Remove container (destructive)"
+          aria-label={`Remove ${containerName}`}
         >
           <Trash2 className="h-3.5 w-3.5" />
           <span className="label-text">Remove</span>
@@ -90,6 +91,7 @@ export function ContainerLifecycleActions({
               className="cc-overflow-item cc-overflow-item-danger"
               disabled={busy}
               onClick={remove}
+              aria-label={`Remove ${containerName}`}
             >
               <Trash2 className="h-3.5 w-3.5" /> Remove
             </button>

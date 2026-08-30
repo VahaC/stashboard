@@ -28,4 +28,12 @@ public static class ClaimsPrincipalExtensions
     /// <summary>Returns the security-stamp snapshot embedded in the access token, or null.</summary>
     public static string? GetSecurityStamp(this ClaimsPrincipal principal)
         => principal.FindFirstValue(StashboardClaims.SecurityStamp);
+
+    /// <summary>True when the request was authenticated with a personal access token (not a JWT).</summary>
+    public static bool IsPersonalAccessToken(this ClaimsPrincipal principal)
+        => principal.FindFirstValue(StashboardClaims.AuthType) == StashboardClaims.PersonalAccessTokenAuthType;
+
+    /// <summary>Returns the PAT scope claim (<c>read</c> / <c>full</c>), or null for non-PAT principals.</summary>
+    public static string? GetPatScope(this ClaimsPrincipal principal)
+        => principal.FindFirstValue(StashboardClaims.PatScope);
 }

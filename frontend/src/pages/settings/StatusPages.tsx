@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { useDeleteStatusPage, useSaveStatusPage, useServices, useStatusPages } from '@/lib/queries'
 import { copyToClipboard, parseApiErrors } from '@/lib/utils'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import type { Service, StatusPage } from '@/lib/types'
 import '@/styles/account-page.css'
 import '@/styles/status-pages.css'
@@ -23,11 +24,13 @@ import '@/styles/status-pages.css'
  * copy the public link. The public view itself lives at `/status/{slug}` and needs no account.
  */
 export function StatusPages() {
+  const confirm = useConfirm()
   const { data: pages = [] } = useStatusPages()
   const del = useDeleteStatusPage()
   const [editing, setEditing] = useState<StatusPage | null>(null)
   const [creating, setCreating] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
+  const [manualCopy, setManualCopy] = useState<string | null>(null)
 
   const copyLink = async (slug: string) => {
     const ok = await copyToClipboard(publicUrl(slug))
@@ -35,8 +38,8 @@ export function StatusPages() {
       setCopied(slug)
       setTimeout(() => setCopied((s) => (s === slug ? null : s)), 1500)
     } else {
-      // Last-resort fallback so the user can still grab the link by hand.
-      window.prompt('Copy this public link:', publicUrl(slug))
+      // Clipboard API unavailable — show the link in our own modal so the user can copy it by hand.
+      setManualCopy(publicUrl(slug))
     }
   }
 
@@ -99,8 +102,13 @@ export function StatusPages() {
                 variant="ghost"
                 size="icon"
                 title="Delete"
-                onClick={() => {
-                  if (confirm(`Delete status page “${page.title}”? The public link will stop working.`))
+                onClick={async () => {
+                  if (await confirm({
+                    title: 'Delete status page?',
+                    message: `“${page.title}” will be deleted and its public link will stop working.`,
+                    confirmLabel: 'Delete',
+                    destructive: true,
+                  }))
                     del.mutate(page.id)
                 }}
               >
@@ -120,6 +128,26 @@ export function StatusPages() {
           }}
         />
       )}
+
+      <Dialog open={manualCopy !== null} onOpenChange={(open) => { if (!open) setManualCopy(null) }}>
+        {manualCopy && (
+          <DialogContent className="confirm-dialog">
+            <DialogHeader>
+              <DialogTitle>Copy public link</DialogTitle>
+              <DialogDescription>Select and copy the link below.</DialogDescription>
+            </DialogHeader>
+            <Input
+              readOnly
+              value={manualCopy}
+              autoFocus
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setManualCopy(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   )
 }

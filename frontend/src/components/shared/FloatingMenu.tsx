@@ -5,6 +5,8 @@ interface FloatingMenuProps {
   pos: { x: number; y: number }
   onClose: () => void
   children: React.ReactNode
+  /** Class for the menu container. Defaults to the shared `cgroup-menu` styling. */
+  className?: string
 }
 
 /**
@@ -12,7 +14,7 @@ interface FloatingMenuProps {
  * Renders a transparent overlay behind itself so clicking anywhere outside
  * (including the trigger button) fires onClose.
  */
-export function FloatingMenu({ pos, onClose, children }: FloatingMenuProps) {
+export function FloatingMenu({ pos, onClose, children, className = 'cgroup-menu' }: FloatingMenuProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [adj, setAdj] = useState(pos)
 
@@ -31,7 +33,7 @@ export function FloatingMenu({ pos, onClose, children }: FloatingMenuProps) {
       <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onMouseDown={onClose} />
       <div
         ref={ref}
-        className="cgroup-menu"
+        className={className}
         style={{ left: adj.x, top: adj.y }}
         onClick={(e) => e.stopPropagation()}
       >

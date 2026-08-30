@@ -64,6 +64,8 @@ export function ContainerStatsPanel({
   }, [connectionId, containerName, stopStream])
 
   useEffect(() => {
+    // Subscribing to an external stats stream; setState here is intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (autoStart) startStream()
     return () => stopStream()
     // eslint-disable-next-line react-hooks/exhaustive-deps

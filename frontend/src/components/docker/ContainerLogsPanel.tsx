@@ -39,7 +39,7 @@ export function ContainerLogsPanel({
   const panelRef = useRef<HTMLDivElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const pausedRef = useRef(paused)
-  pausedRef.current = paused
+  useEffect(() => { pausedRef.current = paused }, [paused])
 
   const stopStream = useCallback(() => {
     handleRef.current?.abort()
@@ -73,6 +73,8 @@ export function ContainerLogsPanel({
   }, [connectionId, containerName, stopStream])
 
   useEffect(() => {
+    // Subscribing to an external log stream; setState here is intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (autoStart) startStream()
     return () => stopStream()
     // eslint-disable-next-line react-hooks/exhaustive-deps

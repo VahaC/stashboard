@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppLayout } from './components/AppLayout'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { ConfirmProvider } from './components/shared/ConfirmDialog'
 import { useServerThemeSync, useThemeSync } from './lib/use-theme'
 
 const Login = lazy(() => import('./pages/Login').then((m) => ({ default: m.Login })))
@@ -54,6 +55,7 @@ export default function App() {
   return (
     <QueryClientProvider client={qc}>
       <ThemeBoot />
+      <ConfirmProvider>
       <BrowserRouter>
         <Suspense fallback={<div className="app-boot-loading">Loading...</div>}>
           <Routes>
@@ -104,6 +106,7 @@ export default function App() {
           </Routes>
         </Suspense>
       </BrowserRouter>
+      </ConfirmProvider>
     </QueryClientProvider>
   )
 }

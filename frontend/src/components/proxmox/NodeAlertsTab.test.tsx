@@ -6,7 +6,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 vi.mock('@/lib/api', () => ({ api: { get: vi.fn(), put: vi.fn(), post: vi.fn() } }))
 
 import { api } from '@/lib/api'
-import { NodeAlertsTab, validateThresholds } from './NodeAlertsTab'
+import { NodeAlertsTab } from './NodeAlertsTab'
+import { validateThresholds } from './nodeAlertsHelpers'
 import type {
   ProxmoxConnection,
   ProxmoxNodeAlert,

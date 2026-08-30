@@ -59,6 +59,9 @@ public interface IUserService
 
     Task<OperationResult> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword, CancellationToken cancellationToken = default);
 
+    /// <summary>Re-authenticates an already-signed-in user by verifying their current password (no side effects).</summary>
+    Task<OperationResult> VerifyPasswordAsync(Guid userId, string currentPassword, CancellationToken cancellationToken = default);
+
     Task<TokenIssueResult> RequestEmailChangeAsync(Guid userId, string newEmail, string currentPassword, CancellationToken cancellationToken = default);
     Task<OperationResult> ConfirmEmailChangeAsync(Guid userId, string token, CancellationToken cancellationToken = default);
 

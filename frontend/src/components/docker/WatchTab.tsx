@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { DockerContainerCard, DockerWatch, Service } from '@/lib/types'
 import { useCheckConnectionWatch, useConnectionWatches, useDeleteConnectionWatch } from '@/lib/queries'
 import { DockerWatchForm } from '@/components/DockerWatchSection'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import { WatchEmptyState } from './WatchEmptyState'
 
 export type WatchTabProps = {
@@ -19,6 +20,7 @@ export type WatchTabProps = {
  * to start tracking.
  */
 export function WatchTab({ connectionId, card, serviceContext }: WatchTabProps) {
+  const confirm = useConfirm()
   const watches = useConnectionWatches(connectionId)
   const checkNow = useCheckConnectionWatch(connectionId)
   const deleteWatch = useDeleteConnectionWatch(connectionId)
@@ -42,7 +44,12 @@ export function WatchTab({ connectionId, card, serviceContext }: WatchTabProps) 
 
   const handleDelete = async () => {
     if (!existing) return
-    if (!confirm(`Stop tracking "${existing.label || existing.containerName}" for updates?`)) return
+    if (!(await confirm({
+      title: 'Stop tracking?',
+      message: `“${existing.label || existing.containerName}” will no longer be tracked for updates.`,
+      confirmLabel: 'Stop tracking',
+      destructive: true,
+    }))) return
     try {
       await deleteWatch.mutateAsync(existing.id)
     } catch { /* surfaced via mutation state */ }

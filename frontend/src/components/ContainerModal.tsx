@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Activity,
@@ -105,8 +105,12 @@ export function ContainerModal({
   allowExec, allowExecGlobal, onAction, onClose,
 }: ContainerModalProps) {
   const [tab, setTab] = useState<ContainerModalTab>(initialTab)
-
-  useEffect(() => { setTab(initialTab) }, [initialTab])
+  // Reset the active tab when the parent opens the modal on a different tab.
+  const [prevInitialTab, setPrevInitialTab] = useState(initialTab)
+  if (initialTab !== prevInitialTab) {
+    setPrevInitialTab(initialTab)
+    setTab(initialTab)
+  }
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>

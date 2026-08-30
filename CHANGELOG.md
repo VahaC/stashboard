@@ -5,6 +5,38 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [10.4.0] — 2026-06-30
+
+### Added
+- **Personal access tokens — script the REST API (V10.4).** Until now every API call needed a
+  short-lived JWT obtained through the interactive login/refresh flow, so wiring Stashboard into a
+  script or external monitoring meant storing a password and replaying the login. V10.4 adds
+  long-lived, scoped, revocable **personal access tokens (PATs)**.
+  - **Manage from the Account page.** A new **API tokens** card lists, creates and revokes tokens
+    (`GET/POST /api/account/tokens`, `POST /api/account/tokens/{id}/revoke`,
+    `DELETE /api/account/tokens/{id}`). Each token has a **name**, a **scope** (`read` / `full`) and
+    an **optional expiry** (30 / 60 / 90 days, never, or a custom date). Creating one requires
+    re-entering the **current password**.
+  - **Shown once, stored hashed.** The secret (`sb_pat_…`) is displayed exactly once at creation and
+    only ever persisted as a peppered **HMAC-SHA256 hash** (`PersonalAccessTokenEntity`), the same
+    model as refresh tokens. The list shows a non-secret hint (`sb_pat_AB12…`), the scope, expiry,
+    **last-used** time and status.
+  - **Authenticate with `Authorization: Bearer sb_pat_…`.** A policy authentication scheme routes
+    each request to the JWT or PAT handler by bearer prefix, so every existing `[Authorize]`
+    endpoint accepts a PAT and resolves it to the owning user. **Scope is enforced by HTTP method**:
+    a `read` token is accepted on `GET/HEAD/OPTIONS` and **`403`'d on any mutation**.
+  - **Immediate revocation, independent of sessions.** A revoked or expired token fails the **next**
+    request (`401`); `LastUsedUtc` is stamped on use (throttled to one write per minute). PATs are
+    deliberately **independent of `SecurityStamp`** — a password change or logout-all does **not**
+    revoke them, so automation survives session rotation — but **deleting the account removes them**
+    (FK cascade).
+  - **Kept off high-risk surfaces by construction.** A PAT (even `full`) is refused
+    (`DenyPersonalAccessToken` → `403`) on the **host-terminal / container-exec** ticket endpoints
+    (those keep their single-use interactive-ticket flow) and on **account-security** mutations
+    (password / email / 2FA / account deletion / token management / Telegram & SMTP settings).
+  - **Backup/restore:** PATs are bearer secrets, so — like refresh tokens — they are **not**
+    exported; after a restore the user mints fresh tokens.
+
 ## [10.3.0] — 2026-06-29
 
 ### Added

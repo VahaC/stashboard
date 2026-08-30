@@ -68,6 +68,7 @@ import { ContainerInspectBody } from '@/components/docker/ContainerInspectBody'
 import { ContainerLogsPanel } from '@/components/docker/ContainerLogsPanel'
 import { ContainerStatsPanel } from '@/components/docker/ContainerStatsPanel'
 import { UpdateConfirmDialog } from '@/components/docker/atoms/UpdateConfirmDialog'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import '@/styles/service-modal.css'
 
 interface Props {
@@ -1616,6 +1617,7 @@ function StatusPanel({ watch }: { watch: DockerWatch }) {
  * know its public base URL.
  */
 function WebhookPanel({ connectionId, watch }: { connectionId: string; watch: DockerWatch }) {
+  const confirm = useConfirm()
   const [open, setOpen] = useState(false)
   const [revealed, setRevealed] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -1636,7 +1638,12 @@ function WebhookPanel({ connectionId, watch }: { connectionId: string; watch: Do
   }
 
   const onRotate = async () => {
-    if (!confirm('Rotate the webhook URL? The current URL will stop working immediately.')) return
+    if (!(await confirm({
+      title: 'Rotate webhook URL?',
+      message: 'The current URL will stop working immediately and a new one will be issued.',
+      confirmLabel: 'Rotate',
+      destructive: true,
+    }))) return
     try {
       await rotate.mutateAsync(watch.id)
       setRevealed(true)
@@ -1644,7 +1651,12 @@ function WebhookPanel({ connectionId, watch }: { connectionId: string; watch: Do
   }
 
   const onDisable = async () => {
-    if (!confirm('Disable webhook delivery? The current URL will stop working immediately.')) return
+    if (!(await confirm({
+      title: 'Disable webhook delivery?',
+      message: 'The current URL will stop working immediately.',
+      confirmLabel: 'Disable',
+      destructive: true,
+    }))) return
     try { await remove.mutateAsync(watch.id) }
     catch { /* swallow */ }
   }

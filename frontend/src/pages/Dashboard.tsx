@@ -68,6 +68,7 @@ export function Dashboard() {
 
   const editingService = editingId ? (services.find((s) => s.id === editingId) ?? null) : null
 
+  /* eslint-disable react-hooks/set-state-in-effect -- syncing UI state from the URL deep link (external system) */
   useEffect(() => {
     if (!deepLinkServiceId) return
     if (deepLinkServiceId === handledDeepLinkServiceId) return
@@ -106,6 +107,7 @@ export function Dashboard() {
     services,
     setSearchParams,
   ])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const filtered = useMemo(() => {
     const loweredSearch = search.toLowerCase()

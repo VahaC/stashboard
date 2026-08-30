@@ -31,4 +31,17 @@ public static class StashboardClaims
 
     /// <summary>Purpose value for the interim token issued between the two login steps.</summary>
     public const string TwoFactorPendingPurpose = "2fa_pending";
+
+    /// <summary>
+    /// How the principal authenticated. Absent for normal JWT access tokens; set to
+    /// <see cref="PersonalAccessTokenAuthType"/> when the request was authenticated with a PAT.
+    /// Used to keep PATs off high-risk surfaces (host-shell / exec / account-security mutations).
+    /// </summary>
+    public const string AuthType = "auth_type";
+
+    /// <summary><see cref="AuthType"/> value identifying a personal-access-token principal.</summary>
+    public const string PersonalAccessTokenAuthType = "pat";
+
+    /// <summary>Scope carried by a PAT principal: <c>read</c> or <c>full</c>.</summary>
+    public const string PatScope = "pat_scope";
 }

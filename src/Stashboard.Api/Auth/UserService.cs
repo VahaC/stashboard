@@ -259,6 +259,16 @@ public sealed class UserService(
         return OperationResult.Ok();
     }
 
+    public async Task<OperationResult> VerifyPasswordAsync(Guid userId, string currentPassword, CancellationToken cancellationToken = default)
+    {
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null)
+            return OperationResult.Fail(AuthFailureReason.UserNotFound, "User not found.");
+        if (!hasher.Verify(currentPassword, user.PasswordHash))
+            return OperationResult.Fail(AuthFailureReason.InvalidCredentials, "Current password is incorrect.");
+        return OperationResult.Ok();
+    }
+
     // ── Email change ─────────────────────────────────────────────────────────
 
     public async Task<TokenIssueResult> RequestEmailChangeAsync(Guid userId, string newEmail, string currentPassword, CancellationToken cancellationToken = default)

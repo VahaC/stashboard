@@ -196,10 +196,8 @@ export function LxcModal({ guest, connection, initialTab = 'overview', onClose }
   // remaining tabs stay mount-on-demand so they refetch on each visit.
   const [seenConsole, setSeenConsole] = useState(tab === 'console')
   const [seenLogs, setSeenLogs] = useState(tab === 'logs')
-  useEffect(() => {
-    if (tab === 'console') setSeenConsole(true)
-    else if (tab === 'logs') setSeenLogs(true)
-  }, [tab])
+  if (tab === 'console' && !seenConsole) setSeenConsole(true)
+  else if (tab === 'logs' && !seenLogs) setSeenLogs(true)
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
@@ -386,12 +384,12 @@ function GuestServiceLinkSection({ connectionId, guest }: { connectionId: string
   const setService = useSetProxmoxGuestService(connectionId)
   const [error, setError] = useState<string | null>(null)
 
-  const services = servicesQuery.data ?? []
   // Group services by category — the same grouping the Services page uses
   // (categoryName → "Uncategorized"), categories A→Z with "Uncategorized" last.
   const servicesByCategory = useMemo(() => {
-    const groups = new Map<string, typeof services>()
-    for (const s of services) {
+    const list = servicesQuery.data ?? []
+    const groups = new Map<string, typeof list>()
+    for (const s of list) {
       const key = s.categoryName?.trim() || 'Uncategorized'
       const arr = groups.get(key) ?? []
       arr.push(s)
@@ -613,6 +611,8 @@ function WatchTab({ guest, connection }: { guest: ProxmoxGuest; connection: Prox
 
   const applySnooze = (hours: number | null) => {
     setError(null)
+    // Event handler — reading the current time here is intentional, not a render.
+    // eslint-disable-next-line react-hooks/purity
     const until = hours == null ? null : new Date(Date.now() + hours * 3600_000).toISOString()
     snooze.mutate(
       { vmId: guest.vmId, until },

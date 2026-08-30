@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Stashboard.Api.Auth;
+using Stashboard.Api.Auth.PersonalAccessTokens;
 using Stashboard.Api.Contracts;
 using Stashboard.Api.Mapping;
 using Stashboard.Api.Notifications;
@@ -82,6 +83,7 @@ public class AccountController(
 
     [HttpPost("change-password")]
     [Authorize]
+    [DenyPersonalAccessToken]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req, CancellationToken сancellationToken)
     {
         var result = await users.ChangePasswordAsync(User.GetUserId(), req.CurrentPassword, req.NewPassword, сancellationToken);
@@ -93,6 +95,7 @@ public class AccountController(
 
     [HttpPost("change-email")]
     [Authorize]
+    [DenyPersonalAccessToken]
     public async Task<IActionResult> ChangeEmail([FromBody] ChangeEmailRequest req, CancellationToken сancellationToken)
     {
         var issued = await users.RequestEmailChangeAsync(User.GetUserId(), req.NewEmail, req.CurrentPassword, сancellationToken);
@@ -103,6 +106,7 @@ public class AccountController(
 
     [HttpPost("confirm-email-change")]
     [Authorize]
+    [DenyPersonalAccessToken]
     public async Task<IActionResult> ConfirmEmailChange([FromBody] ConfirmEmailChangeRequest req, CancellationToken сancellationToken)
     {
         var result = await users.ConfirmEmailChangeAsync(User.GetUserId(), req.Token, сancellationToken);
@@ -163,8 +167,10 @@ public class AccountController(
 
     // ── Telegram settings ─────────────────────────────────────────────────────
 
+    // Both telegram endpoints expose / accept the bot token (a secret), so they stay JWT-only.
     [HttpGet("telegram")]
     [Authorize]
+    [DenyPersonalAccessToken]
     public async Task<ActionResult<TelegramSettingsResponse>> GetTelegramSettings(CancellationToken сancellationToken)
     {
         var user = await users.FindByIdAsync(User.GetUserId(), сancellationToken);
@@ -174,6 +180,7 @@ public class AccountController(
 
     [HttpPut("telegram")]
     [Authorize]
+    [DenyPersonalAccessToken]
     public async Task<IActionResult> UpdateTelegramSettings([FromBody] UpdateTelegramSettingsRequest req, CancellationToken сancellationToken)
     {
         var result = await users.UpdateTelegramSettingsAsync(
@@ -194,6 +201,7 @@ public class AccountController(
     /// </summary>
     [HttpPost("2fa/enroll")]
     [Authorize]
+    [DenyPersonalAccessToken]
     public async Task<ActionResult<TwoFactorEnrollResponse>> EnrollTwoFactor(CancellationToken cancellationToken)
     {
         var enrollment = await twoFactor.BeginEnrollAsync(User.GetUserId(), cancellationToken);
@@ -204,6 +212,7 @@ public class AccountController(
     /// <summary>Confirms the first code, enables 2FA, and returns the one-time recovery codes.</summary>
     [HttpPost("2fa/enable")]
     [Authorize]
+    [DenyPersonalAccessToken]
     public async Task<ActionResult<RecoveryCodesResponse>> EnableTwoFactor([FromBody] EnableTwoFactorRequest req, CancellationToken cancellationToken)
     {
         var result = await twoFactor.EnableAsync(User.GetUserId(), req.Code, cancellationToken);
@@ -214,6 +223,7 @@ public class AccountController(
     /// <summary>Disables 2FA after re-entering the password; rotates the stamp + signs out all sessions.</summary>
     [HttpPost("2fa/disable")]
     [Authorize]
+    [DenyPersonalAccessToken]
     public async Task<IActionResult> DisableTwoFactor([FromBody] TwoFactorPasswordRequest req, CancellationToken cancellationToken)
     {
         var result = await twoFactor.DisableAsync(User.GetUserId(), req.CurrentPassword, cancellationToken);
@@ -224,6 +234,7 @@ public class AccountController(
     /// <summary>Regenerates the recovery-code set after re-entering the password; old codes stop working.</summary>
     [HttpPost("2fa/recovery-codes")]
     [Authorize]
+    [DenyPersonalAccessToken]
     public async Task<ActionResult<RecoveryCodesResponse>> RegenerateRecoveryCodes([FromBody] TwoFactorPasswordRequest req, CancellationToken cancellationToken)
     {
         var result = await twoFactor.RegenerateRecoveryCodesAsync(User.GetUserId(), req.CurrentPassword, cancellationToken);
@@ -240,6 +251,7 @@ public class AccountController(
 
     [HttpPut("email-settings")]
     [Authorize]
+    [DenyPersonalAccessToken]
     public async Task<IActionResult> UpdateEmailSettings([FromBody] UpdateEmailSettingsRequest req, CancellationToken cancellationToken)
     {
         await emailSettings.UpdateAsync(req, cancellationToken);
@@ -250,6 +262,7 @@ public class AccountController(
 
     [HttpDelete]
     [Authorize]
+    [DenyPersonalAccessToken]
     public async Task<IActionResult> Delete([FromBody] DeleteAccountRequest req, CancellationToken сancellationToken)
     {
         var result = await users.DeleteAccountAsync(User.GetUserId(), req.CurrentPassword, сancellationToken);

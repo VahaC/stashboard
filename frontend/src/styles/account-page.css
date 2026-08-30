@@ -186,3 +186,116 @@
   color: var(--muted-foreground);
   line-height: 1.4;
 }
+
+/* ── V10.4 — Personal access tokens ──────────────────────────────────── */
+
+.pat-table-wrap {
+  overflow-x: auto;
+}
+
+.pat-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.pat-table th,
+.pat-table td {
+  text-align: left;
+  padding: 0.5rem 0.625rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.pat-table th {
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+.pat-name {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.pat-hint {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+}
+
+.pat-actions-cell {
+  text-align: right;
+  width: 1%;
+}
+
+.pat-menu-trigger {
+  display: inline-flex;
+  height: 1.75rem;
+  width: 1.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.pat-menu-trigger:hover:not(:disabled) {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+.pat-menu-trigger:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Floating actions menu — mirrors the shared cgroup-menu look, kept self-contained for this page. */
+.pat-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 140px;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .12);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pat-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--foreground);
+  background: none;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.pat-menu-item:hover {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+.pat-menu-item--danger { color: var(--destructive); }
+
+.pat-menu-item--danger:hover {
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
+}
+
+.pat-secret {
+  display: block;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.9rem;
+  word-break: break-all;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--muted);
+}

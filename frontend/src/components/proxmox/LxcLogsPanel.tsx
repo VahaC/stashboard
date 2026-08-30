@@ -97,7 +97,7 @@ function LiveLogs({ connectionId, vmId, active }: { connectionId: string; vmId: 
   const handleRef = useRef<ProxmoxLogsHandle | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const pausedRef = useRef(paused)
-  pausedRef.current = paused
+  useEffect(() => { pausedRef.current = paused }, [paused])
   // Monotonic run id: each start/stop bumps it. The ticket→socket open is async,
   // so a handle (or a late callback) can arrive after its run was superseded — by
   // a Stop, an unmount, or React StrictMode's mount→unmount→remount. When the
@@ -150,6 +150,8 @@ function LiveLogs({ connectionId, vmId, active }: { connectionId: string; vmId: 
   }, [connectionId, vmId])
 
   useEffect(() => {
+    // Subscribing to an external log stream; setState here is intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     startStream()
     return () => stopStream()
     // eslint-disable-next-line react-hooks/exhaustive-deps

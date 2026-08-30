@@ -11,6 +11,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<UserEntity> Users => Set<UserEntity>();
     public DbSet<RefreshTokenEntity> RefreshTokens => Set<RefreshTokenEntity>();
     public DbSet<TwoFactorRecoveryCodeEntity> TwoFactorRecoveryCodes => Set<TwoFactorRecoveryCodeEntity>();
+    public DbSet<PersonalAccessTokenEntity> PersonalAccessTokens => Set<PersonalAccessTokenEntity>();
     public DbSet<EmailSettingsEntity> EmailSettings => Set<EmailSettingsEntity>();
     public DbSet<HostShellSettingsEntity> HostShellSettings => Set<HostShellSettingsEntity>();
     public DbSet<ContainerExecSettingsEntity> ContainerExecSettings => Set<ContainerExecSettingsEntity>();
@@ -125,6 +126,18 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.HasOne(c => c.User)
                 .WithMany(u => u.TwoFactorRecoveryCodes)
                 .HasForeignKey(c => c.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PersonalAccessTokenEntity>(e =>
+        {
+            // V10.4 — looked up by hash on every PAT-authenticated request; listed by owner in the UI.
+            e.HasIndex(t => t.TokenHash).IsUnique();
+            e.HasIndex(t => t.UserId);
+            // Owner cascade — deleting a user removes their tokens, mirroring refresh tokens.
+            e.HasOne(t => t.User)
+                .WithMany(u => u.PersonalAccessTokens)
+                .HasForeignKey(t => t.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

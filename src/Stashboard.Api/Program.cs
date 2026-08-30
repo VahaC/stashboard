@@ -1,11 +1,11 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Threading.RateLimiting;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Stashboard.Api.Auth;
+using Stashboard.Api.Auth.PersonalAccessTokens;
 using Stashboard.Api.Data;
 using Stashboard.Api.Mapping;
 using Stashboard.Api.Notifications;
@@ -74,6 +74,7 @@ public class Program
         builder.Services.AddScoped<IUserService, UserService>();
         builder.Services.AddScoped<ITokenService, TokenService>();
         builder.Services.AddScoped<ITwoFactorService, TwoFactorService>();
+        builder.Services.AddScoped<IPersonalAccessTokenService, PersonalAccessTokenService>();
         builder.Services.AddHostedService<RefreshTokenCleanupHostedService>();
 
         // Email / notifications. Settings live in the DB (single row) and are editable from the
@@ -94,15 +95,10 @@ public class Program
 
         var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
             ?? throw new InvalidOperationException("Jwt section not configured.");
-        builder.Services
-            .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddJwtBearer(opts =>
-            {
-                opts.MapInboundClaims = false;
-                opts.TokenValidationParameters = TokenService.BuildValidationParameters(jwtOptions);
-                opts.Events = JwtBearerEventHandlers.Build();
-            });
-        builder.Services.AddAuthorization();
+        // V10.4 — dual-credential auth: JWT access tokens + personal access tokens. A policy scheme
+        // routes each request to the right handler by bearer prefix, and the default authorization
+        // policy enforces the PAT read/write scope. See StashboardAuthenticationExtensions.
+        builder.Services.AddStashboardAuthentication(jwtOptions);
 
         // Rate-limit policies for endpoints that send email or accept account-recovery
         // tokens — protects against email-bombing and credential-stuffing.

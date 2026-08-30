@@ -23,6 +23,10 @@ namespace Stashboard.Api.Services;
 /// different encryption keys.
 /// Runtime status (digests, last-checked timestamps, update history) is
 /// intentionally not exported — it is re-derived by the background checker.
+/// Bearer secrets that only make sense on one instance — refresh tokens and
+/// V10.4 personal access tokens — are likewise <b>not</b> exported (an export
+/// would either leak them or be useless); after a restore the user mints fresh
+/// tokens.
 /// </para>
 /// <para>
 /// <b>Maintenance contract:</b> whenever a persisted field or entity is added,

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Stashboard.Api.Auth;
+using Stashboard.Api.Auth.PersonalAccessTokens;
 using Stashboard.Api.Contracts;
 using Stashboard.Api.Data;
 using Stashboard.Api.Mapping;
@@ -55,6 +56,7 @@ public class ContainerExecController(
     ILogger<ContainerExecController> logger) : ControllerBase
 {
     [HttpPost("ticket")]
+    [DenyPersonalAccessToken]
     public async Task<ActionResult<ContainerExecTicketResponse>> CreateTicket(
         Guid connectionId,
         string containerName,

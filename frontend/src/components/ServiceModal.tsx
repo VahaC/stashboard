@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { DockerWatchSection } from '@/components/DockerWatchSection'
 import { ProxmoxLinkSection } from '@/components/ProxmoxLinkSection'
 import { UptimeHistorySection } from '@/components/UptimeHistorySection'
+import { useConfirm } from '@/components/shared/ConfirmDialog'
 import '@/styles/service-modal.css'
 
 export type ModalTab = 'general' | 'healthcheck' | 'uptime' | 'credentials' | 'docker' | 'proxmox'
@@ -66,6 +67,7 @@ const resolveStatus = (s: ServiceStatus) =>
   typeof s === 'number' ? (['Unknown', 'Up', 'Down', 'NeedsAttention'][s] as string) : s
 
 export function ServiceModal({ open, onOpenChange, service, initialTab }: Props) {
+  const confirm = useConfirm()
   const { data: categories = [] } = useCategories()
   const upsert = useUpsertService()
   const del = useDeleteService()
@@ -169,7 +171,12 @@ export function ServiceModal({ open, onOpenChange, service, initialTab }: Props)
 
   const onDelete = async () => {
     if (!service) return
-    if (!confirm(`Delete "${service.name}"?`)) return
+    if (!(await confirm({
+      title: 'Delete service?',
+      message: `“${service.name}” will be permanently deleted.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    }))) return
     await del.mutateAsync(service.id)
     onOpenChange(false)
   }

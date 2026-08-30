@@ -178,6 +178,14 @@
   background: rgb(0 0 0 / 0.5);
 }
 
+.ui-dialog-content.confirm-dialog {
+  max-width: 26rem;
+}
+
+.confirm-dialog .ui-dialog-description {
+  white-space: pre-line;
+}
+
 .ui-dialog-content {
   position: fixed;
   left: 50%;
