@@ -31,6 +31,8 @@ const ProxmoxRestoreSettings = lazy(() => import('./pages/settings/ProxmoxRestor
 const ImageCleanupSettings = lazy(() => import('./pages/settings/ImageCleanupSettings').then((m) => ({ default: m.ImageCleanupSettings })))
 const HealthCheckSettings = lazy(() => import('./pages/settings/HealthCheckSettings').then((m) => ({ default: m.HealthCheckSettings })))
 const MqttSettings = lazy(() => import('./pages/settings/MqttSettings').then((m) => ({ default: m.MqttSettings })))
+const SsoSettings = lazy(() => import('./pages/settings/SsoSettings').then((m) => ({ default: m.SsoSettings })))
+const OidcCallback = lazy(() => import('./pages/OidcCallback').then((m) => ({ default: m.OidcCallback })))
 const AuditLog = lazy(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })))
 const Help = lazy(() => import('./pages/Help').then((m) => ({ default: m.Help })))
 const HelpProxmoxApi = lazy(() => import('./pages/help/HelpProxmoxApi').then((m) => ({ default: m.HelpProxmoxApi })))
@@ -64,6 +66,8 @@ export default function App() {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/confirm-email" element={<ConfirmEmail />} />
+            {/* V10.5 — OIDC redirect target. Public: it runs before a session exists. */}
+            <Route path="/oidc/callback" element={<OidcCallback />} />
             {/* V10.2 — public, unauthenticated status page. Outside ProtectedRoute / AppLayout. */}
             <Route path="/status/:slug" element={<PublicStatusPage />} />
             <Route element={<ProtectedRoute />}>
@@ -97,6 +101,7 @@ export default function App() {
                   <Route path="health-checks" element={<HealthCheckSettings />} />
                   <Route path="status-pages" element={<StatusPages />} />
                   <Route path="home-assistant" element={<MqttSettings />} />
+                  <Route path="sso" element={<SsoSettings />} />
                   <Route path="backup" element={<Backup />} />
                   <Route path="account" element={<Account />} />
                 </Route>

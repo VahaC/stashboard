@@ -86,5 +86,9 @@ public interface IUserService
 
     Task<OperationResult> DeleteAccountAsync(Guid userId, string currentPassword, CancellationToken cancellationToken = default);
 
+    /// <summary>V10.5 — toggles the per-user "local password sign-in disabled" flag. Gating
+    /// (must be OIDC-linked, OIDC must be enabled) is enforced by the caller.</summary>
+    Task<OperationResult> SetLocalLoginDisabledAsync(Guid userId, bool disabled, CancellationToken cancellationToken = default);
+
     static string Normalize(string email) => (email ?? string.Empty).Trim().ToUpperInvariant();
 }

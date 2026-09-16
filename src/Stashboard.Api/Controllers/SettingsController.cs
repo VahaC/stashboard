@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Stashboard.Api.Auth.Oidc;
+using Stashboard.Api.Auth.PersonalAccessTokens;
 using Stashboard.Api.Contracts;
 using Stashboard.Api.Notifications;
 using Stashboard.Api.Services.ContainerExec;
@@ -40,7 +42,9 @@ public class SettingsController(
     IMqttSettingsService mqtt,
     IMqttBrokerClient mqttBroker,
     IAppriseSettingsService apprise,
-    IAppriseSender appriseSender) : ControllerBase
+    IAppriseSender appriseSender,
+    IOidcSettingsService oidc,
+    IOidcDiscoveryClient oidcDiscovery) : ControllerBase
 {
     /// <summary>The host-terminal master switch (the global gate for V5.3).</summary>
     [HttpGet("host-shell")]
@@ -273,5 +277,41 @@ public class SettingsController(
     {
         var idx = url.IndexOf("://", StringComparison.Ordinal);
         return idx <= 0 ? "****" : $"{url[..idx]}://****";
+    }
+
+    /// <summary>V10.5 — the app-wide OIDC / SSO provider settings. The client secret is never
+    /// returned (presence flag only). Editing requires a live session — denied to PATs.</summary>
+    [HttpGet("oidc")]
+    public async Task<ActionResult<OidcSettingsResponse>> GetOidc(CancellationToken cancellationToken)
+        => Ok(await oidc.GetAsync(cancellationToken));
+
+    [HttpPut("oidc")]
+    [DenyPersonalAccessToken]
+    public async Task<IActionResult> UpdateOidc(
+        [FromBody] UpdateOidcSettingsRequest request, CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid) return ValidationProblem(ModelState);
+        await oidc.UpdateAsync(request, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>V10.5 — loads the configured issuer's well-known document so the operator gets
+    /// immediate feedback that discovery works before attempting a real sign-in.</summary>
+    [HttpPost("oidc/test-discovery")]
+    [DenyPersonalAccessToken]
+    public async Task<ActionResult<OidcDiscoveryTestResponse>> TestOidcDiscovery(CancellationToken cancellationToken)
+    {
+        var resolved = await oidc.GetResolvedAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(resolved.Issuer))
+            return Ok(new OidcDiscoveryTestResponse(false, null, null, "No issuer URL configured."));
+        try
+        {
+            var config = await oidcDiscovery.GetAsync(resolved.Issuer, cancellationToken);
+            return Ok(new OidcDiscoveryTestResponse(true, config.AuthorizationEndpoint, config.TokenEndpoint, null));
+        }
+        catch (Exception ex)
+        {
+            return Ok(new OidcDiscoveryTestResponse(false, null, null, ex.Message));
+        }
     }
 }

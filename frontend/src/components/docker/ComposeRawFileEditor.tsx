@@ -7,7 +7,7 @@ import {
   useComposeFileDiff,
   useSaveComposeFile,
 } from '@/lib/queries'
-import { getApiErrorMessage } from '@/lib/utils'
+import { copyToClipboard as copyTextToClipboard, getApiErrorMessage } from '@/lib/utils'
 import { ComposeDiffDialog } from './ComposeDiffDialog'
 
 /**
@@ -85,9 +85,11 @@ export function ComposeRawFileEditor({ connectionId, project }: ComposeRawFileEd
   }
 
   const copyToClipboard = async () => {
-    await navigator.clipboard.writeText(content)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    const ok = await copyTextToClipboard(content)
+    if (ok) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }
   }
 
   const downloadFile = () => {

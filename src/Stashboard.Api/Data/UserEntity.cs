@@ -103,6 +103,23 @@ public class UserEntity : AuditableEntity
     /// </summary>
     public long? TwoFactorLastUsedStep { get; set; }
 
+    // ── V10.5 — OIDC / SSO single sign-on ──────────────────────────────────────
+
+    /// <summary>
+    /// The provider's stable subject (<c>sub</c>) claim once this account is linked to an OIDC
+    /// identity. The link is keyed on this rather than email so a provider-side email change
+    /// doesn't break sign-in. Null until the account's first OIDC login. Not a secret.
+    /// </summary>
+    [MaxLength(256)]
+    public string? OidcSubject { get; set; }
+
+    /// <summary>
+    /// When true the owner has turned off local password sign-in for this account; only OIDC may
+    /// sign it in. Enforced on the password login path, and only while OIDC is actually enabled
+    /// (fail-safe: disabling the provider re-opens password login so nobody is locked out).
+    /// </summary>
+    public bool LocalLoginDisabled { get; set; }
+
     public ICollection<RefreshTokenEntity> RefreshTokens { get; set; } = new List<RefreshTokenEntity>();
 
     public ICollection<TwoFactorRecoveryCodeEntity> TwoFactorRecoveryCodes { get; set; } = new List<TwoFactorRecoveryCodeEntity>();

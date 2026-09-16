@@ -17,7 +17,7 @@ Built as **ASP.NET Core 10 Web API + React SPA**, deployed as a **single Docker 
 
 ## Stack
 
-- **Backend:** ASP.NET Core 10, controllers MVC, custom auth (PBKDF2-SHA256 passwords, optional TOTP two-factor auth, rotating refresh tokens with family reuse-detection, SecurityStamp server-side invalidation, scoped personal access tokens), JWT Bearer
+- **Backend:** ASP.NET Core 10, controllers MVC, custom auth (PBKDF2-SHA256 passwords, optional TOTP two-factor auth, optional OIDC / SSO login via Authorization Code + PKCE, rotating refresh tokens with family reuse-detection, SecurityStamp server-side invalidation, scoped personal access tokens), JWT Bearer
 - **Frontend:** Vite + React 19 + TypeScript + Tailwind v4 + shadcn-style UI + TanStack Query + react-router-dom v7
 - **DB:** SQLite (via EF Core 10 + WAL mode) — a single file on the `stashboard-data` volume; no separate database container
 - **Crypto:** AES-256-GCM for credentials at rest, key from env var
@@ -29,6 +29,7 @@ Built as **ASP.NET Core 10 Web API + React SPA**, deployed as a **single Docker 
 ### Core
 
 - Multi-user JWT auth (register / login / refresh / logout / logout-all)
+- **Single sign-on (OIDC)** (V10.5) — optional login through Authentik / Authelia / Keycloak or any OpenID Connect provider (Authorization Code + PKCE), configured from **Settings → Single sign-on** (client secret encrypted at rest, off by default); accounts link by verified email, and local password + two-factor login keep working alongside it
 - Email verification and password reset flows
 - Editable SMTP / email-server settings stored in the DB and managed from the dedicated **Notifications** page (password encrypted at rest) — no redeploy to change the mail server
 - Service cards with favicon (auto-resolved) or custom uploaded logo, status dot, category badge, tags
@@ -38,7 +39,7 @@ Built as **ASP.NET Core 10 Web API + React SPA**, deployed as a **single Docker 
 - Background healthcheck loop + manual "Check now" button per service
 - **Home Assistant integration via MQTT** (V9.0 – V9.1) — publishes each container's / guest's running state, each Docker container's image-update status, and each service's online/offline health to your MQTT broker as Home Assistant **auto-discovered** entities, plus the signals Stashboard **computes**: pending-update **counts** (per Docker host / Proxmox node / LXC), a per-node **alert** verdict (`problem` sensor with the CPU/memory/storage/thermal/SMART/network breakdown), per-guest **backup freshness**, and estate **roll-ups** on a single Stashboard device; managed from **Settings → Home Assistant** (off by default, broker password encrypted at rest)
 - AES-256-GCM credential encryption at rest
-- JSON backup export / import per user (covers full schema: Docker connections + watches + Proxmox connections + per-guest monitoring intent + encrypted secrets, service flags, user settings, and the MQTT integration config)
+- JSON backup export / import per user (covers full schema: Docker connections + watches + Proxmox connections + per-guest monitoring intent + encrypted secrets, service flags, user settings, the MQTT integration config, and the OIDC provider config + per-account SSO link)
 - Deep link support for direct navigation to service modals
 
 ### Docker container update tracking
@@ -220,6 +221,8 @@ All settings can be overridden via env vars prefixed with `STASHBOARD_` (use `__
 
 > **The MQTT / Home Assistant integration is stored in the database and editable from the UI** at **Settings → Home Assistant** (V9.0): broker host / port / TLS, username + password, client id, discovery prefix, entity prefix, and the master switch (**off by default**). Optional `STASHBOARD_Mqtt__*` values only **seed** the settings row on first startup; after that, manage everything from the page and changes apply without a restart. The broker password is encrypted at rest (AES-256-GCM) and never returned by the API. Point Stashboard at your **existing** broker (e.g. Mosquitto) — it doesn't run one.
 
+> **Single sign-on (OIDC) is configured entirely from the UI** at **Settings → Single sign-on** (V10.5): button label, issuer URL, client id, optional client secret, scopes, redirect base URL, and the **Allow OIDC registration** toggle (**off by default**). There are **no environment variables** for it — the provider is set up in the app. Only the issuer URL is needed; endpoints and signing keys come from the issuer's `/.well-known/openid-configuration`. The client secret is encrypted at rest (AES-256-GCM) and never returned by the API. Register the **redirect URI shown on the page** (`{your-stashboard-url}/oidc/callback`) at your provider.
+
 ### Secrets: auto-generated and persisted
 
 By default you don't manage the encryption key or JWT secret at all. On first
@@ -337,6 +340,10 @@ POST   /api/auth/logout        { refreshToken }        → 204
 POST   /api/auth/logout-all                            → 204  (rotates SecurityStamp, revokes all sessions)
 GET    /api/auth/me                                    → UserResponse
 
+GET    /api/auth/oidc/info                             → { enabled, buttonLabel }  (V10.5; anonymous, for the login page)
+POST   /api/auth/oidc/start                            → { authorizeUrl }          (begins SSO; anonymous)
+POST   /api/auth/oidc/callback { code, state }         → AuthResponse              (completes SSO; anonymous)
+
 GET    /api/account/profile                            → ProfileResponse
 PATCH  /api/account/profile    { displayName, theme? }→ 204
 PUT    /api/account/theme      { theme }               → 204  ("system" | "light" | "dark")
@@ -350,6 +357,11 @@ POST   /api/account/2fa/recovery-codes { currentPassword } → { recoveryCodes }
 DELETE /api/account            { currentPassword }     → 204
 GET    /api/account/email-settings                     → EmailSettingsResponse  (app-wide SMTP config; password masked)
 PUT    /api/account/email-settings  UpdateEmailSettings → 204  (tri-state password: keep / set / clear)
+PUT    /api/account/local-login     { localLoginDisabled } → 204  (V10.5; toggle local password sign-in for an SSO-linked account)
+
+GET    /api/settings/oidc                              → OidcSettingsResponse   (V10.5; app-wide OIDC config; secret masked)
+PUT    /api/settings/oidc           UpdateOidcSettings  → 204  (tri-state client secret; JWT-only)
+POST   /api/settings/oidc/test-discovery               → OidcDiscoveryTestResponse  (load the issuer's well-known doc)
 
 GET    /api/account/tokens                             → PersonalAccessTokenResponse[]  (V10.4; JWT-only)
 POST   /api/account/tokens     { name, scope, expiresUtc?, currentPassword } → { token, secret }  (secret shown once)

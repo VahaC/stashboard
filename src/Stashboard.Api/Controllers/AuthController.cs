@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Stashboard.Api.Auth;
+using Stashboard.Api.Auth.Oidc;
 using Stashboard.Api.Auth.PersonalAccessTokens;
 using Stashboard.Api.Contracts;
 using Stashboard.Api.Data;
@@ -11,7 +12,7 @@ namespace Stashboard.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(IUserService users, ITokenService tokens, ITwoFactorService twoFactor, IStashboardMapper mapper, IOptions<JwtOptions> jwtOptions) : ControllerBase
+public class AuthController(IUserService users, ITokenService tokens, ITwoFactorService twoFactor, IOidcSettingsService oidcSettings, IStashboardMapper mapper, IOptions<JwtOptions> jwtOptions) : ControllerBase
 {
     private readonly JwtOptions _jwt = jwtOptions.Value;
     [HttpPost("register")]
@@ -46,6 +47,13 @@ public class AuthController(IUserService users, ITokenService tokens, ITwoFactor
         }
         if (_jwt.RequireConfirmedEmail && !result.User!.EmailConfirmed)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Email not confirmed.", reason = nameof(AuthFailureReason.EmailNotConfirmed) });
+
+        // V10.5 — the owner can disable local password sign-in for an OIDC-linked account. Enforce it
+        // only while OIDC is actually enabled (fail-safe: disabling the provider re-opens password login
+        // so a misconfiguration can never lock everyone out).
+        if (result.User!.LocalLoginDisabled && await oidcSettings.IsEnabledAsync(сancellationToken))
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new { error = "Local password sign-in is disabled for this account. Please sign in with single sign-on." });
 
         // Password is correct, but if 2FA is on we don't issue tokens yet — hand back a short-lived
         // challenge and require the second step to exchange a valid code for the real token pair.

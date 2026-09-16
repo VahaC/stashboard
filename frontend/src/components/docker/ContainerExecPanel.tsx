@@ -6,6 +6,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { Button } from '@/components/ui/button'
 import { openContainerExec, type ContainerExecHandle } from '@/lib/container-exec'
+import { copyToClipboard } from '@/lib/utils'
 
 type Status = 'idle' | 'connecting' | 'connected' | 'closed' | 'error'
 
@@ -138,7 +139,7 @@ function LiveTerminal({ connectionId, containerName }: { connectionId: string; c
       if (e.type !== 'keydown') return true
       if (e.ctrlKey && e.shiftKey && e.code === 'KeyC') {
         const sel = term.getSelection()
-        if (sel) void navigator.clipboard.writeText(sel)
+        if (sel) void copyToClipboard(sel)
         return false
       }
       if (e.ctrlKey && e.shiftKey && e.code === 'KeyV') {
@@ -156,7 +157,7 @@ function LiveTerminal({ connectionId, containerName }: { connectionId: string; c
       e.preventDefault()
       const sel = term.getSelection()
       if (sel) {
-        void navigator.clipboard.writeText(sel)
+        void copyToClipboard(sel)
       } else {
         void navigator.clipboard.readText().then((text) => {
           if (text) handleRef.current?.send(text)

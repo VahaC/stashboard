@@ -21,7 +21,7 @@ import {
   useDeleteProxmoxWebhook,
 } from '@/lib/proxmox-queries'
 import { useAppriseSettings } from '@/lib/queries'
-import { cn, getApiErrorMessage, parseApiErrors } from '@/lib/utils'
+import { cn, copyToClipboard, getApiErrorMessage, parseApiErrors } from '@/lib/utils'
 import type {
   CheckScheduleType,
   ProxmoxConnection,
@@ -547,9 +547,11 @@ function ProxmoxWebhookPanel({ connection }: { connection: ProxmoxConnection }) 
   }
   const copy = () => {
     if (!url) return
-    void navigator.clipboard?.writeText(url).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+    void copyToClipboard(url).then((ok) => {
+      if (ok) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }
     })
   }
 

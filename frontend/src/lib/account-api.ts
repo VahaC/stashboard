@@ -71,6 +71,10 @@ export const accountApi = {
   regenerateRecoveryCodes: (currentPassword: string) =>
     api.post<RecoveryCodes>('/api/account/2fa/recovery-codes', { currentPassword }).then((r) => r.data),
 
+  // V10.5 — turn local password sign-in on/off for an OIDC-linked account.
+  setLocalLoginDisabled: (localLoginDisabled: boolean) =>
+    api.put('/api/account/local-login', { localLoginDisabled }),
+
   // V10.4 — personal access tokens
   listTokens: () => api.get<PersonalAccessToken[]>('/api/account/tokens').then((r) => r.data),
   createToken: (req: CreateTokenRequest) =>

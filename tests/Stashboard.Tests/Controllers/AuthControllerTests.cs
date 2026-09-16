@@ -31,6 +31,7 @@ public class AuthControllerTests : DatabaseTestBase
     private UserService _users = default!;
     private TokenService _tokens = default!;
     private TwoFactorService _twoFactor = default!;
+    private Stashboard.Api.Auth.Oidc.OidcSettingsService _oidcSettings = default!;
 
     public override async ValueTask InitializeAsync()
     {
@@ -38,7 +39,8 @@ public class AuthControllerTests : DatabaseTestBase
         _users = new UserService(_dbContext, _hasher, _encryption, Options.Create(_opt), _time);
         _tokens = new TokenService(Options.Create(_opt), _dbContext, _time, NullLogger<TokenService>.Instance);
         _twoFactor = new TwoFactorService(_dbContext, _hasher, _encryption, Options.Create(_opt), _time);
-        _ctrl = new AuthController(_users, _tokens, _twoFactor, TestMapperFactory.Create(), Options.Create(_opt));
+        _oidcSettings = new Stashboard.Api.Auth.Oidc.OidcSettingsService(_dbContext, _encryption, _time);
+        _ctrl = new AuthController(_users, _tokens, _twoFactor, _oidcSettings, TestMapperFactory.Create(), Options.Create(_opt));
     }
 
     private static string CurrentTotp(string base32) =>
@@ -119,6 +121,57 @@ public class AuthControllerTests : DatabaseTestBase
         var result = await _ctrl.Login(new LoginRequest("u@x", "wrong"), default);
 
         Assert.IsType<UnauthorizedObjectResult>(result.Result);
+    }
+
+    // V10.5 — local-login + OIDC coexistence.
+
+    private async Task EnableOidc() =>
+        await _oidcSettings.UpdateAsync(new UpdateOidcSettingsRequest(
+            true, "Authentik", "https://idp.test", "stashboard", null, "openid profile email", "https://app.test", false));
+
+    private async Task SetLocalLoginDisabled(string email)
+    {
+        // Mutate the tracked entity (not ExecuteUpdate) so the shared test DbContext's identity map
+        // reflects it — in production each request gets a fresh context, so this is a test-only nuance.
+        var user = await _dbContext.Users.FirstAsync(u => u.NormalizedEmail == email.ToUpperInvariant());
+        user.LocalLoginDisabled = true;
+        await _dbContext.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Login_PasswordStillWorks_WhenOidcEnabled()
+    {
+        await _ctrl.Register(new RegisterRequest("u@x", "P@ssword1"), default);
+        await EnableOidc();
+
+        var result = await _ctrl.Login(new LoginRequest("u@x", "P@ssword1"), default);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task Login_LocalLoginDisabled_Returns403_WhenOidcEnabled()
+    {
+        await _ctrl.Register(new RegisterRequest("u@x", "P@ssword1"), default);
+        await SetLocalLoginDisabled("u@x");
+        await EnableOidc();
+
+        var result = await _ctrl.Login(new LoginRequest("u@x", "P@ssword1"), default);
+
+        var obj = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
+    }
+
+    [Fact]
+    public async Task Login_LocalLoginDisabled_FailSafe_AllowsPassword_WhenOidcOff()
+    {
+        await _ctrl.Register(new RegisterRequest("u@x", "P@ssword1"), default);
+        await SetLocalLoginDisabled("u@x");
+        // OIDC left disabled — the fail-safe re-opens password login so nobody is locked out.
+
+        var result = await _ctrl.Login(new LoginRequest("u@x", "P@ssword1"), default);
+
+        Assert.IsType<OkObjectResult>(result.Result);
     }
 
     [Fact]

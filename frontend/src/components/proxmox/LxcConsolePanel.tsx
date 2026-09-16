@@ -9,6 +9,7 @@ import { openProxmoxConsole, type ProxmoxConsoleHandle } from '@/lib/proxmox-con
 // Reuse the Docker host-terminal / exec panel styles verbatim so the LXC
 // console is the same surface, not a parallel one.
 import '@/styles/docker-instances.css'
+import { copyToClipboard } from '@/lib/utils'
 
 type Status = 'idle' | 'connecting' | 'connected' | 'closed' | 'error'
 
@@ -194,7 +195,7 @@ function LiveTerminal({ connectionId, vmId, warning, active = true }: { connecti
       if (e.type !== 'keydown') return true
       if (e.ctrlKey && e.shiftKey && e.code === 'KeyC') {
         const sel = term.getSelection()
-        if (sel) void navigator.clipboard.writeText(sel)
+        if (sel) void copyToClipboard(sel)
         return false
       }
       if (e.ctrlKey && e.shiftKey && e.code === 'KeyV') {
@@ -212,7 +213,7 @@ function LiveTerminal({ connectionId, vmId, warning, active = true }: { connecti
       e.preventDefault()
       const sel = term.getSelection()
       if (sel) {
-        void navigator.clipboard.writeText(sel)
+        void copyToClipboard(sel)
       } else {
         void navigator.clipboard.readText().then((text) => {
           if (text) handleRef.current?.send(text)

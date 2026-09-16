@@ -121,7 +121,7 @@ import { SnapshotConfirmDialog } from '@/components/proxmox/SnapshotConfirmDialo
 import { LxcPowerConfirmDialog, type LxcPowerAction } from '@/components/proxmox/LxcPowerConfirmDialog'
 import { LxcLogsPanel } from '@/components/proxmox/LxcLogsPanel'
 import { ProxmoxUpdateDialog } from '@/components/proxmox/ProxmoxUpdateDialog'
-import { cn, getApiErrorMessage } from '@/lib/utils'
+import { cn, copyToClipboard, getApiErrorMessage } from '@/lib/utils'
 import { useNowTick } from '@/lib/use-now-tick'
 // Reuse the Docker container modal's styles verbatim so the LXC modal is the
 // same surface, not a parallel one. These global stylesheets are imported here
@@ -773,9 +773,11 @@ function ApplyCommandPanel({ connectionId, vmId }: { connectionId: string; vmId:
 
   const copy = () => {
     if (!query.data) return
-    void navigator.clipboard.writeText(query.data).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+    void copyToClipboard(query.data).then((ok) => {
+      if (ok) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }
     })
   }
 

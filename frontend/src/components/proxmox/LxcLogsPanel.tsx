@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertCircle, Check, Copy, Download, Pause, Play, ScrollText, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { openProxmoxLogs, type ProxmoxLogsHandle } from '@/lib/proxmox-logs'
+import { copyToClipboard } from '@/lib/utils'
 // Reuse the Docker logs panel styles (toolbar + viewport) and the host-terminal
 // disabled-state styles verbatim so the LXC logs tab is the same surface, not a
 // parallel one.
@@ -218,16 +219,12 @@ function LiveLogs({ connectionId, vmId, active }: { connectionId: string; vmId: 
 
   const copyVisibleLogs = useCallback(async () => {
     const text = lines.join('\n')
-    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
-      setError('Clipboard API is not available in this browser context.')
-      return
-    }
-    try {
-      await navigator.clipboard.writeText(text)
+    const ok = await copyToClipboard(text)
+    if (ok) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1600)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+    } else {
+      setError('Failed to copy to clipboard.')
     }
   }, [lines])
 

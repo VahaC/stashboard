@@ -3,6 +3,7 @@ import { AlertCircle, Check, Copy, Download, Pause, Play, Square } from 'lucide-
 import { Button } from '@/components/ui/button'
 import { streamContainerLogs, type DockerLogsStreamHandle } from '@/lib/docker-logs'
 import type { DockerLogLine } from '@/lib/types'
+import { copyToClipboard } from '@/lib/utils'
 
 export type ContainerLogsPanelProps = {
   connectionId: string
@@ -160,17 +161,12 @@ export function ContainerLogsPanel({
       return `${prefix}${channel}${line.message}`
     }).join('\n')
 
-    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
-      setError('Clipboard API is not available in this browser context.')
-      return
-    }
-
-    try {
-      await navigator.clipboard.writeText(text)
+    const ok = await copyToClipboard(text)
+    if (ok) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1600)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+    } else {
+      setError('Failed to copy to clipboard.')
     }
   }, [showTimestamps, visible])
 

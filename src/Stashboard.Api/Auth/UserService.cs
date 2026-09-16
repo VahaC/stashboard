@@ -417,6 +417,21 @@ public sealed class UserService(
         return OperationResult.Ok();
     }
 
+    // ── Local-login toggle (V10.5) ───────────────────────────────────────────
+
+    public async Task<OperationResult> SetLocalLoginDisabledAsync(Guid userId, bool disabled, CancellationToken cancellationToken = default)
+    {
+        var rows = await db.Users
+            .Where(u => u.Id == userId)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.LocalLoginDisabled, disabled), cancellationToken);
+        if (rows == 0)
+            return OperationResult.Fail(AuthFailureReason.UserNotFound, "User not found.");
+
+        var tracked = db.ChangeTracker.Entries<UserEntity>().FirstOrDefault(e => e.Entity.Id == userId);
+        if (tracked is not null) tracked.Entity.LocalLoginDisabled = disabled;
+        return OperationResult.Ok();
+    }
+
     // ── Account deletion ─────────────────────────────────────────────────────
 
     public async Task<OperationResult> DeleteAccountAsync(Guid userId, string currentPassword, CancellationToken cancellationToken = default)

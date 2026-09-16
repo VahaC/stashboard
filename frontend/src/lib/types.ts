@@ -151,6 +151,10 @@ export interface Profile {
   lastLoginUtc: string | null
   /** V10.3 — whether TOTP two-factor auth is enabled. Presence flag only; the secret never leaves the server. */
   twoFactorEnabled: boolean
+  /** V10.5 — true once this account has been linked to an OIDC identity. */
+  oidcLinked: boolean
+  /** V10.5 — whether the owner has turned off local password sign-in for this account. */
+  localLoginDisabled: boolean
 }
 
 export interface DashboardPreferences {
@@ -815,6 +819,9 @@ export interface StashboardFeatures {
    *  host's own `allowRestore` opt-in is also required, and an overwrite restore
    *  needs a stopped target + double-confirm. */
   allowProxmoxRestore: boolean
+  /** V10.5 — whether an OIDC / SSO provider is configured and enabled. Used on
+   *  authenticated screens; the login page reads `/api/auth/oidc/info` instead. */
+  oidcEnabled: boolean
 }
 
 /** V5.3 — app-wide host-terminal master switch, managed from Settings → Host terminal. */
@@ -1005,6 +1012,47 @@ export interface MqttSettingsUpdate {
 /** V9.0 — outcome of the MQTT "Test connection" button. */
 export interface MqttTestResult {
   reachable: boolean
+  error: string | null
+}
+
+/** V10.5 — anonymous, login-page-safe OIDC status: whether SSO is on, and the button label. */
+export interface OidcInfo {
+  enabled: boolean
+  buttonLabel: string
+}
+
+/** V10.5 — masked OIDC provider settings (client secret never returned, presence flag only). */
+export interface OidcSettings {
+  enabled: boolean
+  displayName: string
+  issuer: string
+  clientId: string
+  hasClientSecret: boolean
+  scopes: string
+  redirectBaseUrl: string
+  allowOidcRegistration: boolean
+  /** The exact redirect URI to register at the provider — `{redirectBaseUrl}/oidc/callback`. */
+  redirectUri: string
+}
+
+/** V10.5 — update payload for the OIDC provider; `clientSecret` is the tri-state secret. */
+export interface OidcSettingsUpdate {
+  enabled: boolean
+  displayName: string
+  issuer: string
+  clientId: string
+  /** Tri-state secret — `null` keeps the stored secret; `Clear` makes it a public (PKCE-only) client. */
+  clientSecret: SecretValueUpsert | null
+  scopes: string
+  redirectBaseUrl: string
+  allowOidcRegistration: boolean
+}
+
+/** V10.5 — outcome of the OIDC "Test discovery" button. */
+export interface OidcDiscoveryTestResult {
+  ok: boolean
+  authorizationEndpoint: string | null
+  tokenEndpoint: string | null
   error: string | null
 }
 

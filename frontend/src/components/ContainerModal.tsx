@@ -6,8 +6,8 @@ import {
   Bell,
   Download,
   ExternalLink,
-  FileText,
   Info,
+  ScrollText,
   Search,
   SquareChevronRight,
 } from 'lucide-react'
@@ -94,7 +94,7 @@ interface ContainerModalProps {
 const TABS: ReadonlyArray<{ id: ContainerModalTab; label: string; icon: typeof Info }> = [
   { id: 'overview', label: 'Overview', icon: Info },
   { id: 'inspect', label: 'Inspect', icon: Search },
-  { id: 'logs', label: 'Logs', icon: FileText },
+  { id: 'logs', label: 'Logs', icon: ScrollText },
   { id: 'stats', label: 'Stats', icon: Activity },
   { id: 'watch', label: 'Watch', icon: Bell },
   { id: 'exec', label: 'Exec', icon: SquareChevronRight },

@@ -54,7 +54,7 @@ import {
   resolveDockerUpdateStatus,
   resolveRegistryAuthType,
 } from '@/lib/types'
-import { cn, getApiErrorMessage, parseApiErrors } from '@/lib/utils'
+import { cn, copyToClipboard, getApiErrorMessage, parseApiErrors } from '@/lib/utils'
 import {
   SecretFieldRow,
   existingSecret,
@@ -1516,9 +1516,11 @@ function UpdateCommandPanel({ connectionId, containerName }: { connectionId: str
 
   const copy = () => {
     if (!query.data) return
-    void navigator.clipboard.writeText(query.data.command).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+    void copyToClipboard(query.data.command).then((ok) => {
+      if (ok) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }
     })
   }
 
@@ -1663,9 +1665,11 @@ function WebhookPanel({ connectionId, watch }: { connectionId: string; watch: Do
 
   const copy = () => {
     if (!webhookUrl) return
-    void navigator.clipboard.writeText(webhookUrl).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+    void copyToClipboard(webhookUrl).then((ok) => {
+      if (ok) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }
     })
   }
 

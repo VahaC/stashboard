@@ -48,6 +48,25 @@
   width: 100%;
 }
 
+/* V10.5 — "or" divider between the password form and the SSO button. */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 .auth-links {
   text-align: center;
   color: var(--muted-foreground);

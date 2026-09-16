@@ -5,6 +5,44 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [10.5.0] — 2026-06-30
+
+### Added
+- **Single sign-on (OIDC) — put Stashboard behind Authentik / Authelia / Keycloak (V10.5).**
+  Optional, off by default; local password and 2FA login keep working unchanged alongside it.
+  - **Custom Authorization Code + PKCE client.** Not the ASP.NET cookie middleware — the resulting
+    session is the same `AuthResponse` (access + refresh) the rest of the app issues via
+    `tokens.IssueAsync`, so nothing downstream changes. Discovery + JWKS validation use the
+    Microsoft.IdentityModel stack; the token + userinfo HTTP calls go through a dedicated `oidc`
+    `HttpClient`. The in-flight `state` + PKCE verifier + nonce live in a single-instance in-memory
+    store (single-use, ~5 min TTL).
+  - **DB-backed provider config, edited in the UI** (`OidcSettingsEntity` singleton; `GET/PUT
+    /api/settings/oidc`, `POST /api/settings/oidc/test-discovery`). The **client secret is
+    AES-encrypted at rest and never returned** (presence flag only; tri-state keep/set/clear — clear
+    makes it a public PKCE-only client). Endpoints are read from the issuer's
+    `/.well-known/openid-configuration`, so only the issuer URL is entered. Config mutations are
+    `[DenyPersonalAccessToken]`. Configured **UI-only** — there is no env seed.
+  - **Login flow.** `POST /api/auth/oidc/start` returns the provider authorize URL; the frontend
+    `/oidc/callback` route posts `code` + `state` to `POST /api/auth/oidc/callback`, which validates
+    the `id_token` (issuer / audience / signature / lifetime + a one-time `nonce`) and returns the
+    normal token pair. The login page shows a "Sign in with …" button via the anonymous
+    `GET /api/auth/oidc/info`; `oidcEnabled` is also added to `GET /api/features`.
+  - **Account linking.** An identity maps to an account by **verified email** (the provider must mark
+    it verified — an unverified address is refused), then by the stable `sub` (survives a
+    provider-side email change). A `sub`↔email conflict is refused rather than silently re-bound.
+    First login can **provision** a passwordless account (a sentinel password hash no password
+    satisfies; `EmailConfirmed` set) behind the **Allow OIDC registration** toggle. OIDC sign-in
+    bypasses local 2FA (the IdP performs MFA).
+  - **Optional SSO-only accounts.** A linked account's owner can disable local password sign-in
+    (`PUT /api/account/local-login`, surfaced under **Account → Single sign-on**), gated on being
+    linked and the provider being enabled. Fail-safe: while OIDC is disabled, password login is
+    automatically re-allowed so a misconfiguration can't lock everyone out.
+  - **Backup/restore.** The OIDC provider config (secret re-encrypted for the destination) and each
+    account's `OidcSubject` + `LocalLoginDisabled` are added to `BackupService` export/import and the
+    round-trip test.
+  - **Migration** `AddOidcSettings` adds the `OidcSettings` table and the `Users.OidcSubject` /
+    `Users.LocalLoginDisabled` columns (+ `OidcSubject` index). No new environment variables.
+
 ## [10.4.0] — 2026-06-30
 
 ### Added

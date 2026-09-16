@@ -52,7 +52,8 @@ public class AccountControllerTests : DatabaseTestBase
             _emailSettings,
             new HttpContextAccessor());
         _twoFactor = new TwoFactorService(_dbContext, _hasher, new PrefixEncryption(), Options.Create(_jwt), _time);
-        _ctrl = new AccountController(_users, notifications, _emailSettings, _twoFactor, TestMapperFactory.Create());
+        var oidcSettings = new Stashboard.Api.Auth.Oidc.OidcSettingsService(_dbContext, new PrefixEncryption(), _time);
+        _ctrl = new AccountController(_users, notifications, _emailSettings, _twoFactor, oidcSettings, TestMapperFactory.Create());
     }
 
     private void SignIn(Guid userId)
@@ -384,7 +385,8 @@ public class AccountControllerTests : DatabaseTestBase
             Options.Create(new EmailOptions { Username = null! }),
             TestMapperFactory.Create(),
             _time);
-        var controller = new AccountController(_users, new AccountNotificationService(_email.Object, settingsWithNullUsername, new HttpContextAccessor()), settingsWithNullUsername, _twoFactor, TestMapperFactory.Create());
+        var oidcSettings = new Stashboard.Api.Auth.Oidc.OidcSettingsService(_dbContext, new PrefixEncryption(), _time);
+        var controller = new AccountController(_users, new AccountNotificationService(_email.Object, settingsWithNullUsername, new HttpContextAccessor()), settingsWithNullUsername, _twoFactor, oidcSettings, TestMapperFactory.Create());
 
         var result = await controller.GetEmailSettings(default);
 

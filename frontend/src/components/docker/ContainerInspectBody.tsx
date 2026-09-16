@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Check, ChevronDown, ChevronRight, Copy } from 'lucide-react'
+import { copyToClipboard } from '@/lib/utils'
 import type {
   DockerContainerInspect,
   DockerInspectEnvVar,
@@ -26,9 +27,11 @@ export function ContainerInspectBody({ data }: ContainerInspectBodyProps) {
   const [copied, setCopied] = useState(false)
   const json = JSON.stringify(data, null, 2)
   const copy = () => {
-    void navigator.clipboard.writeText(json).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+    void copyToClipboard(json).then((ok) => {
+      if (ok) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }
     })
   }
 

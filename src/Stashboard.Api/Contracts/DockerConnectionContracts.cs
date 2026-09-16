@@ -351,4 +351,8 @@ public sealed record StashboardFeaturesResponse(
     /// archive. The UI uses it to decide whether the Restore LXC affordance can go
     /// live (a host's own <c>AllowRestore</c> opt-in is also required, and an
     /// overwrite restore needs a stopped target + double-confirm).</summary>
-    bool AllowProxmoxRestore);
+    bool AllowProxmoxRestore,
+    /// <summary>V10.5 — whether an OIDC / SSO provider is configured and enabled. The UI
+    /// uses it on authenticated screens (e.g. the Account SSO section); the login page reads
+    /// the anonymous <c>/api/auth/oidc/info</c> endpoint instead.</summary>
+    bool OidcEnabled);

@@ -35,7 +35,8 @@ public class RegistrationPersistenceTests : DatabaseTestBase
         _users = new UserService(_dbContext, _hasher, _encryption, Options.Create(_opt), _time);
         _tokens = new TokenService(Options.Create(_opt), _dbContext, _time, NullLogger<TokenService>.Instance);
         var twoFactor = new TwoFactorService(_dbContext, _hasher, _encryption, Options.Create(_opt), _time);
-        _ctrl = new AuthController(_users, _tokens, twoFactor, TestMapperFactory.Create(), Options.Create(_opt));
+        var oidcSettings = new Stashboard.Api.Auth.Oidc.OidcSettingsService(_dbContext, _encryption, _time);
+        _ctrl = new AuthController(_users, _tokens, twoFactor, oidcSettings, TestMapperFactory.Create(), Options.Create(_opt));
     }
 
     private sealed class PrefixEncryption : Stashboard.Core.Abstractions.IEncryptionService

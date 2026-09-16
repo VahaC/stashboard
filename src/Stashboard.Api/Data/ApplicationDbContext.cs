@@ -24,6 +24,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<HealthCheckSettingsEntity> HealthCheckSettings => Set<HealthCheckSettingsEntity>();
     public DbSet<MqttSettingsEntity> MqttSettings => Set<MqttSettingsEntity>();
     public DbSet<AppriseSettingsEntity> AppriseSettings => Set<AppriseSettingsEntity>();
+    public DbSet<OidcSettingsEntity> OidcSettings => Set<OidcSettingsEntity>();
 
     public DbSet<WebResourceEntity> WebResources => Set<WebResourceEntity>();
     public DbSet<HealthCheckEventEntity> HealthCheckEvents => Set<HealthCheckEventEntity>();
@@ -66,6 +67,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         {
             e.HasIndex(u => u.NormalizedEmail).IsUnique();
             e.Property(u => u.SecurityStamp).HasMaxLength(64).IsRequired();
+            // V10.5 — OIDC link lookup on every SSO sign-in keys on the provider subject.
+            // Non-unique: NULL for every non-OIDC account (SQLite treats multiple NULLs as distinct).
+            e.HasIndex(u => u.OidcSubject);
         });
 
         // Single-row, app-wide SMTP/email config (see EmailSettingsEntity.SingletonId).
@@ -106,6 +110,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         // V10.0 — single-row, app-wide Apprise notification config (see AppriseSettingsEntity.SingletonId).
         builder.Entity<AppriseSettingsEntity>();
+
+        // V10.5 — single-row, app-wide OIDC / SSO provider config (see OidcSettingsEntity.SingletonId).
+        builder.Entity<OidcSettingsEntity>();
 
         builder.Entity<RefreshTokenEntity>(e =>
         {

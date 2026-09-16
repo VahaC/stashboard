@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { HelpCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
@@ -80,12 +81,22 @@ export function SecretFieldRow({ label, tooltip, field, hasExisting, secret, mul
               className={error ? 'border-destructive' : ''}
             />
           ) : (
-            <Input
-              type={secret && !field.reveal ? 'password' : 'text'}
-              value={field.value}
-              onChange={(e) => onChange({ ...field, value: e.target.value })}
-              className={error ? 'border-destructive' : ''}
-            />
+            secret ? (
+              <PasswordInput
+                value={field.value}
+                revealed={field.reveal}
+                onRevealedChange={(reveal) => onChange({ ...field, reveal })}
+                onChange={(e) => onChange({ ...field, value: e.target.value })}
+                className={error ? 'border-destructive' : ''}
+              />
+            ) : (
+              <Input
+                type="text"
+                value={field.value}
+                onChange={(e) => onChange({ ...field, value: e.target.value })}
+                className={error ? 'border-destructive' : ''}
+              />
+            )
           )
         ) : field.action === 'Keep' ? (
           <span className="docker-secret-placeholder">Using saved value</span>

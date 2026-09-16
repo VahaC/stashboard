@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using Stashboard.Api.Auth.Oidc;
 using Stashboard.Api.Contracts;
 using Stashboard.Api.Services.ContainerExec;
 using Stashboard.Api.Services.HostShell;
@@ -29,7 +30,8 @@ public class FeaturesController(
     IProxmoxDestroySettingsService proxmoxDestroySettings,
     IProxmoxCreateSettingsService proxmoxCreateSettings,
     IProxmoxCloneSettingsService proxmoxCloneSettings,
-    IProxmoxRestoreSettingsService proxmoxRestoreSettings) : ControllerBase
+    IProxmoxRestoreSettingsService proxmoxRestoreSettings,
+    IOidcSettingsService oidcSettings) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<StashboardFeaturesResponse>> Get(CancellationToken cancellationToken) =>
@@ -51,5 +53,7 @@ public class FeaturesController(
             // V8.0 — clone/snapshot master switch, same DB-backed pattern.
             await proxmoxCloneSettings.IsEnabledAsync(cancellationToken),
             // V8.1 — restore-LXC master switch, same DB-backed pattern.
-            await proxmoxRestoreSettings.IsEnabledAsync(cancellationToken)));
+            await proxmoxRestoreSettings.IsEnabledAsync(cancellationToken),
+            // V10.5 — whether an OIDC / SSO provider is configured and enabled.
+            await oidcSettings.IsEnabledAsync(cancellationToken)));
 }

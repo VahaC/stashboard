@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, Bell, FileText, Info, MoreHorizontal, Play, RefreshCw, Search, Server, Square, SquareChevronRight, Trash2 } from 'lucide-react'
+import { Activity, Bell, Info, MoreHorizontal, Play, RefreshCw, ScrollText, Search, Server, Square, SquareChevronRight, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { DockerContainerCard, DockerContainerProxmoxLink, DockerWatch } from '@/lib/types'
 import { EntityCard } from '@/components/shared/EntityCard'
@@ -119,7 +119,7 @@ export function ContainerCard({
             <Search className="h-3.5 w-3.5" />
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={() => onOpen('logs')} title="Live container logs">
-            <FileText className="h-3.5 w-3.5" />
+            <ScrollText className="h-3.5 w-3.5" />
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={() => onOpen('stats')} title="Live container stats">
             <Activity className="h-3.5 w-3.5" />
@@ -196,7 +196,7 @@ export function ContainerCard({
             <>
               <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen('overview') }}><Info className="h-3.5 w-3.5" /> Overview</button>
               <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen('inspect') }}><Search className="h-3.5 w-3.5" /> Inspect</button>
-              <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen('logs') }}><FileText className="h-3.5 w-3.5" /> Logs</button>
+              <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen('logs') }}><ScrollText className="h-3.5 w-3.5" /> Logs</button>
               <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen('stats') }}><Activity className="h-3.5 w-3.5" /> Stats</button>
               <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen('watch') }}><Bell className="h-3.5 w-3.5" /> Watch</button>
               <button className="cgroup-menu-item" onClick={() => { setMenuPos(null); onOpen('exec') }}><SquareChevronRight className="h-3.5 w-3.5" /> Exec</button>

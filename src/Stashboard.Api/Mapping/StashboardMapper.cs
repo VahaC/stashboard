@@ -10,7 +10,12 @@ public sealed partial class StashboardMapper : IStashboardMapper
 {
     public partial UserResponse MapToUserResponse(UserEntity entity);
 
-    public partial ProfileResponse MapToProfileResponse(UserEntity entity);
+    // Hand-written (not Mapperly-generated) because OidcLinked is computed from OidcSubject
+    // rather than a direct property copy — mirrors MapToEmailSettingsResponse's presence flag.
+    public ProfileResponse MapToProfileResponse(UserEntity entity) =>
+        new(entity.Id, entity.Email, entity.DisplayName, entity.EmailConfirmed, entity.PendingEmail,
+            entity.Theme, entity.CreatedUtc, entity.LastLoginUtc, entity.TwoFactorEnabled,
+            !string.IsNullOrEmpty(entity.OidcSubject), entity.LocalLoginDisabled);
 
     public DashboardPreferencesResponse MapToDashboardPreferencesResponse(UserEntity entity) =>
         new(entity.DashboardSortMode, entity.DashboardGroupByCategory);

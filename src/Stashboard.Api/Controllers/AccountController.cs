@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Stashboard.Api.Auth;
+using Stashboard.Api.Auth.Oidc;
 using Stashboard.Api.Auth.PersonalAccessTokens;
 using Stashboard.Api.Contracts;
 using Stashboard.Api.Mapping;
@@ -21,6 +22,7 @@ public class AccountController(
     IAccountNotificationService notifications,
     IEmailSettingsService emailSettings,
     ITwoFactorService twoFactor,
+    IOidcSettingsService oidcSettings,
     IStashboardMapper mapper) : ControllerBase
 {
 
@@ -255,6 +257,34 @@ public class AccountController(
     public async Task<IActionResult> UpdateEmailSettings([FromBody] UpdateEmailSettingsRequest req, CancellationToken cancellationToken)
     {
         await emailSettings.UpdateAsync(req, cancellationToken);
+        return NoContent();
+    }
+
+    // ── Single sign-on (OIDC) — per-user local-login toggle (V10.5) ────────────
+
+    /// <summary>
+    /// Turns local password sign-in on/off for the current account. Only allowed once the account is
+    /// linked to an OIDC identity and while the provider is enabled — otherwise the user would lock
+    /// themselves out. (Disabling the provider re-opens password login regardless; see the login path.)
+    /// </summary>
+    [HttpPut("local-login")]
+    [Authorize]
+    [DenyPersonalAccessToken]
+    public async Task<IActionResult> SetLocalLogin([FromBody] SetLocalLoginRequest req, CancellationToken cancellationToken)
+    {
+        var user = await users.FindByIdAsync(User.GetUserId(), cancellationToken);
+        if (user is null) return Unauthorized();
+
+        if (req.LocalLoginDisabled)
+        {
+            if (string.IsNullOrEmpty(user.OidcSubject))
+                return BadRequest(new { error = "Link your account with single sign-on before disabling local login." });
+            if (!await oidcSettings.IsEnabledAsync(cancellationToken))
+                return BadRequest(new { error = "Enable the OIDC provider before disabling local login." });
+        }
+
+        var result = await users.SetLocalLoginDisabledAsync(user.Id, req.LocalLoginDisabled, cancellationToken);
+        if (!result.Succeeded) return BadRequest(new { error = result.Failure!.Message });
         return NoContent();
     }
 

@@ -1,11 +1,12 @@
 import { useState, type JSX } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { Bell, TerminalSquare, SquareChevronRight, Server, RefreshCw, HardDrive, Activity, Database, UserCog, Menu, X, Trash2, Plus, Copy, ArchiveRestore, HomeIcon, Globe } from 'lucide-react'
+import { Bell, TerminalSquare, SquareChevronRight, Server, RefreshCw, HardDrive, Activity, Database, UserCog, Menu, X, Trash2, Plus, Copy, ArchiveRestore, HomeIcon, Globe, ShieldCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import '@/styles/settings-page.css'
 
 const settingsNavItems = [
   { to: '/settings/account', label: 'Account', group: 'General', icon: UserCog },
+  { to: '/settings/sso', label: 'Single sign-on', group: 'General', icon: ShieldCheck },
   { to: '/settings/backup', label: 'Backup / Restore', group: 'General', icon: Database },
   { to: '/settings/notifications', label: 'Notifications', group: 'General', icon: Bell },
   { to: '/settings/container-exec', label: 'Container exec', group: 'Docker', icon: SquareChevronRight },

@@ -102,6 +102,9 @@ public sealed record DeleteAccountRequest(
     [Required, StringLength(128, MinimumLength = 1)] string CurrentPassword
 );
 
+/// <summary>V10.5 — toggles whether the current account may sign in with its local password.</summary>
+public sealed record SetLocalLoginRequest(bool LocalLoginDisabled);
+
 // ── Email server (SMTP) settings ────────────────────────────────────────────────
 
 /// <summary>
@@ -143,7 +146,11 @@ public sealed record ProfileResponse(
     string Theme,
     DateTime CreatedUtc,
     DateTime? LastLoginUtc,
-    bool TwoFactorEnabled
+    bool TwoFactorEnabled,
+    /// <summary>V10.5 — true once this account has been linked to an OIDC identity (has a stored subject).</summary>
+    bool OidcLinked,
+    /// <summary>V10.5 — whether the owner has turned off local password sign-in for this account.</summary>
+    bool LocalLoginDisabled
 );
 
 // ── Two-factor authentication (TOTP) ──────────────────────────────────────────

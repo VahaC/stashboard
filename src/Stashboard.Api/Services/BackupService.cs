@@ -73,6 +73,10 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         // rest). Included so a restore brings the notification channel back.
         var apprise = await db.AppriseSettings.AsNoTracking()
             .FirstOrDefaultAsync(a => a.Id == AppriseSettingsEntity.SingletonId, cancellationToken);
+        // V10.5 — app-wide OIDC / SSO provider config (singleton, client secret encrypted
+        // at rest). Included so a restore brings the SSO provider back.
+        var oidc = await db.OidcSettings.AsNoTracking()
+            .FirstOrDefaultAsync(o => o.Id == OidcSettingsEntity.SingletonId, cancellationToken);
         var categories = await db.Categories.AsNoTracking().Where(c => c.UserId == userId).ToListAsync(cancellationToken);
         var tags = await db.Tags.AsNoTracking().Where(t => t.UserId == userId).ToListAsync(cancellationToken);
         var connections = await db.DockerConnections.AsNoTracking().Where(c => c.UserId == userId).ToListAsync(cancellationToken);
@@ -137,7 +141,9 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 // V10.3 — secret decrypted on export, re-encrypted on import (portable across instances),
                 // like every other secret here. Recovery codes are already hashes, so they travel as-is.
                 user.TwoFactorEnabled, Dec(user.TwoFactorSecretEncrypted), user.TwoFactorLastUsedStep,
-                recoveryCodes.Select(c => new RecoveryCodeDto(c.CodeHash, c.UsedUtc)).ToList()),
+                recoveryCodes.Select(c => new RecoveryCodeDto(c.CodeHash, c.UsedUtc)).ToList(),
+                // V10.5 — the OIDC link (subject is an identifier, not a secret) + the local-login flag.
+                user.OidcSubject, user.LocalLoginDisabled),
             Categories: categories.Select(c => new CategoryDto(c.Id, c.Name, c.Color)).ToList(),
             Tags: tags.Select(t => new TagDto(t.Id, t.Name)).ToList(),
             DockerConnections: connections.Select(c => new DockerConnectionDto(
@@ -188,6 +194,9 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 mqtt.DeviceName, mqtt.Manufacturer),
             Apprise: apprise is null ? null : new AppriseDto(
                 apprise.Enabled, apprise.BaseUrl, Dec(apprise.UrlsEncrypted)),
+            Oidc: oidc is null ? null : new OidcDto(
+                oidc.Enabled, oidc.DisplayName, oidc.Issuer, oidc.ClientId, Dec(oidc.ClientSecretEncrypted),
+                oidc.Scopes, oidc.RedirectBaseUrl, oidc.AllowOidcRegistration),
             StatusPages: statusPages.Select(p => new StatusPageDto(
                 p.Title, p.Description, p.Slug, p.IsPublished,
                 p.Items
@@ -225,6 +234,12 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 user.TwoFactorSecretEncrypted = Enc(settings.TwoFactorSecret);
                 user.TwoFactorEnabled = settings.TwoFactorEnabled && user.TwoFactorSecretEncrypted is not null;
                 user.TwoFactorLastUsedStep = settings.TwoFactorLastUsedStep;
+
+                // V10.5 — restore the OIDC link + local-login flag. The subject is an identifier (not a
+                // secret), so it travels as-is. LocalLoginDisabled is safe to restore: it only takes
+                // effect on login while OIDC is enabled (fail-safe), so it can't lock anyone out.
+                user.OidcSubject = settings.OidcSubject;
+                user.LocalLoginDisabled = settings.LocalLoginDisabled;
 
                 await db.TwoFactorRecoveryCodes.Where(c => c.UserId == userId).ExecuteDeleteAsync(cancellationToken);
                 if (settings.RecoveryCodes is { Count: > 0 } codes)
@@ -283,6 +298,29 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             appriseRow.BaseUrl = a.BaseUrl;
             appriseRow.UrlsEncrypted = Enc(a.Urls);
             appriseRow.UpdatedUtc = DateTime.UtcNow;
+        }
+
+        // ── V10.5 — app-wide OIDC / SSO provider config (singleton upsert) ──
+        // The client secret is re-encrypted on import so it's portable across instances
+        // with different encryption keys, mirroring every other secret in this service.
+        if (dto.Oidc is { } o)
+        {
+            var oidcRow = await db.OidcSettings.FirstOrDefaultAsync(
+                x => x.Id == OidcSettingsEntity.SingletonId, cancellationToken);
+            if (oidcRow is null)
+            {
+                oidcRow = new OidcSettingsEntity { Id = OidcSettingsEntity.SingletonId };
+                db.OidcSettings.Add(oidcRow);
+            }
+            oidcRow.Enabled = o.Enabled;
+            oidcRow.DisplayName = o.DisplayName;
+            oidcRow.Issuer = o.Issuer;
+            oidcRow.ClientId = o.ClientId;
+            oidcRow.ClientSecretEncrypted = Enc(o.ClientSecret);
+            oidcRow.Scopes = string.IsNullOrWhiteSpace(o.Scopes) ? "openid profile email" : o.Scopes;
+            oidcRow.RedirectBaseUrl = o.RedirectBaseUrl;
+            oidcRow.AllowOidcRegistration = o.AllowOidcRegistration;
+            oidcRow.UpdatedUtc = DateTime.UtcNow;
         }
 
         // ── Categories / Tags (merge by name) ──
@@ -677,7 +715,9 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         MqttDto? Mqtt = null,
         AppriseDto? Apprise = null,
         // V10.2 — nullable/defaulted so a pre-V10.2 backup still deserializes.
-        List<StatusPageDto>? StatusPages = null);
+        List<StatusPageDto>? StatusPages = null,
+        // V10.5 — nullable/defaulted so a pre-V10.5 backup still deserializes.
+        OidcDto? Oidc = null);
 
     // V10.2 — a public status page: its publish state, slug and the chosen services
     // (referenced by id, remapped on import; display-name overrides preserved).
@@ -689,6 +729,12 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
     // V10.0 — app-wide Apprise notification config. URLs decrypted on export and
     // re-encrypted on import (portable across instances), like every other secret here.
     private sealed record AppriseDto(bool Enabled, string BaseUrl, string? Urls);
+
+    // V10.5 — app-wide OIDC / SSO provider config. The client secret is decrypted on export and
+    // re-encrypted on import (portable across instances), like every other secret here.
+    private sealed record OidcDto(
+        bool Enabled, string DisplayName, string Issuer, string ClientId, string? ClientSecret,
+        string Scopes, string RedirectBaseUrl, bool AllowOidcRegistration);
 
     // V9.0 — app-wide MQTT integration config. Password is decrypted on export and
     // re-encrypted on import (portable across instances), like every other secret here.
@@ -703,7 +749,9 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         string? TelegramBotToken, string? TelegramChatId, bool TelegramNotificationsEnabled,
         // V10.3 — nullable/defaulted so a pre-V10.3 backup still deserializes (and restores as "2FA off").
         bool TwoFactorEnabled = false, string? TwoFactorSecret = null, long? TwoFactorLastUsedStep = null,
-        List<RecoveryCodeDto>? RecoveryCodes = null);
+        List<RecoveryCodeDto>? RecoveryCodes = null,
+        // V10.5 — nullable/defaulted so a pre-V10.5 backup still deserializes (restores as "not linked").
+        string? OidcSubject = null, bool LocalLoginDisabled = false);
 
     // V10.3 — a single recovery code: its hash (one-way, never decryptable) and used state.
     private sealed record RecoveryCodeDto(string CodeHash, DateTime? UsedUtc);

@@ -58,8 +58,20 @@ public class BackupServiceTests
                     // V10.3 — 2FA state: enabled flag + encrypted secret + replay step.
                     TwoFactorEnabled = true, TwoFactorSecretEncrypted = enc.Encrypt("JBSWY3DPEHPK3PXP"),
                     TwoFactorLastUsedStep = 12345,
+                    // V10.5 — OIDC link + local-login flag.
+                    OidcSubject = "oidc-sub-1", LocalLoginDisabled = true,
                 };
                 ctx.Users.Add(alice);
+
+                // V10.5 — app-wide OIDC provider singleton (client secret encrypted at rest).
+                ctx.OidcSettings.Add(new OidcSettingsEntity
+                {
+                    Id = OidcSettingsEntity.SingletonId, Enabled = true, DisplayName = "Authentik",
+                    Issuer = "https://idp.test", ClientId = "stashboard",
+                    ClientSecretEncrypted = enc.Encrypt("oidc-secret"),
+                    Scopes = "openid profile email", RedirectBaseUrl = "https://app.test",
+                    AllowOidcRegistration = true,
+                });
 
                 // V10.3 — two recovery codes (hashes only): one already redeemed, one still fresh.
                 ctx.TwoFactorRecoveryCodes.Add(new TwoFactorRecoveryCodeEntity
@@ -224,6 +236,17 @@ public class BackupServiceTests
                 Assert.Equal(2, recoveryCodes.Count);
                 Assert.Null(recoveryCodes.Single(c => c.CodeHash == "HASH-FRESH").UsedUtc);
                 Assert.NotNull(recoveryCodes.Single(c => c.CodeHash == "HASH-USED").UsedUtc);
+
+                // V10.5 — the per-user OIDC link + local-login flag round-trip…
+                Assert.Equal("oidc-sub-1", bob.OidcSubject);
+                Assert.True(bob.LocalLoginDisabled);
+                // …and the app-wide OIDC provider singleton restores with the secret re-encrypted.
+                var oidc = await ctx.OidcSettings.AsNoTracking().SingleAsync(o => o.Id == OidcSettingsEntity.SingletonId);
+                Assert.True(oidc.Enabled);
+                Assert.Equal("https://idp.test", oidc.Issuer);
+                Assert.Equal("stashboard", oidc.ClientId);
+                Assert.Equal("oidc-secret", enc.Decrypt(oidc.ClientSecretEncrypted!));
+                Assert.True(oidc.AllowOidcRegistration);
 
                 var conn = await ctx.DockerConnections.AsNoTracking().SingleAsync(c => c.UserId == userB);
                 Assert.Equal("home", conn.Name);

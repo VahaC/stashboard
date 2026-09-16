@@ -416,7 +416,27 @@ immediate effect — without it ever granting host-shell/exec access.
 
 ---
 
-### Phase V10.5 — OIDC / SSO login (optional)
+### ✅ Shipped (10.5.0) Phase V10.5 — OIDC / SSO login (optional)
+
+**Shipped in 10.5.0.** A custom OIDC **Authorization Code + PKCE** client (not the ASP.NET cookie
+middleware — the session stays the app's own JWT + refresh pair, issued via the existing
+`tokens.IssueAsync`, so nothing downstream changed). Provider config is a DB-backed singleton edited
+under **Settings → Single sign-on** (client secret AES-encrypted at rest, never returned; tri-state
+secret; "Test discovery" button; endpoints come from the issuer's `/.well-known/openid-configuration`,
+so only the issuer is entered). The login page shows a "Sign in with …" button via a new anonymous
+`GET /api/auth/oidc/info`; `oidcEnabled` is also added to `GET /api/features` for authenticated
+screens. Identities link by **verified email** (provider must mark it verified) and then by the stable
+`sub` (survives a provider-side email change); a sub↔email conflict is refused. First login can
+**provision** a passwordless account (sentinel hash) behind the registration toggle. A linked account
+can disable local password login (**Account → Single sign-on**), with a fail-safe that re-opens
+password login whenever the provider is disabled. OIDC bypasses local 2FA (the IdP does MFA). Provider
+config (secret re-encrypted) + the per-user link/flag are in backup/restore + the round-trip test.
+
+**Two deliberate deviations from the original scope below:** (1) the login-page flag is surfaced via a
+dedicated anonymous `/api/auth/oidc/info` rather than the authenticated `/api/features` (that endpoint
+is `[Authorize]`, so the login page can't read it) — `/api/features` still carries `oidcEnabled` for
+in-app screens; (2) the provider is configured **UI-only** (no env seed) — a broader "remove env
+seeds everywhere" cleanup is tracked separately, see below.
 
 **Complexity:** Medium–High
 **Value:** Authentik / Authelia / Keycloak are increasingly the front door of a
@@ -1144,6 +1164,54 @@ safely running on the source, and the whole drain audited project-by-project.
 
 ---
 
+### Phase V11.9 — Persisted Compose-project registry (drafts & stopped stacks don't vanish)
+
+**Complexity:** Medium
+**Value:** Stashboard surfaces a Compose project **only** by discovering it from its
+containers' `com.docker.compose.project` labels — so any project with **no containers** is
+invisible. That bites in two places: a project created but not yet started (the reason the
+from-scratch / template "Create only" action was removed — it wrote a file on disk that
+Stashboard then couldn't show or manage), and a stack brought down with `docker compose
+down` (its files remain, but it disappears from the Docker page entirely). A small
+**registry** of projects Stashboard knows about makes both first-class: a stack you
+prepared but haven't deployed, and a stack you stopped, both stay visible and actionable.
+
+**Scope:**
+
+- A **persisted record** of each Compose project Stashboard created (or later adopts —
+  V11.4), keyed by connection + resolved directory + file name + project name, written at
+  create time.
+- Discovery becomes a **union**: container-discovered projects (today's behaviour, source of
+  truth when containers exist) **plus** registry rows whose directory has no running/stopped
+  containers — surfaced as a **"Draft / not deployed"** group on the Docker page.
+- Per-draft actions: **Deploy** (`docker compose up -d` in the directory — no container
+  labels needed, so it works before the first run), **Open** (the existing Compose editor /
+  Raw YAML on the on-disk file), and **Remove from list** (forget the row; optionally also
+  delete the files, explicitly confirmed).
+- **Re-introduce a deliberate "create without deploying"** path now that the result is
+  visible and deployable — restoring the capability removed in the bugfix, but safely.
+- **Lifecycle:** once a draft's containers exist, container discovery owns it and the draft
+  badge clears; a `down` later returns it to the draft/stopped group instead of vanishing.
+- **Backup/restore:** the registry rows (connection + path + name, no secrets) round-trip
+  through `BackupService` so prepared-but-not-deployed stacks survive a restore.
+
+**Out of scope:** scanning hosts for compose files Stashboard never created (that's V11.4
+adoption of *running* workloads; this phase only tracks what Stashboard itself created/
+adopted); auto-deleting files when a row is forgotten (deletion is always an explicit,
+separately-confirmed action).
+
+**Tests:** creating a project writes a registry row; discovery unions container projects
+with registry-only drafts and de-dupes once containers appear; Deploy brings a draft up by
+directory and clears the draft state; Remove forgets the row without touching files unless
+explicitly asked; the registry survives the backup round-trip; a `down`'d managed project
+reappears in the stopped/draft group rather than disappearing.
+
+**Acceptance bar:** a user creates a stack without starting it, sees it on the Docker page
+as a draft, deploys it later in one click — and a stack they bring down stays visible and
+redeployable instead of vanishing.
+
+---
+
 ## V12 — Proxmox Backup Server (PBS) backup monitoring
 
 > PBS is currently handled only as a **generic node** (V6.8.3): CPU/RAM/disk/uptime,
@@ -1698,4 +1766,31 @@ service is unchanged; the backup round-trip preserves widget config + keys.
 **Acceptance bar:** a user can attach a live widget to a service card — e.g. qBittorrent's
 active-torrent count or Sonarr's queue — and see it update on the dashboard, with the API key
 held encrypted server-side and the widget never affecting the up/down status.
+
+### Phase V13.6 — Config consolidation (UI-only settings + first-run setup)
+
+**Complexity:** Medium
+**Value:** Today most app-wide settings (SMTP, MQTT, Apprise, …) seed a DB row from bound
+`*Options` (env / appsettings) **once, on first access**, then the UI becomes the source of truth.
+That dual-source model is subtly confusing — editing an env var later silently has no effect — and
+V10.5's OIDC provider deliberately broke from it (UI-only, no env seed). This phase makes the model
+consistent.
+
+**Scope:**
+
+- Decide per-setting whether env stays as a **first-run bootstrap** (good for declarative
+  docker-compose deploys) or is removed in favour of **UI-only** + a first-run setup step.
+- If env bootstrap is kept, document the "seed once, UI thereafter" precedence clearly in
+  `INSTALL.md` / `docker-compose`; if removed, provide an in-app **first-run wizard** so a fresh
+  install is configurable without env.
+- Migrate the existing seeded settings consistently; preserve already-seeded rows (no data loss for
+  existing installs).
+
+**Out of scope:** changing what any individual setting does; secrets handling (already encrypted).
+
+**Tests:** existing installs keep their persisted settings across the change; a fresh install is
+fully configurable through the chosen path (env bootstrap or first-run UI).
+
+**Acceptance bar:** there is one clear, documented way to configure app-wide settings, with no
+silent "env edit had no effect" surprise.
 

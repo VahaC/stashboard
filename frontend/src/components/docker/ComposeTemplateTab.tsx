@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, ArrowLeft, ExternalLink, RefreshCw, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { useCreateComposeProject, useServiceTemplates } from '@/lib/queries'
 import type { ServiceTemplate } from '@/lib/types'
@@ -316,13 +317,22 @@ function ComposeTemplateConfig({
                     {v.required && <span className="docker-template-required"> *</span>}
                   </Label>
                   <div className="docker-template-var-input">
-                    <Input
-                      value={values[v.key] ?? ''}
-                      type={v.type === 'password' ? 'password' : 'text'}
-                      onChange={(e) => setValues((s) => ({ ...s, [v.key]: e.target.value }))}
-                      className="font-mono text-[12px]"
-                      aria-label={v.label}
-                    />
+                    {v.type === 'password' ? (
+                      <PasswordInput
+                        value={values[v.key] ?? ''}
+                        onChange={(e) => setValues((s) => ({ ...s, [v.key]: e.target.value }))}
+                        className="font-mono text-[12px]"
+                        aria-label={v.label}
+                      />
+                    ) : (
+                      <Input
+                        value={values[v.key] ?? ''}
+                        type="text"
+                        onChange={(e) => setValues((s) => ({ ...s, [v.key]: e.target.value }))}
+                        className="font-mono text-[12px]"
+                        aria-label={v.label}
+                      />
+                    )}
                     {v.generate && (
                       <Button
                         type="button"

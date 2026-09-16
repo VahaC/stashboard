@@ -2,14 +2,14 @@ import { useMemo, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import type { Service, ServiceStatus, ServiceUpsert } from '@/lib/types'
 import { resolveDockerUpdateStatus } from '@/lib/types'
 import { useCategories, useCheckNow, useDeleteService, useRefreshFavicon, useUploadLogo, useUpsertService } from '@/lib/queries'
-import { Activity, Check, Container, Copy, Eye, EyeOff, History, Info, KeyRound, Plus, RefreshCw, Server, Trash2 } from 'lucide-react'
-import { parseApiErrors } from '@/lib/utils'
-import { cn } from '@/lib/utils'
+import { Activity, Check, Container, Copy, History, Info, KeyRound, Plus, RefreshCw, Server, Trash2 } from 'lucide-react'
+import { cn, copyToClipboard as copyTextToClipboard, parseApiErrors } from '@/lib/utils'
 import { DockerWatchSection } from '@/components/DockerWatchSection'
 import { ProxmoxLinkSection } from '@/components/ProxmoxLinkSection'
 import { UptimeHistorySection } from '@/components/UptimeHistorySection'
@@ -103,7 +103,8 @@ export function ServiceModal({ open, onOpenChange, service, initialTab }: Props)
   )
 
   const copyToClipboard = (uid: string, field: 'key' | 'value', text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
+    void copyTextToClipboard(text).then((ok) => {
+      if (!ok) return
       setCredRows((rows) => rows.map((r) => r.uid === uid ? { ...r, copied: field } : r))
       setTimeout(() => setCredRows((rows) => rows.map((r) => r.uid === uid ? { ...r, copied: null } : r)), 1500)
     })
@@ -576,32 +577,48 @@ export function ServiceModal({ open, onOpenChange, service, initialTab }: Props)
                             </div>
                           </div>
                           <div className="relative">
-                            <Input
-                              type={c.isSecret && !c.reveal ? 'password' : 'text'}
-                              placeholder="Value"
-                              value={c.value}
-                              onChange={(e) => updateCredential(c.uid, { value: e.target.value })}
-                              className={cn('font-mono text-[12px]', c.isSecret ? 'pr-[4.5rem]' : 'pr-9')}
-                            />
-                            <div className="service-modal-value-actions">
-                              <button
-                                type="button"
-                                className="service-modal-icon-btn"
-                                onClick={() => copyToClipboard(c.uid, 'value', c.value)}
-                                title="Copy value"
-                              >
-                                {c.copied === 'value' ? <Check className="service-modal-copy-success h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                              </button>
-                              {c.isSecret && (
-                                <button
-                                  type="button"
-                                  className="service-modal-icon-btn"
-                                  onClick={() => updateCredential(c.uid, { reveal: !c.reveal })}
-                                >
-                                  {c.reveal ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                                </button>
-                              )}
-                            </div>
+                            {c.isSecret ? (
+                              <PasswordInput
+                                placeholder="Value"
+                                value={c.value}
+                                revealed={c.reveal}
+                                onRevealedChange={(reveal) => updateCredential(c.uid, { reveal })}
+                                onChange={(e) => updateCredential(c.uid, { value: e.target.value })}
+                                className="font-mono text-[12px] pr-[4.5rem]"
+                                actionsClassName="service-modal-value-actions"
+                                toggleButtonClassName="service-modal-icon-btn"
+                                endAdornment={
+                                  <button
+                                    type="button"
+                                    className="service-modal-icon-btn"
+                                    onClick={() => copyToClipboard(c.uid, 'value', c.value)}
+                                    title="Copy value"
+                                  >
+                                    {c.copied === 'value' ? <Check className="service-modal-copy-success h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                                  </button>
+                                }
+                              />
+                            ) : (
+                              <>
+                                <Input
+                                  type="text"
+                                  placeholder="Value"
+                                  value={c.value}
+                                  onChange={(e) => updateCredential(c.uid, { value: e.target.value })}
+                                  className="font-mono text-[12px] pr-9"
+                                />
+                                <div className="service-modal-value-actions">
+                                  <button
+                                    type="button"
+                                    className="service-modal-icon-btn"
+                                    onClick={() => copyToClipboard(c.uid, 'value', c.value)}
+                                    title="Copy value"
+                                  >
+                                    {c.copied === 'value' ? <Check className="service-modal-copy-success h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                                  </button>
+                                </div>
+                              </>
+                            )}
                           </div>
                           <label className="service-modal-secret-toggle">
                             <input

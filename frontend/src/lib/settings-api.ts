@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { AppriseSettings, AppriseSettingsUpdate, AppriseTestResult, ContainerExecSettings, HealthCheckSettings, HostShellSettings, ImagePruneSettings, MqttSettings, MqttSettingsUpdate, MqttTestResult, ProxmoxCloneSettings, ProxmoxConsoleSettings, ProxmoxCreateSettings, ProxmoxDestroySettings, ProxmoxRestoreSettings, ProxmoxUpdateApplySettings } from './types'
+import type { AppriseSettings, AppriseSettingsUpdate, AppriseTestResult, ContainerExecSettings, HealthCheckSettings, HostShellSettings, ImagePruneSettings, MqttSettings, MqttSettingsUpdate, MqttTestResult, OidcDiscoveryTestResult, OidcSettings, OidcSettingsUpdate, ProxmoxCloneSettings, ProxmoxConsoleSettings, ProxmoxCreateSettings, ProxmoxDestroySettings, ProxmoxRestoreSettings, ProxmoxUpdateApplySettings } from './types'
 
 /** V5.3 — app-wide operational settings managed from the Settings page. */
 export const settingsApi = {
@@ -68,4 +68,12 @@ export const settingsApi = {
   /** V10.0 — fire a sample notification through each configured target. */
   testAppriseSettings: () =>
     api.post<AppriseTestResult>('/api/settings/apprise/test').then((r) => r.data),
+  /** V10.5 — OIDC / SSO provider settings (client secret never returned, presence flag only). */
+  getOidcSettings: () =>
+    api.get<OidcSettings>('/api/settings/oidc').then((r) => r.data),
+  updateOidcSettings: (settings: OidcSettingsUpdate) =>
+    api.put('/api/settings/oidc', settings),
+  /** V10.5 — load the configured issuer's well-known document to verify discovery works. */
+  testOidcDiscovery: () =>
+    api.post<OidcDiscoveryTestResult>('/api/settings/oidc/test-discovery').then((r) => r.data),
 }

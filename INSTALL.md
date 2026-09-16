@@ -91,6 +91,12 @@ What each setting does:
 
 > **Feature toggles live in the app, not in `.env`.** Destructive / high-risk features are off by default and turned on inside Stashboard: the **Remove container** action is gated by `Stashboard:AllowContainerRemoval`, and the **host terminal** (V5.3 вЂ” an interactive SSH shell on the Docker host) is enabled at **Settings в†’ Host terminal**, which spells out the conditions and risks. You don't set these in `.env`.
 
+> **Integrations are configured in the UI, not in `.env`.** SMTP (Notifications), the MQTT / Home
+> Assistant integration (Settings → Home Assistant), and **single sign-on / OIDC** (V10.5, Settings →
+> Single sign-on) are all set up inside Stashboard and stored in the database — there are **no
+> environment variables** for the OIDC provider. Configure your identity provider (Authentik /
+> Authelia / Keycloak) from the page and register the redirect URI it shows you.
+
 > **When would you set the keys yourself?** Only if you manage secrets in an
 > external system, or you are **migrating an existing deployment** and must reuse
 > its original encryption key (otherwise previously encrypted data can't be

@@ -93,6 +93,22 @@ public class Program
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddScoped<IAccountNotificationService, AccountNotificationService>();
 
+        // V10.5 — OIDC / SSO login. App-wide provider config is DB-backed and editable from the
+        // Settings page (client secret encrypted at rest, never returned); there is no env seed.
+        // The custom Authorization-Code + PKCE client finishes via the existing token service, so
+        // the resulting session is the same AuthResponse the rest of the app uses. The in-flight
+        // state (PKCE verifier + nonce) lives in a single-instance in-memory store; discovery /
+        // JWKS + the token/userinfo HTTP calls go through the "oidc" HttpClient.
+        builder.Services.AddScoped<Auth.Oidc.IOidcSettingsService, Auth.Oidc.OidcSettingsService>();
+        builder.Services.AddSingleton<Auth.Oidc.IOidcDiscoveryClient, Auth.Oidc.OidcDiscoveryClient>();
+        builder.Services.AddSingleton<Auth.Oidc.IOidcStateStore, Auth.Oidc.OidcStateStore>();
+        builder.Services.AddScoped<Auth.Oidc.IOidcService, Auth.Oidc.OidcService>();
+        builder.Services.AddHttpClient("oidc", c =>
+        {
+            c.Timeout = TimeSpan.FromSeconds(15);
+            c.DefaultRequestHeaders.UserAgent.ParseAdd("Stashboard/1.0 (+oidc)");
+        });
+
         var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
             ?? throw new InvalidOperationException("Jwt section not configured.");
         // V10.4 — dual-credential auth: JWT access tokens + personal access tokens. A policy scheme

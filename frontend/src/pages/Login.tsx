@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/lib/auth-store'
-import type { User } from '@/lib/types'
+import type { OidcInfo, User } from '@/lib/types'
 import { parseApiErrors } from '@/lib/utils'
 
 type Session = { accessToken: string; refreshToken: string; user: User }
@@ -24,6 +25,27 @@ export function Login() {
   // V10.3 — when the account has 2FA enabled, the password step returns a short-lived
   // challenge token instead of tokens; we then collect a code for the second step.
   const [challengeToken, setChallengeToken] = useState<string | null>(null)
+  // V10.5 — show the "Sign in with …" button only when an OIDC provider is configured.
+  const [oidc, setOidc] = useState<OidcInfo | null>(null)
+  const [oidcLoading, setOidcLoading] = useState(false)
+
+  useEffect(() => {
+    api.get<OidcInfo>('/api/auth/oidc/info')
+      .then((r) => setOidc(r.data))
+      .catch(() => setOidc(null))
+  }, [])
+
+  const signInWithOidc = async () => {
+    setOidcLoading(true)
+    setError(null)
+    try {
+      const resp = await api.post('/api/auth/oidc/start')
+      window.location.href = resp.data.authorizeUrl
+    } catch {
+      setError('Could not start single sign-on. Please try again.')
+      setOidcLoading(false)
+    }
+  }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -76,13 +98,27 @@ export function Login() {
             </div>
             <div className="auth-field">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className={fieldErrors['password'] ? 'border-destructive' : ''} />
+              <PasswordInput id="password" required value={password} onChange={(e) => setPassword(e.target.value)} className={fieldErrors['password'] ? 'border-destructive' : ''} />
               {fieldErrors['password'] && <p className="auth-field-error">{fieldErrors['password']}</p>}
             </div>
             {error && <p className="auth-error">{error}</p>}
             <Button type="submit" className="auth-button-full" disabled={loading}>
               {loading ? 'Signing in…' : 'Sign in'}
             </Button>
+            {oidc?.enabled && (
+              <>
+                <div className="auth-divider"><span>or</span></div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="auth-button-full"
+                  disabled={oidcLoading}
+                  onClick={signInWithOidc}
+                >
+                  {oidcLoading ? 'Redirecting…' : `Sign in with ${oidc.buttonLabel}`}
+                </Button>
+              </>
+            )}
             <div className="auth-links auth-links-stack">
               <p>
                 <Link to="/forgot-password" className="auth-link">Forgot password?</Link>

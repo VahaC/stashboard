@@ -266,6 +266,57 @@ namespace Stashboard.Api.Migrations
                     b.ToTable("MqttSettings");
                 });
 
+            modelBuilder.Entity("Stashboard.Api.Data.OidcSettingsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("AllowOidcRegistration")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClientSecretEncrypted")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Issuer")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RedirectBaseUrl")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Scopes")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("OidcSettings");
+                });
+
             modelBuilder.Entity("Stashboard.Api.Data.PersonalAccessTokenEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -550,11 +601,18 @@ namespace Stashboard.Api.Migrations
                     b.Property<DateTime?>("LastLoginUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("LocalLoginDisabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime?>("LockoutEndUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OidcSubject")
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
@@ -615,6 +673,8 @@ namespace Stashboard.Api.Migrations
 
                     b.HasIndex("NormalizedEmail")
                         .IsUnique();
+
+                    b.HasIndex("OidcSubject");
 
                     b.ToTable("Users");
                 });

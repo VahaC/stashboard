@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import { MoreVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,9 +12,10 @@ import { FloatingMenu } from '@/components/shared/FloatingMenu'
 import { useConfirm, type ConfirmOptions } from '@/components/shared/ConfirmDialog'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { accountApi, type TwoFactorEnrollment } from '@/lib/account-api'
+import { useFeatures } from '@/lib/queries'
 import { useAuthStore } from '@/lib/auth-store'
 import { useThemeStore, type Theme } from '@/lib/theme-store'
-import { parseApiErrors } from '@/lib/utils'
+import { copyToClipboard, parseApiErrors } from '@/lib/utils'
 import type { CreatedPersonalAccessToken, PatScope, PersonalAccessToken, Profile } from '@/lib/types'
 import '@/styles/account-page.css'
 
@@ -107,6 +109,8 @@ export function Account() {
         </CardContent>
       </Card>
 
+      {profile && <SsoAccountCard profile={profile} onChanged={() => setReload((r) => r + 1)} />}
+
       <Card>
         <CardHeader>
           <CardTitle>API tokens</CardTitle>
@@ -188,8 +192,7 @@ function ChangePasswordForm() {
   return (
     <form onSubmit={submit} className="account-form">
       <Label>Current password</Label>
-      <Input
-        type="password"
+      <PasswordInput
         required
         value={current}
         onChange={(e) => setCurrent(e.target.value)}
@@ -197,8 +200,7 @@ function ChangePasswordForm() {
       />
       {fieldErrors['currentpassword'] && <p className="account-field-error">{fieldErrors['currentpassword']}</p>}
       <Label>New password</Label>
-      <Input
-        type="password"
+      <PasswordInput
         required
         minLength={8}
         value={next}
@@ -246,8 +248,7 @@ function ChangeEmailForm({ onRequested }: { onRequested: () => void }) {
         <p className="account-field-error">{fieldErrors['newemail'] ?? fieldErrors['email']}</p>
       )}
       <Label>Current password</Label>
-      <Input
-        type="password"
+      <PasswordInput
         required
         value={pwd}
         onChange={(e) => setPwd(e.target.value)}
@@ -279,8 +280,7 @@ function DeleteAccountForm({ onDeleted }: { onDeleted: () => void }) {
   return (
     <form onSubmit={submit} className="account-form">
       <Label>Confirm with current password</Label>
-      <Input
-        type="password"
+      <PasswordInput
         required
         value={pwd}
         onChange={(e) => setPwd(e.target.value)}
@@ -294,6 +294,79 @@ function DeleteAccountForm({ onDeleted }: { onDeleted: () => void }) {
       {err && <p className="account-form-error">{err}</p>}
       <Button type="submit" variant="destructive" disabled={!confirm}>Delete account</Button>
     </form>
+  )
+}
+
+/**
+ * V10.5 — per-account single sign-on controls: shows the link status and lets the owner turn off
+ * local password sign-in once linked. Hidden entirely unless OIDC is enabled or this account is
+ * already linked, so accounts that never use SSO aren't bothered with it.
+ */
+function SsoAccountCard({ profile, onChanged }: { profile: Profile; onChanged: () => void }) {
+  const features = useFeatures()
+  const confirm = useConfirm()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const oidcEnabled = features.data?.oidcEnabled ?? false
+  if (!oidcEnabled && !profile.oidcLinked) return null
+
+  const toggle = async () => {
+    const disabling = !profile.localLoginDisabled
+    if (disabling) {
+      const ok = await confirm({
+        title: 'Disable local password sign-in?',
+        message: 'After this you can only sign in to this account through single sign-on. If your provider becomes unavailable, you can still sign in with your password until it is back (and an admin can re-enable it). Continue?',
+        confirmLabel: 'Disable local login',
+        destructive: true,
+      })
+      if (!ok) return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await accountApi.setLocalLoginDisabled(disabling)
+      onChanged()
+    } catch (e: unknown) {
+      const { globalError } = parseApiErrors(e)
+      setError(globalError ?? 'Failed to update single sign-on settings.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Single sign-on</CardTitle>
+        <CardDescription>
+          {profile.oidcLinked
+            ? 'This account is linked to your single sign-on identity.'
+            : 'Sign in once with the “Sign in with …” button on the login page to link this account.'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {profile.oidcLinked ? (
+          <div className="account-form">
+            <p className="twofa-status">
+              {profile.localLoginDisabled
+                ? '🔒 Local password sign-in is disabled — this account signs in with SSO only.'
+                : '🔑 Local password sign-in is enabled alongside SSO.'}
+            </p>
+            {error && <p className="account-form-error">{error}</p>}
+            <Button
+              variant={profile.localLoginDisabled ? 'outline' : 'destructive'}
+              disabled={busy || (!profile.localLoginDisabled && !oidcEnabled)}
+              onClick={toggle}
+            >
+              {profile.localLoginDisabled ? 'Re-enable local password sign-in' : 'Disable local password sign-in'}
+            </Button>
+          </div>
+        ) : (
+          <p className="host-shell-settings-note">Once linked, you'll be able to turn off local password sign-in here.</p>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -428,7 +501,7 @@ function TwoFactorSection({ enabled, onChanged, onSignedOut }: { enabled: boolea
 }
 
 function RecoveryCodesPanel({ codes, onDone, signedOut }: { codes: string[]; onDone: () => void; signedOut?: boolean }) {
-  const copy = () => navigator.clipboard?.writeText(codes.join('\n')).catch(() => {})
+  const copy = () => { void copyToClipboard(codes.join('\n')) }
   return (
     <div className="account-form account-form-spaced">
       <p className="twofa-step"><strong>Save your recovery codes.</strong> Each can be used once if you lose access to your authenticator app. They won't be shown again.</p>
@@ -473,7 +546,7 @@ function TwoFactorPasswordForm<T>({ label, note, buttonText, destructive, action
     <form onSubmit={submit} className="twofa-subform">
       <Label>{label}</Label>
       <p className="twofa-note">{note}</p>
-      <Input type="password" required placeholder="Current password" value={pwd} onChange={(e) => setPwd(e.target.value)} />
+      <PasswordInput required placeholder="Current password" value={pwd} onChange={(e) => setPwd(e.target.value)} />
       {error && <p className="account-form-error">{error}</p>}
       <Button type="submit" variant={destructive ? 'destructive' : 'outline'} disabled={busy || pwd.length === 0}>
         {busy ? 'Working…' : buttonText}
@@ -699,7 +772,7 @@ function CreateTokenForm({ onCancel, onCreated }: {
       </div>
       <div className="account-field">
         <Label htmlFor="pat-password">Current password</Label>
-        <Input id="pat-password" type="password" required placeholder="Confirm it's you" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <PasswordInput id="pat-password" required placeholder="Confirm it's you" value={password} onChange={(e) => setPassword(e.target.value)} />
       </div>
       {error && <p className="account-form-error">{error}</p>}
       <div className="twofa-actions">
@@ -714,10 +787,14 @@ function CreateTokenForm({ onCancel, onCreated }: {
 
 function NewTokenPanel({ created, onDone }: { created: CreatedPersonalAccessToken; onDone: () => void }) {
   const [copied, setCopied] = useState(false)
-  const copy = () => navigator.clipboard?.writeText(created.secret).then(() => {
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }).catch(() => {})
+  const copy = () => {
+    void copyToClipboard(created.secret).then((ok) => {
+      if (ok) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }
+    })
+  }
   return (
     <div className="account-form account-form-spaced">
       <p className="twofa-step">

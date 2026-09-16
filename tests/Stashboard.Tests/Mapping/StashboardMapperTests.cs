@@ -30,6 +30,8 @@ public class StashboardMapperTests
             EmailConfirmed = true,
             PendingEmail = "new@x.com",
             LastLoginUtc = DateTime.UtcNow,
+            OidcSubject = "sub-123",
+            LocalLoginDisabled = true,
         };
 
         var dto = mapper.MapToProfileResponse(user);
@@ -41,6 +43,9 @@ public class StashboardMapperTests
         Assert.Equal(user.PendingEmail, dto.PendingEmail);
         Assert.Equal(user.CreatedUtc, dto.CreatedUtc);
         Assert.Equal(user.LastLoginUtc, dto.LastLoginUtc);
+        // V10.5 — OidcLinked is computed from the stored subject; LocalLoginDisabled is a direct copy.
+        Assert.True(dto.OidcLinked);
+        Assert.True(dto.LocalLoginDisabled);
     }
 
     [Fact]
