@@ -59,7 +59,13 @@ public sealed record WebResourceResponse(
     /// <summary>V7.9 — the user-level Proxmox connection this service is associated
     /// with (the "Proxmox host" picker), or null. The analogue of
     /// <see cref="DockerConnectionId"/>.</summary>
-    Guid? ProxmoxConnectionId = null);
+    Guid? ProxmoxConnectionId = null,
+    /// <summary>V10.6 — the card's position in the dashboard's Custom sort mode when
+    /// ungrouped (global order). Ignored by the name / category sort modes.</summary>
+    int SortOrder = 0,
+    /// <summary>V10.6 — the card's position within its category in the dashboard's
+    /// Custom sort mode when grouped by category.</summary>
+    int SortOrderInCategory = 0);
 
 /// <summary>
 /// V7.9 — compact projection of a Proxmox guest linked to a service. Carries the
@@ -130,7 +136,7 @@ public sealed record CredentialUpsert(
     string? Value,
     bool IsSecret);
 
-public sealed record CategoryResponse(Guid Id, string Name, string Color, int ServiceCount);
+public sealed record CategoryResponse(Guid Id, string Name, string Color, int ServiceCount, int SortOrder = 0);
 
 public sealed record CategoryUpsertRequest(
     [Required, MaxLength(100)] string Name,

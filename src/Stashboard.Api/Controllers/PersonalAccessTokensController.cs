@@ -42,8 +42,7 @@ public class PersonalAccessTokensController(
         if (req.ExpiresUtc is { } expiry && expiry <= now)
             return BadRequest(new { error = "Expiry must be in the future." });
 
-        var scope = req.Scope == "read" ? PersonalAccessTokenScope.Read : PersonalAccessTokenScope.Full;
-        var result = await tokens.CreateAsync(userId, req.Name, scope, req.ExpiresUtc, cancellationToken);
+        var result = await tokens.CreateAsync(userId, req.Name, req.Scope, req.ExpiresUtc, cancellationToken);
 
         return Ok(new CreatedPersonalAccessTokenResponse(ToResponse(result.Token, now), result.PlaintextSecret));
     }
@@ -67,8 +66,7 @@ public class PersonalAccessTokensController(
         var status = t.RevokedUtc is not null ? "revoked"
             : t.ExpiresUtc is not null && t.ExpiresUtc <= now ? "expired"
             : "active";
-        var scope = t.Scope == PersonalAccessTokenScope.Read ? "read" : "full";
         return new PersonalAccessTokenResponse(
-            t.Id, t.Name, t.DisplayHint, scope, t.ExpiresUtc, t.LastUsedUtc, t.RevokedUtc, t.CreatedUtc, status);
+            t.Id, t.Name, t.DisplayHint, t.Scope, t.ExpiresUtc, t.LastUsedUtc, t.RevokedUtc, t.CreatedUtc, status);
     }
 }

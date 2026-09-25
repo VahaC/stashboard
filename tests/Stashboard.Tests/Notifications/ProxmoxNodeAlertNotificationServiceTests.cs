@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Stashboard.Api.Data;
 using Stashboard.Api.Notifications;
+using Stashboard.Api.Notifications.Push;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
 using Stashboard.Core.Enums;
@@ -32,7 +33,7 @@ public class ProxmoxNodeAlertNotificationServiceTests
             .ReturnsAsync(new ResolvedAppriseSettings(false, "", []));
         _service = new ProxmoxNodeAlertNotificationService(
             _emailMock.Object, _telegramMock.Object, _appriseMock.Object, _appriseSettingsMock.Object,
-            _encryptionMock.Object, NullLogger<ProxmoxNodeAlertNotificationService>.Instance);
+            Mock.Of<IPushSubscriptionService>(), _encryptionMock.Object, NullLogger<ProxmoxNodeAlertNotificationService>.Instance);
     }
 
     private void ConfigureApprise() =>

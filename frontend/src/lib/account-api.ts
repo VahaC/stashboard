@@ -48,6 +48,15 @@ export const accountApi = {
   getDashboardPreferences: () => api.get<DashboardPreferences>('/api/account/dashboard-preferences').then((response) => response.data),
   updateDashboardPreferences: (sortMode: DashboardPreferences['sortMode'], groupByCategory: boolean) =>
     api.put('/api/account/dashboard-preferences', { sortMode, groupByCategory }),
+
+  // V10.6 — persist the dashboard's Custom drag-and-drop order. Each call sends the
+  // complete ordered id list for its slice; the server rewrites dense 0..N indices.
+  setServiceOrder: (orderedServiceIds: string[]) =>
+    api.put('/api/dashboard/service-order', { orderedServiceIds }),
+  setServiceOrderInCategory: (categoryId: string | null, orderedServiceIds: string[]) =>
+    api.put('/api/dashboard/service-order-in-category', { categoryId, orderedServiceIds }),
+  setCategoryOrder: (orderedCategoryIds: string[]) =>
+    api.put('/api/dashboard/category-order', { orderedCategoryIds }),
   getTelegramSettings: () => api.get<TelegramSettings>('/api/account/telegram').then((r) => r.data),
   updateTelegramSettings: (settings: TelegramSettings) => api.put('/api/account/telegram', settings),
   getEmailSettings: () => api.get<EmailSettings>('/api/account/email-settings').then((r) => r.data),

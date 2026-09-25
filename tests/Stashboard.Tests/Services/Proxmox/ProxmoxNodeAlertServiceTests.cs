@@ -6,6 +6,7 @@ using Stashboard.Api.Auth;
 using Stashboard.Api.Data;
 using Stashboard.Api.Mapping;
 using Stashboard.Api.Notifications;
+using Stashboard.Api.Notifications.Push;
 using Stashboard.Api.Services.Proxmox;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
@@ -221,7 +222,7 @@ public class ProxmoxNodeAlertServiceTests : IAsyncLifetime
             .ReturnsAsync(new ResolvedAppriseSettings(false, "", []));
         var notifier = new ProxmoxNodeAlertNotificationService(
             _emailMock.Object, _telegramMock.Object, appriseSender.Object, appriseSettings.Object,
-            encryption.Object, NullLogger<ProxmoxNodeAlertNotificationService>.Instance);
+            Mock.Of<IPushSubscriptionService>(), encryption.Object, NullLogger<ProxmoxNodeAlertNotificationService>.Instance);
         var options = new TestOptionsMonitor(new ProxmoxUpdateOptions { AlertConsecutiveBreaches = breaches });
 
         return new ProxmoxNodeAlertService(

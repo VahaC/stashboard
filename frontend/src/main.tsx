@@ -3,9 +3,12 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import './styles/ui-primitives.css'
 import App from './App.tsx'
+import { registerServiceWorker } from './lib/register-sw'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
   </StrictMode>,
 )
+
+registerServiceWorker()

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Stashboard.Api.Contracts;
 using Stashboard.Core.Entities;
 
 namespace Stashboard.Api.Data;
@@ -16,9 +17,9 @@ public class EmailSettingsEntity : AuditableEntity
     /// </summary>
     public static readonly Guid SingletonId = new("e0000000-0000-0000-0000-000000000001");
 
-    /// <summary>"Smtp" — real SMTP. "LogOnly" — write the email to logs (dev/CI default).</summary>
-    [Required, MaxLength(16)]
-    public string Provider { get; set; } = "LogOnly";
+    /// <summary>Smtp — real SMTP. LogOnly — write the email to logs (dev/CI default). Stored as its
+    /// readable name via a value conversion (see <c>ApplicationDbContext</c>).</summary>
+    public EmailProvider Provider { get; set; } = EmailProvider.LogOnly;
 
     [MaxLength(256)]
     public string Host { get; set; } = "";

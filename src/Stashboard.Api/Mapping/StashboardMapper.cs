@@ -29,7 +29,7 @@ public sealed partial class StashboardMapper : IStashboardMapper
 
     // ServiceCount is a computed value (0 by default, composed by the caller with `with`).
     public CategoryResponse MapToCategoryResponse(CategoryEntity entity) =>
-        new(entity.Id, entity.Name, entity.Color, 0);
+        new(entity.Id, entity.Name, entity.Color, 0, entity.SortOrder);
 
     public TagResponse MapToTagResponse(TagEntity entity) =>
         new(entity.Id, entity.Name, 0);

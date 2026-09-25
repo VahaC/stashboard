@@ -20,7 +20,7 @@ import {
   useRotateProxmoxWebhook,
   useDeleteProxmoxWebhook,
 } from '@/lib/proxmox-queries'
-import { useAppriseSettings } from '@/lib/queries'
+import { useAppriseSettings, usePushConfigured } from '@/lib/queries'
 import { cn, copyToClipboard, getApiErrorMessage, parseApiErrors } from '@/lib/utils'
 import type {
   CheckScheduleType,
@@ -101,6 +101,8 @@ export function ProxmoxConnectionModal({
   const [appriseNotify, setAppriseNotify] = useState(connection?.appriseNotificationsEnabled ?? false)
   const appriseSettings = useAppriseSettings()
   const appriseConfigured = Boolean(appriseSettings.data && appriseSettings.data.enabled && appriseSettings.data.hasUrls)
+  const [pushNotify, setPushNotify] = useState(connection?.pushNotificationsEnabled ?? false)
+  const pushConfigured = Boolean(usePushConfigured().data)
 
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -150,6 +152,7 @@ export function ProxmoxConnectionModal({
     updateNotificationsEnabled: emailNotify,
     telegramNotificationsEnabled: telegramNotify,
     appriseNotificationsEnabled: appriseConfigured && appriseNotify,
+    pushNotificationsEnabled: pushConfigured && pushNotify,
     scheduleType,
     checkEveryHours,
     // The backend stores time in UTC; for this single-user homelab tool we keep
@@ -467,6 +470,17 @@ export function ProxmoxConnectionModal({
                 disabled={!appriseConfigured}
                 onChange={(e) => setAppriseNotify(e.target.checked)}
               /> Also notify via Apprise
+            </label>
+            <label
+              className="service-modal-checkbox-label service-modal-label mt-2"
+              title={!pushConfigured ? 'Subscribe a device to web push in Account → Notifications first.' : undefined}
+            >
+              <input
+                type="checkbox"
+                checked={pushConfigured && pushNotify}
+                disabled={!pushConfigured}
+                onChange={(e) => setPushNotify(e.target.checked)}
+              /> Also notify via web push
             </label>
           </div>
 

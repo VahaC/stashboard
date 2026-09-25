@@ -27,6 +27,7 @@ import {
   useRemoveContainerProxmoxLink,
   useTelegramSettings,
   useAppriseSettings,
+  usePushConfigured,
   useTestConnectionWatch,
   useTestDockerConnectionPing,
   useUnlinkConnectionWatch,
@@ -844,6 +845,7 @@ interface FormState {
   updateNotificationsEnabled: boolean
   telegramNotificationsEnabled: boolean
   appriseNotificationsEnabled: boolean
+  pushNotificationsEnabled: boolean
   /** V2.2 schedule mode. */
   scheduleType: 'Hourly' | 'Daily' | 'Weekly'
   /** Hours between checks for Hourly mode. */
@@ -899,6 +901,7 @@ const emptyForm: FormState = {
   updateNotificationsEnabled: true,
   telegramNotificationsEnabled: false,
   appriseNotificationsEnabled: false,
+  pushNotificationsEnabled: false,
   scheduleType: 'Hourly',
   checkEveryHours: 24,
   checkAtTimeLocal: '08:00',
@@ -985,6 +988,7 @@ export function DockerWatchForm({
     && appriseSettings.data.enabled
     && appriseSettings.data.hasUrls
   )
+  const pushConfigured = Boolean(usePushConfigured().data)
 
   const [form, setForm] = useState<FormState>(() => existing
     ? {
@@ -995,6 +999,7 @@ export function DockerWatchForm({
         updateNotificationsEnabled: existing.updateNotificationsEnabled,
         telegramNotificationsEnabled: existing.telegramNotificationsEnabled,
         appriseNotificationsEnabled: existing.appriseNotificationsEnabled,
+        pushNotificationsEnabled: existing.pushNotificationsEnabled,
         scheduleType: resolveScheduleType(existing.scheduleType),
         checkEveryHours: existing.checkEveryHours,
         checkAtTimeLocal: utcTimeToLocalHHmm(existing.checkAtTime) ?? '08:00',
@@ -1040,6 +1045,7 @@ export function DockerWatchForm({
       updateNotificationsEnabled: form.updateNotificationsEnabled,
       telegramNotificationsEnabled: telegramConfigured && form.telegramNotificationsEnabled,
       appriseNotificationsEnabled: appriseConfigured && form.appriseNotificationsEnabled,
+      pushNotificationsEnabled: pushConfigured && form.pushNotificationsEnabled,
       scheduleType: form.scheduleType,
       checkEveryHours: form.checkEveryHours,
       checkAtTime: utcTime,
@@ -1460,6 +1466,24 @@ export function DockerWatchForm({
             <p className="service-modal-help">
               Apprise is not configured yet. Set the Apprise base URL and at least one
               Apprise URL on the Notifications page to use this channel.
+            </p>
+          )}
+          <label
+            className="service-modal-checkbox-label service-modal-label"
+            title={!pushConfigured ? 'Subscribe a device to web push in Account → Notifications first.' : undefined}
+          >
+            <input
+              type="checkbox"
+              checked={pushConfigured && form.pushNotificationsEnabled}
+              disabled={!pushConfigured}
+              onChange={(e) => setForm({ ...form, pushNotificationsEnabled: e.target.checked })}
+            />
+            Send a web-push notification when an update is available
+          </label>
+          {!pushConfigured && (
+            <p className="service-modal-help">
+              No device is subscribed to web push yet. Subscribe this device on the
+              Notifications page to use this channel.
             </p>
           )}
         </div>

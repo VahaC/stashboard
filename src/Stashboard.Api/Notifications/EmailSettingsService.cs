@@ -91,7 +91,10 @@ public sealed class EmailSettingsService(
         entity = new EmailSettingsEntity
         {
             Id = EmailSettingsEntity.SingletonId,
-            Provider = string.IsNullOrWhiteSpace(_seed.Provider) ? "LogOnly" : _seed.Provider.Trim(),
+            // The seed comes from config as a string; anything but "Smtp" falls back to log-only.
+            Provider = Enum.TryParse<EmailProvider>(_seed.Provider, ignoreCase: true, out var seededProvider)
+                ? seededProvider
+                : EmailProvider.LogOnly,
             Host = _seed.Host?.Trim() ?? "",
             Port = _seed.Port,
             UseStartTls = _seed.UseStartTls,

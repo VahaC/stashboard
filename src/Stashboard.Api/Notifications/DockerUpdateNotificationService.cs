@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Stashboard.Api.Data;
+using Stashboard.Api.Notifications.Push;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
 using Stashboard.Core.Enums;
@@ -12,6 +13,7 @@ public sealed class DockerUpdateNotificationService(
     ITelegramSender telegramSender,
     IAppriseSender appriseSender,
     IAppriseSettingsService appriseSettings,
+    IPushSubscriptionService pushSubscriptions,
     IEncryptionService encryption,
     ILogger<DockerUpdateNotificationService> logger) : IDockerUpdateNotificationService
 {
@@ -32,6 +34,37 @@ public sealed class DockerUpdateNotificationService(
         await SendEmailIfNeededAsync(user, service, watch, cancellationToken);
         await SendTelegramIfNeededAsync(user, service, watch, cancellationToken);
         await SendAppriseIfNeededAsync(service, watch, cancellationToken);
+        await SendPushIfNeededAsync(user, service, watch, cancellationToken);
+    }
+
+    // ── web push channel ───────────────────────────────────────────────────────
+
+    private async Task SendPushIfNeededAsync(
+        UserEntity user, WebResourceEntity? service, DockerWatchEntity watch, CancellationToken cancellationToken)
+    {
+        if (!watch.PushNotificationsEnabled) return;
+        if (string.Equals(watch.LastPushNotifiedDigest, watch.LatestDigest, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var title = $"Update available for {DisplayName(service, watch)}";
+        var url = service is not null ? $"/?service={service.Id}" : "/";
+        try
+        {
+            var result = await pushSubscriptions.SendToUserAsync(
+                user.Id, new PushMessage(title, BuildTelegramText(service, watch), url, $"watch-{watch.Id}"), cancellationToken);
+            // Stamp the throttle key only when something was actually delivered without a
+            // transient failure — mirrors the Apprise channel's stamp-after-success rule.
+            if (result.Attempted > 0 && !result.HadTransientFailure)
+            {
+                watch.LastPushNotifiedDigest = watch.LatestDigest;
+                watch.LastNotificationSentUtc = DateTime.UtcNow;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send Docker update push notification for watch {WatchId} (service {ServiceId})",
+                watch.Id, service?.Id);
+        }
     }
 
     // ── Apprise channel ──────────────────────────────────────────────────────

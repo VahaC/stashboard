@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Stashboard.Api.Contracts;
 using Stashboard.Api.Data;
 using Stashboard.Api.Services;
 using Stashboard.Core.Abstractions;
@@ -52,7 +53,7 @@ public class BackupServiceTests
                 var alice = new UserEntity
                 {
                     Email = "alice@x.com", NormalizedEmail = "ALICE@X.COM", PasswordHash = "h",
-                    DisplayName = "Alice", Theme = "dark", DashboardSortMode = "category",
+                    DisplayName = "Alice", Theme = Theme.Dark, DashboardSortMode = DashboardSortMode.Category,
                     DashboardGroupByCategory = true, TelegramBotTokenEncrypted = enc.Encrypt("bot123"),
                     TelegramChatId = "chat456", TelegramNotificationsEnabled = true,
                     // V10.3 — 2FA state: enabled flag + encrypted secret + replay step.
@@ -221,7 +222,7 @@ public class BackupServiceTests
             await using (var ctx = NewContext(targetDb))
             {
                 var bob = await ctx.Users.AsNoTracking().SingleAsync(u => u.Id == userB);
-                Assert.Equal("dark", bob.Theme);
+                Assert.Equal(Theme.Dark, bob.Theme);
                 Assert.Equal("Alice", bob.DisplayName);
                 Assert.True(bob.DashboardGroupByCategory);
                 Assert.Equal("bot123", enc.Decrypt(bob.TelegramBotTokenEncrypted!));
@@ -566,6 +567,93 @@ public class BackupServiceTests
         {
             foreach (var f in new[] { dbPath, dbPath + "-wal", dbPath + "-shm" })
                 if (File.Exists(f)) File.Delete(f);
+        }
+    }
+
+    [Fact]
+    public async Task RoundTrip_PreservesCustomOrder_AndUpdatesOrderOnExistingRows()
+    {
+        var sourceDb = Path.Combine(Path.GetTempPath(), $"backup-ord-src-{Guid.NewGuid():N}.db");
+        var targetDb = Path.Combine(Path.GetTempPath(), $"backup-ord-dst-{Guid.NewGuid():N}.db");
+        var enc = new FakeEncryption();
+        try
+        {
+            Guid userA, userB;
+            byte[] export;
+            Guid existingSvcId;
+
+            await using (var ctx = NewContext(sourceDb))
+            {
+                await ctx.Database.EnsureCreatedAsync();
+                var alice = new UserEntity { Email = "a@x", NormalizedEmail = "A@X", PasswordHash = "h", Theme = Theme.System };
+                ctx.Users.Add(alice);
+                await ctx.SaveChangesAsync();
+                userA = alice.Id;
+
+                var media = new CategoryEntity { UserId = userA, Name = "Media", Color = "#111111", SortOrder = 3 };
+                ctx.Categories.Add(media);
+                await ctx.SaveChangesAsync();
+
+                ctx.WebResources.Add(new WebResourceEntity
+                {
+                    UserId = userA, Name = "Jellyfin", MainUrl = "https://jelly",
+                    CategoryId = media.Id, SortOrder = 7, SortOrderInCategory = 2,
+                });
+                ctx.WebResources.Add(new WebResourceEntity
+                {
+                    UserId = userA, Name = "Sonarr", MainUrl = "https://sonarr", SortOrder = 4, SortOrderInCategory = 1,
+                });
+                await ctx.SaveChangesAsync();
+
+                export = await new BackupService(ctx, enc).ExportAsync(userA);
+            }
+
+            await using (var ctx = NewContext(targetDb))
+            {
+                await ctx.Database.EnsureCreatedAsync();
+                var bob = new UserEntity { Email = "b@x", NormalizedEmail = "B@X", PasswordHash = "h", Theme = Theme.System };
+                ctx.Users.Add(bob);
+                await ctx.SaveChangesAsync();
+                userB = bob.Id;
+
+                // Pre-existing rows with the SAME natural keys but different order — the import must
+                // surgically update only the order fields (merge contract leaves everything else alone).
+                ctx.Categories.Add(new CategoryEntity { UserId = userB, Name = "Media", Color = "#999999", SortOrder = 0 });
+                var existing = new WebResourceEntity
+                {
+                    UserId = userB, Name = "Sonarr", MainUrl = "https://sonarr", Notes = "keep me", SortOrder = 0, SortOrderInCategory = 0,
+                };
+                ctx.WebResources.Add(existing);
+                await ctx.SaveChangesAsync();
+                existingSvcId = existing.Id;
+
+                await new BackupService(ctx, enc).ImportAsync(userB, new MemoryStream(export));
+            }
+
+            await using (var ctx = NewContext(targetDb))
+            {
+                // A brand-new service created by the import carries its order verbatim.
+                var jelly = await ctx.WebResources.SingleAsync(s => s.UserId == userB && s.Name == "Jellyfin");
+                Assert.Equal(7, jelly.SortOrder);
+                Assert.Equal(2, jelly.SortOrderInCategory);
+
+                // The pre-existing service had only its order fields updated; other fields untouched.
+                var sonarr = await ctx.WebResources.SingleAsync(s => s.Id == existingSvcId);
+                Assert.Equal(4, sonarr.SortOrder);
+                Assert.Equal(1, sonarr.SortOrderInCategory);
+                Assert.Equal("keep me", sonarr.Notes);
+
+                // The pre-existing category likewise had only its group order updated.
+                var media = await ctx.Categories.SingleAsync(c => c.UserId == userB && c.Name == "Media");
+                Assert.Equal(3, media.SortOrder);
+                Assert.Equal("#999999", media.Color);
+            }
+        }
+        finally
+        {
+            foreach (var db in new[] { sourceDb, targetDb })
+                foreach (var f in new[] { db, db + "-wal", db + "-shm" })
+                    if (File.Exists(f)) File.Delete(f);
         }
     }
 }

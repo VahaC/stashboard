@@ -1,12 +1,12 @@
 using System.ComponentModel.DataAnnotations;
+using Stashboard.Api.Data;
 
 namespace Stashboard.Api.Contracts;
 
 /// <summary>Request to mint a personal access token. Re-authenticates with the current password.</summary>
 public sealed record CreatePersonalAccessTokenRequest(
     [Required, StringLength(128, MinimumLength = 1)] string Name,
-    [Required, RegularExpression("^(read|full)$", ErrorMessage = "Scope must be 'read' or 'full'.")]
-    string Scope,
+    PersonalAccessTokenScope Scope,
     /// <summary>Optional absolute expiry (UTC). Omit / null for a token that never expires.</summary>
     DateTime? ExpiresUtc,
     [Required, StringLength(128, MinimumLength = 1)] string CurrentPassword
@@ -17,7 +17,7 @@ public sealed record PersonalAccessTokenResponse(
     Guid Id,
     string Name,
     string DisplayHint,
-    string Scope,
+    PersonalAccessTokenScope Scope,
     DateTime? ExpiresUtc,
     DateTime? LastUsedUtc,
     DateTime? RevokedUtc,

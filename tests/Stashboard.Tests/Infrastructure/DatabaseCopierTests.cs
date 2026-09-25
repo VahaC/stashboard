@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Stashboard.Api.Contracts;
 using Stashboard.Api.Data;
 using Stashboard.Core.Entities;
 
@@ -34,7 +35,7 @@ public class DatabaseCopierTests
                     Email = "a@b.com",
                     NormalizedEmail = "A@B.COM",
                     PasswordHash = "hash",
-                    Theme = "dark",
+                    Theme = Theme.Dark,
                 };
                 src.Users.Add(user);
 

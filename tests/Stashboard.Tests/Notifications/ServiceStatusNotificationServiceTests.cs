@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Stashboard.Api.Data;
 using Stashboard.Api.Notifications;
+using Stashboard.Api.Notifications.Push;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
 using Stashboard.Core.Enums;
@@ -25,7 +26,7 @@ public class ServiceStatusNotificationServiceTests
             .ReturnsAsync(new ResolvedAppriseSettings(false, "", []));
         _sut = new ServiceStatusNotificationService(
             _telegramSender.Object, _appriseSender.Object, _appriseSettings.Object,
-            _encryption.Object, NullLogger<ServiceStatusNotificationService>.Instance);
+            Mock.Of<IPushSubscriptionService>(), _encryption.Object, NullLogger<ServiceStatusNotificationService>.Instance);
     }
 
     private void ConfigureApprise() =>

@@ -12,6 +12,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<RefreshTokenEntity> RefreshTokens => Set<RefreshTokenEntity>();
     public DbSet<TwoFactorRecoveryCodeEntity> TwoFactorRecoveryCodes => Set<TwoFactorRecoveryCodeEntity>();
     public DbSet<PersonalAccessTokenEntity> PersonalAccessTokens => Set<PersonalAccessTokenEntity>();
+    public DbSet<PushSubscriptionEntity> PushSubscriptions => Set<PushSubscriptionEntity>();
     public DbSet<EmailSettingsEntity> EmailSettings => Set<EmailSettingsEntity>();
     public DbSet<HostShellSettingsEntity> HostShellSettings => Set<HostShellSettingsEntity>();
     public DbSet<ContainerExecSettingsEntity> ContainerExecSettings => Set<ContainerExecSettingsEntity>();
@@ -67,13 +68,20 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         {
             e.HasIndex(u => u.NormalizedEmail).IsUnique();
             e.Property(u => u.SecurityStamp).HasMaxLength(64).IsRequired();
+            // Store the sort mode + theme as their readable enum names (Name/Category/Custom,
+            // System/Light/Dark) rather than ints, keeping the SQLite columns human-inspectable.
+            // The lowercase wire form is handled by the JSON converter on the enums, not here.
+            e.Property(u => u.DashboardSortMode).HasConversion<string>().HasMaxLength(16);
+            e.Property(u => u.Theme).HasConversion<string>().HasMaxLength(16);
             // V10.5 — OIDC link lookup on every SSO sign-in keys on the provider subject.
             // Non-unique: NULL for every non-OIDC account (SQLite treats multiple NULLs as distinct).
             e.HasIndex(u => u.OidcSubject);
         });
 
         // Single-row, app-wide SMTP/email config (see EmailSettingsEntity.SingletonId).
-        builder.Entity<EmailSettingsEntity>();
+        // Provider stored as its readable name (Smtp/LogOnly), matching the wire form.
+        builder.Entity<EmailSettingsEntity>()
+            .Property(s => s.Provider).HasConversion<string>().HasMaxLength(16);
 
         // Single-row, app-wide host-terminal master switch (see HostShellSettingsEntity.SingletonId).
         builder.Entity<HostShellSettingsEntity>();
@@ -145,6 +153,20 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.HasOne(t => t.User)
                 .WithMany(u => u.PersonalAccessTokens)
                 .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PushSubscriptionEntity>(e =>
+        {
+            // V10.6 — one row per browser/device subscription. The endpoint is the
+            // push service's URL for that device; unique so re-subscribing the same
+            // device upserts rather than duplicating. Listed by owner in the UI.
+            e.HasIndex(p => p.Endpoint).IsUnique();
+            e.HasIndex(p => p.UserId);
+            // Owner cascade — deleting a user removes their subscriptions, mirroring tokens.
+            e.HasOne(p => p.User)
+                .WithMany()
+                .HasForeignKey(p => p.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

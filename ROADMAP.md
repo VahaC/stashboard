@@ -478,7 +478,17 @@ first login, and local password + 2FA login continue to work unchanged.
 
 ---
 
-### Phase V10.6 — PWA, web push & card ordering
+### ✅ Shipped (10.6.0) Phase V10.6 — PWA, web push & card ordering
+
+**Shipped in 10.6.0.** Stashboard is now an installable PWA (hand-rolled service worker
++ web app manifest, standalone display, offline app-shell), web push is a full V10.0-style
+notification channel (auto-provisioned VAPID keys, per-device subscriptions, fan-out to all
+four status/update/alert notifiers honouring the per-source toggle + throttle, expired
+endpoints pruned on send), and the dashboard has a **Custom** drag-and-drop sort mode with
+two independent card orders (global + within-category) plus reorderable category groups.
+The custom order round-trips through backup/restore (surgically updated on already-present
+rows); push subscriptions are device-bound and intentionally not exported. Web push / install
+require a **secure context** (HTTPS or localhost); the UI degrades gracefully otherwise.
 
 **Complexity:** Medium
 **Value:** The dashboard is already responsive and phone-tested, but it isn't an

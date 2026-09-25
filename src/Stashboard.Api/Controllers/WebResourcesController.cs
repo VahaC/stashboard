@@ -67,8 +67,16 @@ public class WebResourcesController(
         if (!await IsOwnedProxmoxConnectionOrNullAsync(request.ProxmoxConnectionId, cancellationToken))
             return BadRequest(new { error = "Proxmox connection does not exist." });
 
-        var entity = new WebResourceEntity { UserId = UserId };
+        var userId = UserId;
+        var entity = new WebResourceEntity { UserId = userId };
         ApplyScalar(entity, request);
+        // V10.6 — a new card appends to the end of both Custom orders (global + within
+        // its category), so it never displaces the user's existing arrangement.
+        entity.SortOrder = 1 + (await db.WebResources
+            .Where(s => s.UserId == userId).MaxAsync(s => (int?)s.SortOrder, cancellationToken) ?? -1);
+        entity.SortOrderInCategory = 1 + (await db.WebResources
+            .Where(s => s.UserId == userId && s.CategoryId == entity.CategoryId)
+            .MaxAsync(s => (int?)s.SortOrderInCategory, cancellationToken) ?? -1);
         db.WebResources.Add(entity);
         await db.SaveChangesAsync(cancellationToken);
         await ReplaceCredentialsAsync(entity, request.Credentials, cancellationToken);

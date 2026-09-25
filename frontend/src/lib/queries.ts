@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 import { accountApi } from './account-api'
 import { settingsApi } from './settings-api'
+import { pushApi } from './push-api'
 import { readFileAsDataUrl } from './utils'
 import type { AppriseSettings } from './types'
 import type {
@@ -859,6 +860,19 @@ export const useAppriseSettings = () =>
   useQuery({
     queryKey: qk.appriseSettings,
     queryFn: async (): Promise<AppriseSettings> => settingsApi.getAppriseSettings(),
+    staleTime: 2 * 60_000,
+  })
+
+/**
+ * V10.6 — true when the current user has at least one web-push subscription, so the
+ * Docker watch / Proxmox host forms can enable or disable their per-target "push"
+ * toggle (same UX as the Telegram / Apprise toggles). The push channel has no
+ * settings row — "configured" simply means "has a subscribed device".
+ */
+export const usePushConfigured = () =>
+  useQuery({
+    queryKey: ['push-devices'],
+    queryFn: async (): Promise<boolean> => (await pushApi.listDevices()).length > 0,
     staleTime: 2 * 60_000,
   })
 

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Stashboard.Api.Contracts;
 using Stashboard.Api.Data;
 using Stashboard.Api.Services.StatusPages;
 using Stashboard.Core.Abstractions;
@@ -144,7 +145,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 recoveryCodes.Select(c => new RecoveryCodeDto(c.CodeHash, c.UsedUtc)).ToList(),
                 // V10.5 — the OIDC link (subject is an identifier, not a secret) + the local-login flag.
                 user.OidcSubject, user.LocalLoginDisabled),
-            Categories: categories.Select(c => new CategoryDto(c.Id, c.Name, c.Color)).ToList(),
+            Categories: categories.Select(c => new CategoryDto(c.Id, c.Name, c.Color, c.SortOrder)).ToList(),
             Tags: tags.Select(t => new TagDto(t.Id, t.Name)).ToList(),
             DockerConnections: connections.Select(c => new DockerConnectionDto(
                 c.Id, c.Name, c.HostType, c.HostUrl,
@@ -160,7 +161,8 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 s.OfflineNotificationsEnabled, s.HealthCheckUrl, s.HealthCheckMethod, s.ExpectedStatusRange,
                 s.Notes, s.CategoryId, s.LogoSource, s.CustomLogoPath, s.LogoBase64, s.DockerConnectionId,
                 s.Credentials.Select(c => new CredentialDto(c.Key, Dec(c.EncryptedValue)!, c.IsSecret)).ToList(),
-                s.WebResourceTags.Select(st => st.TagId).ToList(), s.ProxmoxConnectionId)).ToList(),
+                s.WebResourceTags.Select(st => st.TagId).ToList(), s.ProxmoxConnectionId,
+                s.SortOrder, s.SortOrderInCategory)).ToList(),
             DockerWatches: watches.Select(w => new DockerWatchDto(
                 w.Id, w.DockerConnectionId, w.WebResourceId, w.Label, w.Enabled, w.ImageReference,
                 w.RegistryHost, w.Repository, w.Tag, w.ContainerName,
@@ -168,7 +170,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 w.RegistryAuthType, Dec(w.AwsAccessKeyIdEncrypted), Dec(w.AwsSecretAccessKeyEncrypted), w.AwsRegion,
                 w.UpdateNotificationsEnabled, w.TelegramNotificationsEnabled, w.ScheduleType, w.CheckEveryHours,
                 w.CheckAtTime, w.CheckOnDayOfWeek, w.TagPatternFilter, w.WebhookToken,
-                w.AppriseNotificationsEnabled)).ToList(),
+                w.AppriseNotificationsEnabled, w.PushNotificationsEnabled)).ToList(),
             ProxmoxConnections: proxmoxConnections.Select(c => new ProxmoxConnectionDto(
                 c.Id, c.Name, c.ApiBaseUrl, c.NodeName, c.ServerType, c.ApiTokenId,
                 Dec(c.ApiTokenSecretEncrypted), c.SkipTlsVerify,
@@ -183,7 +185,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                     .ToList(),
                 (guestIconsByConnection.TryGetValue(c.Id, out var gi) ? gi : [])
                     .Select(i => new GuestIconDto(i.VmId, i.LogoBase64!)).ToList(),
-                c.AppriseNotificationsEnabled)).ToList(),
+                c.AppriseNotificationsEnabled, c.PushNotificationsEnabled)).ToList(),
             ServiceProxmoxLinks: serviceProxmoxLinks
                 .Select(l => new WebResourceProxmoxGuestLinkDto(l.WebResourceId, l.ProxmoxConnectionId, l.VmId)).ToList(),
             ContainerProxmoxLinks: containerProxmoxLinks
@@ -329,11 +331,18 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
             var existing = await db.Categories.FirstOrDefaultAsync(x => x.UserId == userId && x.Name == c.Name, cancellationToken);
             if (existing is null)
             {
-                var fresh = new CategoryEntity { UserId = userId, Name = c.Name, Color = c.Color };
+                var fresh = new CategoryEntity { UserId = userId, Name = c.Name, Color = c.Color, SortOrder = c.SortOrder };
                 db.Categories.Add(fresh);
                 idMap[c.Id] = fresh.Id;
             }
-            else { idMap[c.Id] = existing.Id; }
+            else
+            {
+                // V10.6 — the Custom group order is a user preference, so it is the one field
+                // we deliberately update on an already-present category (everything else on an
+                // existing row is left untouched, per the merge contract above).
+                existing.SortOrder = c.SortOrder;
+                idMap[c.Id] = existing.Id;
+            }
         }
 
         foreach (var t in dto.Tags ?? [])
@@ -442,6 +451,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                     UpdateNotificationsEnabled = pc.UpdateNotificationsEnabled,
                     TelegramNotificationsEnabled = pc.TelegramNotificationsEnabled,
                     AppriseNotificationsEnabled = pc.AppriseNotificationsEnabled,
+                    PushNotificationsEnabled = pc.PushNotificationsEnabled,
                     ScheduleType = pc.ScheduleType,
                     CheckEveryHours = pc.CheckEveryHours,
                     CheckAtTime = pc.CheckAtTime,
@@ -532,6 +542,12 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 .FirstOrDefaultAsync(x => x.UserId == userId && x.Name == s.Name && x.MainUrl == s.MainUrl, cancellationToken);
             if (existingSvc is not null)
             {
+                // V10.6 — the Custom card order (global + within-category) is a user
+                // preference, so it is the one thing we deliberately update on an
+                // already-present service; every other field stays untouched, preserving
+                // the V6.15.1 "don't overwrite local changes on re-import" contract.
+                existingSvc.SortOrder = s.SortOrder;
+                existingSvc.SortOrderInCategory = s.SortOrderInCategory;
                 idMap[s.Id] = existingSvc.Id;
                 continue;
             }
@@ -555,6 +571,8 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 LogoBase64 = s.LogoBase64,
                 DockerConnectionId = MapOrNull(idMap, s.DockerConnectionId),
                 ProxmoxConnectionId = MapOrNull(idMap, s.ProxmoxConnectionId),
+                SortOrder = s.SortOrder,
+                SortOrderInCategory = s.SortOrderInCategory,
             };
             foreach (var c in s.Credentials ?? [])
             {
@@ -619,6 +637,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
                 UpdateNotificationsEnabled = w.UpdateNotificationsEnabled,
                 TelegramNotificationsEnabled = w.TelegramNotificationsEnabled,
                 AppriseNotificationsEnabled = w.AppriseNotificationsEnabled,
+                PushNotificationsEnabled = w.PushNotificationsEnabled,
                 ScheduleType = w.ScheduleType,
                 CheckEveryHours = w.CheckEveryHours,
                 CheckAtTime = w.CheckAtTime,
@@ -745,7 +764,7 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         string? DeviceName = null, string? Manufacturer = null);
 
     private sealed record UserSettingsDto(
-        string? DisplayName, string Theme, string DashboardSortMode, bool DashboardGroupByCategory,
+        string? DisplayName, Theme Theme, DashboardSortMode DashboardSortMode, bool DashboardGroupByCategory,
         string? TelegramBotToken, string? TelegramChatId, bool TelegramNotificationsEnabled,
         // V10.3 — nullable/defaulted so a pre-V10.3 backup still deserializes (and restores as "2FA off").
         bool TwoFactorEnabled = false, string? TwoFactorSecret = null, long? TwoFactorLastUsedStep = null,
@@ -756,7 +775,8 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
     // V10.3 — a single recovery code: its hash (one-way, never decryptable) and used state.
     private sealed record RecoveryCodeDto(string CodeHash, DateTime? UsedUtc);
 
-    private sealed record CategoryDto(Guid Id, string Name, string Color);
+    // V10.6 — SortOrder nullable/defaulted so a pre-V10.6 backup still deserializes.
+    private sealed record CategoryDto(Guid Id, string Name, string Color, int SortOrder = 0);
     private sealed record TagDto(Guid Id, string Name);
 
     private sealed record DockerConnectionDto(
@@ -778,7 +798,9 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         bool AdditionalUrlHealthCheckEnabled, bool OfflineNotificationsEnabled, string? HealthCheckUrl,
         HealthCheckMethod HealthCheckMethod, string? ExpectedStatusRange, string? Notes, Guid? CategoryId,
         LogoSource LogoSource, string? CustomLogoPath, string? LogoBase64, Guid? DockerConnectionId,
-        List<CredentialDto> Credentials, List<Guid> TagIds, Guid? ProxmoxConnectionId = null);
+        List<CredentialDto> Credentials, List<Guid> TagIds, Guid? ProxmoxConnectionId = null,
+        // V10.6 — nullable/defaulted so a pre-V10.6 backup still deserializes.
+        int SortOrder = 0, int SortOrderInCategory = 0);
 
     private sealed record CredentialDto(string Key, string Value, bool IsSecret);
 
@@ -790,7 +812,9 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         bool UpdateNotificationsEnabled, bool TelegramNotificationsEnabled, CheckScheduleType ScheduleType,
         int CheckEveryHours, TimeOnly? CheckAtTime, DayOfWeek? CheckOnDayOfWeek, string? TagPatternFilter, string? WebhookToken,
         // V10.0 — nullable/defaulted so a pre-V10.0 backup still deserializes.
-        bool AppriseNotificationsEnabled = false);
+        bool AppriseNotificationsEnabled = false,
+        // V10.6 — nullable/defaulted so a pre-V10.6 backup still deserializes.
+        bool PushNotificationsEnabled = false);
 
     private sealed record ProxmoxConnectionDto(
         Guid Id, string Name, string ApiBaseUrl, string NodeName, ProxmoxServerType ServerType, string ApiTokenId,
@@ -802,7 +826,9 @@ public sealed class BackupService(ApplicationDbContext db, IEncryptionService en
         CheckScheduleType ScheduleType, int CheckEveryHours, TimeOnly? CheckAtTime, DayOfWeek? CheckOnDayOfWeek,
         string? WebhookToken, List<ProxmoxGuestDto> Guests, List<GuestIconDto>? GuestIcons = null,
         // V10.0 — nullable/defaulted so a pre-V10.0 backup still deserializes.
-        bool AppriseNotificationsEnabled = false);
+        bool AppriseNotificationsEnabled = false,
+        // V10.6 — nullable/defaulted so a pre-V10.6 backup still deserializes.
+        bool PushNotificationsEnabled = false);
 
     private sealed record ProxmoxGuestDto(
         int VmId, ProxmoxGuestType GuestType, string Name, bool MonitoringEnabled, DateTime? MonitoringSnoozedUntil);

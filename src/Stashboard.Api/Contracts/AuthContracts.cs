@@ -66,23 +66,20 @@ public sealed record ConfirmEmailChangeRequest(
 
 public sealed record UpdateProfileRequest(
     [StringLength(128)] string? DisplayName,
-    [RegularExpression("^(system|light|dark)$", ErrorMessage = "Theme must be 'system', 'light', or 'dark'.")]
-    string? Theme
+    Theme? Theme
 );
 
 public sealed record UpdateThemeRequest(
-    [Required, RegularExpression("^(system|light|dark)$", ErrorMessage = "Theme must be 'system', 'light', or 'dark'.")]
-    string Theme
+    Theme Theme
 );
 
 public sealed record DashboardPreferencesResponse(
-    string SortMode,
+    DashboardSortMode SortMode,
     bool GroupByCategory
 );
 
 public sealed record UpdateDashboardPreferencesRequest(
-    [Required, RegularExpression("^(name|category)$", ErrorMessage = "Sort mode must be 'name' or 'category'.")]
-    string SortMode,
+    DashboardSortMode SortMode,
     bool GroupByCategory
 );
 
@@ -112,7 +109,7 @@ public sealed record SetLocalLoginRequest(bool LocalLoginDisabled);
 /// only <see cref="HasPassword"/> tells the UI whether one is stored.
 /// </summary>
 public sealed record EmailSettingsResponse(
-    string Provider,
+    EmailProvider Provider,
     string Host,
     int Port,
     bool UseStartTls,
@@ -124,8 +121,7 @@ public sealed record EmailSettingsResponse(
 );
 
 public sealed record UpdateEmailSettingsRequest(
-    [Required, RegularExpression("^(Smtp|LogOnly)$", ErrorMessage = "Provider must be 'Smtp' or 'LogOnly'.")]
-    string Provider,
+    EmailProvider Provider,
     [MaxLength(256)] string? Host,
     [Range(1, 65535)] int Port,
     bool UseStartTls,
@@ -143,7 +139,7 @@ public sealed record ProfileResponse(
     string? DisplayName,
     bool EmailConfirmed,
     string? PendingEmail,
-    string Theme,
+    Theme Theme,
     DateTime CreatedUtc,
     DateTime? LastLoginUtc,
     bool TwoFactorEnabled,

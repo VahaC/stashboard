@@ -61,6 +61,11 @@ public class ProxmoxNodeAlertSettingsEntity : AuditableEntity
     /// other channels and vice-versa.</summary>
     public string? LastAppriseNotifiedSignature { get; set; }
 
+    /// <summary>V10.6 — same as <see cref="LastNotifiedSignature"/> for the web push
+    /// channel — independent so a transient push outage doesn't suppress the
+    /// other channels and vice-versa.</summary>
+    public string? LastPushNotifiedSignature { get; set; }
+
     /// <summary>UTC timestamp of the most recent alert notification (either channel).</summary>
     public DateTime? LastNotificationSentUtc { get; set; }
 

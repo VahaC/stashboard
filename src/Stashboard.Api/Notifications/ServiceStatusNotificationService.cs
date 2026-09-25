@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Stashboard.Api.Data;
+using Stashboard.Api.Notifications.Push;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
 using Stashboard.Core.Enums;
@@ -10,6 +11,7 @@ public sealed class ServiceStatusNotificationService(
     ITelegramSender telegramSender,
     IAppriseSender appriseSender,
     IAppriseSettingsService appriseSettings,
+    IPushSubscriptionService pushSubscriptions,
     IEncryptionService encryption,
     ILogger<ServiceStatusNotificationService> logger) : IServiceStatusNotificationService
 {
@@ -47,6 +49,30 @@ public sealed class ServiceStatusNotificationService(
         // vice-versa. Each channel checks its own configuration on its own.
         await SendTelegramAsync(user, service, messages, cancellationToken);
         await SendAppriseAsync(service, messages, cancellationToken);
+        await SendPushAsync(user, service, messages, cancellationToken);
+    }
+
+    private async Task SendPushAsync(
+        UserEntity user, WebResourceEntity service, IReadOnlyList<string> messages, CancellationToken cancellationToken)
+    {
+        // Gated only by the per-service master switch (already checked) and by the user
+        // having a subscription — SendToUserAsync no-ops when they don't. Transition-based
+        // like the Telegram/Apprise paths here, so no throttle key. A tap deep-links to the
+        // service on the dashboard.
+        foreach (var message in messages)
+        {
+            try
+            {
+                await pushSubscriptions.SendToUserAsync(
+                    user.Id,
+                    new PushMessage($"Service unavailable: {service.Name}", message, $"/?service={service.Id}", $"service-{service.Id}"),
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to send push notification for service {ServiceId}", service.Id);
+            }
+        }
     }
 
     private async Task SendTelegramAsync(

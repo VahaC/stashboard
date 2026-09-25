@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using Stashboard.Api.Data;
+using Stashboard.Api.Notifications.Push;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
 using Stashboard.Core.Enums;
@@ -13,6 +14,7 @@ public sealed class ProxmoxNodeAlertNotificationService(
     ITelegramSender telegramSender,
     IAppriseSender appriseSender,
     IAppriseSettingsService appriseSettings,
+    IPushSubscriptionService pushSubscriptions,
     IEncryptionService encryption,
     ILogger<ProxmoxNodeAlertNotificationService> logger) : IProxmoxNodeAlertNotificationService
 {
@@ -30,6 +32,38 @@ public sealed class ProxmoxNodeAlertNotificationService(
         await SendEmailIfNeededAsync(user, connection, settings, active, signature, cancellationToken);
         await SendTelegramIfNeededAsync(user, connection, settings, active, signature, cancellationToken);
         await SendAppriseIfNeededAsync(connection, settings, active, signature, cancellationToken);
+        await SendPushIfNeededAsync(user, connection, settings, active, signature, cancellationToken);
+    }
+
+    // ── web push channel ─────────────────────────────────────────────────────────
+
+    private async Task SendPushIfNeededAsync(
+        UserEntity user, ProxmoxConnectionEntity connection, ProxmoxNodeAlertSettingsEntity settings,
+        IReadOnlyList<ProxmoxNodeAlertStateEntity> active, string signature, CancellationToken cancellationToken)
+    {
+        if (!connection.PushNotificationsEnabled) return;
+        if (string.Equals(settings.LastPushNotifiedSignature ?? "", signature, StringComparison.Ordinal)) return;
+
+        var allClear = active.Count == 0;
+        var title = allClear
+            ? $"Node health recovered on Proxmox host {connection.Name}"
+            : $"Node health alert on Proxmox host {connection.Name}";
+        try
+        {
+            var result = await pushSubscriptions.SendToUserAsync(
+                user.Id,
+                new PushMessage(title, BuildTelegramText(connection, active), "/", $"proxmox-alert-{connection.Id}"),
+                cancellationToken);
+            if (result.Attempted > 0 && !result.HadTransientFailure)
+            {
+                settings.LastPushNotifiedSignature = signature;
+                settings.LastNotificationSentUtc = DateTime.UtcNow;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send Proxmox node-alert push notification for connection {ConnectionId}", connection.Id);
+        }
     }
 
     // ── Apprise channel ────────────────────────────────────────────────────────

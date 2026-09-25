@@ -87,6 +87,7 @@ public sealed class DockerWatchMapper(
             entity.UpdateNotificationsEnabled,
             entity.TelegramNotificationsEnabled,
             entity.AppriseNotificationsEnabled,
+            entity.PushNotificationsEnabled,
             entity.ScheduleType,
             entity.CheckEveryHours,
             entity.CheckAtTime,
@@ -128,6 +129,7 @@ public sealed class DockerWatchMapper(
         entity.UpdateNotificationsEnabled = request.UpdateNotificationsEnabled;
         entity.TelegramNotificationsEnabled = request.TelegramNotificationsEnabled;
         entity.AppriseNotificationsEnabled = request.AppriseNotificationsEnabled;
+        entity.PushNotificationsEnabled = request.PushNotificationsEnabled;
         entity.ScheduleType = schedule.ScheduleType;
         entity.CheckEveryHours = schedule.CheckEveryHours;
         entity.CheckAtTime = schedule.CheckAtTime;

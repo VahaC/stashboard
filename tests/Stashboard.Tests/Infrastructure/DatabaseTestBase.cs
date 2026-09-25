@@ -59,6 +59,8 @@ public abstract class DatabaseTestBase : IAsyncLifetime
         await db.Categories.ExecuteDeleteAsync();
         await db.RefreshTokens.ExecuteDeleteAsync();
         await db.PersonalAccessTokens.ExecuteDeleteAsync();
+        // V10.6 — clear per-user web-push subscriptions between tests.
+        await db.PushSubscriptions.ExecuteDeleteAsync();
         await db.Users.ExecuteDeleteAsync();
         await db.EmailSettings.ExecuteDeleteAsync();
         await db.HostShellSettings.ExecuteDeleteAsync();

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Stashboard.Api.Contracts;
 using Stashboard.Core.Entities;
 
 namespace Stashboard.Api.Data;
@@ -41,13 +42,14 @@ public class UserEntity : AuditableEntity
     [MaxLength(128)]
     public string? DisplayName { get; set; }
 
-    /// <summary>UI theme preference: <c>system</c> (default — follow OS), <c>light</c>, or <c>dark</c>.</summary>
-    [Required, MaxLength(16)]
-    public string Theme { get; set; } = "system";
+    /// <summary>UI theme preference. Stored as its readable name (System/Light/Dark) via a value
+    /// conversion (see <c>ApplicationDbContext</c>); the wire form is lowercase.</summary>
+    public Theme Theme { get; set; } = Theme.System;
 
-    /// <summary>Dashboard sort mode: <c>name</c> (default) or <c>category</c>.</summary>
-    [Required, MaxLength(16)]
-    public string DashboardSortMode { get; set; } = "name";
+    /// <summary>Dashboard card sort mode. Stored as its readable name via a value conversion
+    /// (see <c>ApplicationDbContext</c>); the wire form is lowercase (<c>name</c> / <c>category</c>
+    /// / <c>custom</c>).</summary>
+    public DashboardSortMode DashboardSortMode { get; set; } = DashboardSortMode.Name;
 
     /// <summary>Dashboard grouping preference.</summary>
     public bool DashboardGroupByCategory { get; set; }

@@ -1,15 +1,26 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Activity, ChevronDown, ChevronRight, Container, History, Info, KeyRound, MoreVertical, Plus, RefreshCw, Search, Server } from 'lucide-react'
+import { Activity, ChevronDown, ChevronRight, Container, GripVertical, History, Info, KeyRound, MoreVertical, Plus, RefreshCw, Search, Server } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useCategories, useCheckNow, useServices } from '@/lib/queries'
 import { ServiceModal, type ModalTab } from '@/components/ServiceModal'
 import { FloatingMenu } from '@/components/shared/FloatingMenu'
-import { resolveDockerUpdateStatus, type Service, type ServiceStatus } from '@/lib/types'
+import { resolveDockerUpdateStatus, type DashboardSortMode, type Service, type ServiceStatus } from '@/lib/types'
 import { accountApi } from '@/lib/account-api'
+import { usePointerSort, type PointerSort } from '@/lib/use-pointer-sort'
 import { cn } from '@/lib/utils'
 import '@/styles/dashboard.css'
+
+/** V10.6 — drag props threaded into a card / group header when Custom sort is active. */
+interface CardDrag {
+  id: string
+  dragging: boolean
+  onPointerDown: (event: React.PointerEvent) => void
+  /** Returns true (once) when the press that just ended was a drag, so `onClick` can
+   *  swallow the click after a drop while a plain click still opens the card. */
+  wasDragged: () => boolean
+}
 
 /** Tabs surfaced in the card's "⋮" menu, mirroring the order + labels of the
  *  ServiceModal tab strip so the menu and the modal stay in lockstep. */
@@ -52,7 +63,7 @@ export function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [sortMode, setSortMode] = useState<'name' | 'category'>('name')
+  const [sortMode, setSortMode] = useState<DashboardSortMode>('name')
   const [groupByCategory, setGroupByCategory] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -118,6 +129,8 @@ export function Dashboard() {
         return true
       })
       .sort((left, right) => {
+        // Custom mode uses the explicit global order; grouping re-sorts within groups.
+        if (sortMode === 'custom') return left.sortOrder - right.sortOrder
         if (sortMode === 'category') {
           const categoryCompare = normalizeCategoryName(left).localeCompare(normalizeCategoryName(right))
           if (categoryCompare !== 0) return categoryCompare
@@ -127,22 +140,51 @@ export function Dashboard() {
   }, [services, search, categoryFilter, sortMode])
 
   const grouped = useMemo(() => {
-    const groups = new Map<string, Service[]>()
+    const groups = new Map<string, { categoryId: string | null; services: Service[] }>()
     for (const service of filtered) {
       const key = normalizeCategoryName(service)
-      const items = groups.get(key) ?? []
-      items.push(service)
-      groups.set(key, items)
+      const group = groups.get(key) ?? { categoryId: service.categoryId, services: [] }
+      group.services.push(service)
+      groups.set(key, group)
     }
-    return [...groups.entries()]
-  }, [filtered])
+    let entries = [...groups.entries()].map(([name, g]) => ({ name, categoryId: g.categoryId, services: g.services }))
+
+    if (sortMode === 'custom') {
+      // Two independent Custom orders: cards within a group by SortOrderInCategory,
+      // groups by the category's own SortOrder — "Uncategorized" always last.
+      const groupOrder = new Map(categories.map((c) => [c.id, c.sortOrder]))
+      for (const entry of entries) entry.services = [...entry.services].sort((a, b) => a.sortOrderInCategory - b.sortOrderInCategory)
+      entries = entries.sort((a, b) => {
+        if (a.categoryId === null) return 1
+        if (b.categoryId === null) return -1
+        return (groupOrder.get(a.categoryId) ?? 0) - (groupOrder.get(b.categoryId) ?? 0)
+      })
+    }
+    return entries
+  }, [filtered, sortMode, categories])
+
+  // V10.6 — Custom drag-and-drop ordering. Each commit persists the new order; the
+  // pointer-sort hooks keep the on-screen order optimistic so there's no refetch flash.
+  const isCustom = sortMode === 'custom'
+  const serviceSort = usePointerSort(
+    filtered.map((s) => s.id),
+    (ids) => { accountApi.setServiceOrder(ids).catch(() => undefined) },
+  )
+  const groupSort = usePointerSort(
+    grouped.filter((g) => g.categoryId).map((g) => g.categoryId as string),
+    (ids) => { accountApi.setCategoryOrder(ids).catch(() => undefined) },
+    'data-group-sort-id',
+  )
+  const commitCardsInCategory = (categoryId: string | null, ids: string[]) => {
+    accountApi.setServiceOrderInCategory(categoryId, ids).catch(() => undefined)
+  }
 
   const openNew = () => { setEditingId(null); setModalInitialTab('general'); setModalKey((k) => k + 1); setModalOpen(true) }
   const openEdit = (s: Service, tab: ModalTab = 'general') => { setEditingId(s.id); setModalInitialTab(tab); setModalKey((k) => k + 1); setModalOpen(true) }
   const handleModalOpen = (open: boolean) => { if (!open) setEditingId(null); setModalOpen(open) }
   const toggleGroup = (groupName: string) => setCollapsedGroups((prev) => ({ ...prev, [groupName]: !prev[groupName] }))
 
-  const renderCard = (s: Service) => {
+  const renderCard = (s: Service, drag?: CardDrag) => {
     const hasHealthCheckUrl = Boolean(s.healthCheckUrl?.trim())
     const hasAdditionalUrl = Boolean(s.additionalUrl?.trim())
     const dockerStatusLabel = s.dockerUpdateStatus != null
@@ -154,13 +196,17 @@ export function Dashboard() {
       : null
     const hasProxmoxUpdate = proxmoxStatusLabel === 'UpdateAvailable'
 
+    // In Custom sort the card stays fully clickable; dragging is initiated only from the
+    // grip handle (so touch scrolling over the card body still works). data-sort-id marks
+    // the card as a drop target; wasDragged() swallows the click after a same-card drop.
     return (
       <div
         key={s.id}
-        className="service-card service-card-clickable"
+        className={cn('service-card', 'service-card-clickable', drag?.dragging && 'service-card-dragging')}
         role="button"
         tabIndex={0}
-        onClick={() => openEdit(s, 'general')}
+        {...(drag ? { 'data-sort-id': drag.id } : {})}
+        onClick={() => { if (drag?.wasDragged()) return; openEdit(s, 'general') }}
         onContextMenu={(e) => {
           e.preventDefault()
           setCardMenu({ service: s, x: e.clientX, y: e.clientY })
@@ -169,8 +215,16 @@ export function Dashboard() {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(s, 'general') }
         }}
       >
-        {/* Header row: initial badge | name | optional healthcheck dot | actions menu */}
+        {/* Header row: drag grip (custom sort) | initial badge | name | healthcheck dot | actions menu */}
         <div className="flex items-center gap-2">
+          {drag && (
+            <GripVertical
+              className="service-card-grip h-4 w-4"
+              aria-label="Drag to reorder"
+              onPointerDown={drag.onPointerDown}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
           <span
             className="service-card-logo"
             style={{
@@ -345,7 +399,7 @@ export function Dashboard() {
     }
   }, [])
 
-  const saveDashboardPreferences = (nextSortMode: 'name' | 'category', nextGroupByCategory: boolean) => {
+  const saveDashboardPreferences = (nextSortMode: DashboardSortMode, nextGroupByCategory: boolean) => {
     accountApi.updateDashboardPreferences(nextSortMode, nextGroupByCategory)
       .catch(() => undefined)
   }
@@ -375,13 +429,14 @@ export function Dashboard() {
               className="dashboard-select"
               value={sortMode}
               onChange={(e) => {
-                const nextSortMode = e.target.value as 'name' | 'category'
+                const nextSortMode = e.target.value as DashboardSortMode
                 setSortMode(nextSortMode)
                 saveDashboardPreferences(nextSortMode, groupByCategory)
               }}
             >
               <option value="name">Sort by name</option>
               <option value="category">Sort by category</option>
+              <option value="custom">Custom order</option>
             </select>
             <label className="dashboard-toggle">
               <input
@@ -407,37 +462,105 @@ export function Dashboard() {
         </p>
       ) : groupByCategory ? (
         <div className="dashboard-groups">
-          {grouped.map(([groupName, groupServices]) => {
-            const isCollapsed = collapsedGroups[groupName] ?? false
-            return (
-              <section key={groupName} className="dashboard-group">
-                <button
-                  type="button"
-                  className="dashboard-group-button"
-                  onClick={() => toggleGroup(groupName)}
-                >
-                  <span className="dashboard-group-title">
-                    {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    {groupName}
-                  </span>
-                  <span className="dashboard-group-count">{groupServices.length}</span>
-                </button>
-                {!isCollapsed && (
-                  <div className="dashboard-grid">
-                    {groupServices.map(renderCard)}
-                  </div>
-                )}
-              </section>
-            )
-          })}
+          {(isCustom
+            ? [...grouped].sort((a, b) => {
+                if (a.categoryId === null) return 1
+                if (b.categoryId === null) return -1
+                return groupSort.order.indexOf(a.categoryId) - groupSort.order.indexOf(b.categoryId)
+              })
+            : grouped
+          ).map((group) => (
+            <SortableCardGroup
+              key={group.name}
+              group={group}
+              isCustom={isCustom}
+              collapsed={collapsedGroups[group.name] ?? false}
+              onToggle={() => toggleGroup(group.name)}
+              onCommitCards={commitCardsInCategory}
+              groupSort={isCustom ? groupSort : null}
+              renderCard={renderCard}
+            />
+          ))}
         </div>
       ) : (
         <div className="dashboard-grid">
-          {filtered.map(renderCard)}
+          {(isCustom
+            ? serviceSort.order
+                .map((id) => filtered.find((s) => s.id === id))
+                .filter((s): s is Service => Boolean(s))
+            : filtered
+          ).map((s) =>
+            isCustom
+              ? renderCard(s, { id: s.id, dragging: serviceSort.draggingId === s.id, onPointerDown: (e) => serviceSort.start(s.id, e), wasDragged: serviceSort.wasDragged })
+              : renderCard(s),
+          )}
         </div>
       )}
 
       <ServiceModal key={modalKey} open={modalOpen} onOpenChange={handleModalOpen} service={editingService} initialTab={modalInitialTab} />
     </>
+  )
+}
+
+/** V10.6 — one dashboard category group. Extracted into its own component so each
+ *  group can own a pointer-sort controller for its cards (hooks can't run in a loop).
+ *  The group header is a drag handle for the group order (Custom mode); the cards
+ *  reorder within the group. Cross-group card drags are ignored because each group's
+ *  controller only knows its own ids. */
+function SortableCardGroup({
+  group, isCustom, collapsed, onToggle, onCommitCards, groupSort, renderCard,
+}: {
+  group: { name: string; categoryId: string | null; services: Service[] }
+  isCustom: boolean
+  collapsed: boolean
+  onToggle: () => void
+  onCommitCards: (categoryId: string | null, ids: string[]) => void
+  groupSort: PointerSort | null
+  renderCard: (s: Service, drag?: CardDrag) => ReactNode
+}) {
+  const cardSort = usePointerSort(
+    group.services.map((s) => s.id),
+    (ids) => onCommitCards(group.categoryId, ids),
+  )
+
+  const byId = new Map(group.services.map((s) => [s.id, s]))
+  const ordered = isCustom
+    ? cardSort.order.map((id) => byId.get(id)).filter((s): s is Service => Boolean(s))
+    : group.services
+
+  // Only real categories (with an id) reorder; "Uncategorized" is pinned last.
+  const headerDraggable = isCustom && group.categoryId !== null && groupSort !== null
+  const headerDragging = headerDraggable && groupSort!.draggingId === group.categoryId
+
+  return (
+    <section className="dashboard-group">
+      <button
+        type="button"
+        className={cn('dashboard-group-button', headerDragging && 'dashboard-group-dragging')}
+        onClick={() => { if (headerDraggable && groupSort!.wasDragged()) return; onToggle() }}
+        {...(headerDraggable ? { 'data-group-sort-id': group.categoryId! } : {})}
+      >
+        <span className="dashboard-group-title">
+          {headerDraggable && (
+            <GripVertical
+              className="h-4 w-4 dashboard-group-grip"
+              onPointerDown={(e) => { e.stopPropagation(); groupSort!.start(group.categoryId!, e) }}
+            />
+          )}
+          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          {group.name}
+        </span>
+        <span className="dashboard-group-count">{group.services.length}</span>
+      </button>
+      {!collapsed && (
+        <div className="dashboard-grid">
+          {ordered.map((s) =>
+            isCustom
+              ? renderCard(s, { id: s.id, dragging: cardSort.draggingId === s.id, onPointerDown: (e) => cardSort.start(s.id, e), wasDragged: cardSort.wasDragged })
+              : renderCard(s),
+          )}
+        </div>
+      )}
+    </section>
   )
 }

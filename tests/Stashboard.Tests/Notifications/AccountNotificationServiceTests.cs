@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Moq;
+using Stashboard.Api.Contracts;
 using Stashboard.Api.Notifications;
 
 namespace Stashboard.Tests.Notifications;
@@ -21,7 +22,7 @@ public class AccountNotificationServiceTests
         var m = new Mock<IEmailSettingsService>();
         m.Setup(s => s.GetResolvedAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ResolvedEmailSettings(
-                "LogOnly", "", 587, true, "", "", "no-reply@stashboard.local", "Stashboard", appBaseUrl));
+                EmailProvider.LogOnly, "", 587, true, "", "", "no-reply@stashboard.local", "Stashboard", appBaseUrl));
         return m.Object;
     }
 

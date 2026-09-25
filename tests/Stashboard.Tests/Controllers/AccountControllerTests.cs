@@ -228,12 +228,12 @@ public class AccountControllerTests : DatabaseTestBase
         var u = await Register();
         SignIn(u.Id);
 
-        var result = await _ctrl.UpdateProfile(new UpdateProfileRequest("Alice", "dark"), default);
+        var result = await _ctrl.UpdateProfile(new UpdateProfileRequest("Alice", Theme.Dark), default);
 
         Assert.IsType<NoContentResult>(result);
         var stored = await _users.FindByIdAsync(u.Id);
         Assert.Equal("Alice", stored!.DisplayName);
-        Assert.Equal("dark", stored.Theme);
+        Assert.Equal(Theme.Dark, stored.Theme);
     }
 
     [Fact]
@@ -242,36 +242,25 @@ public class AccountControllerTests : DatabaseTestBase
         var u = await Register();
         SignIn(u.Id);
 
-        var result = await _ctrl.UpdateTheme(new UpdateThemeRequest("dark"), default);
+        var result = await _ctrl.UpdateTheme(new UpdateThemeRequest(Theme.Dark), default);
 
         Assert.IsType<NoContentResult>(result);
         var stored = await _users.FindByIdAsync(u.Id);
-        Assert.Equal("dark", stored!.Theme);
-    }
-
-    [Fact]
-    public async Task UpdateTheme_InvalidValue_ReturnsBadRequest()
-    {
-        var u = await Register();
-        SignIn(u.Id);
-
-        var result = await _ctrl.UpdateTheme(new UpdateThemeRequest("plaid"), default);
-
-        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(Theme.Dark, stored!.Theme);
     }
 
     [Fact]
     public async Task GetDashboardPreferences_ReturnsCurrentValues()
     {
         var user = await Register();
-        await _users.SetDashboardPreferencesAsync(user.Id, "category", true);
+        await _users.SetDashboardPreferencesAsync(user.Id, DashboardSortMode.Category, true);
         SignIn(user.Id);
 
         var result = await _ctrl.GetDashboardPreferences(default);
 
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var body = Assert.IsType<DashboardPreferencesResponse>(okResult.Value);
-        Assert.Equal("category", body.SortMode);
+        Assert.Equal(DashboardSortMode.Category, body.SortMode);
         Assert.True(body.GroupByCategory);
     }
 
@@ -281,23 +270,12 @@ public class AccountControllerTests : DatabaseTestBase
         var user = await Register();
         SignIn(user.Id);
 
-        var result = await _ctrl.UpdateDashboardPreferences(new UpdateDashboardPreferencesRequest("category", true), default);
+        var result = await _ctrl.UpdateDashboardPreferences(new UpdateDashboardPreferencesRequest(DashboardSortMode.Category, true), default);
 
         Assert.IsType<NoContentResult>(result);
         var stored = await _users.FindByIdAsync(user.Id);
-        Assert.Equal("category", stored!.DashboardSortMode);
+        Assert.Equal(DashboardSortMode.Category, stored!.DashboardSortMode);
         Assert.True(stored.DashboardGroupByCategory);
-    }
-
-    [Fact]
-    public async Task UpdateDashboardPreferences_InvalidSortMode_ReturnsBadRequest()
-    {
-        var user = await Register();
-        SignIn(user.Id);
-
-        var result = await _ctrl.UpdateDashboardPreferences(new UpdateDashboardPreferencesRequest("priority", true), default);
-
-        Assert.IsType<BadRequestObjectResult>(result);
     }
 
     // ── Delete ───────────────────────────────────────────────────────────────
@@ -371,7 +349,7 @@ public class AccountControllerTests : DatabaseTestBase
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var body = Assert.IsType<EmailSettingsResponse>(ok.Value);
-        Assert.Equal("LogOnly", body.Provider);
+        Assert.Equal(EmailProvider.LogOnly, body.Provider);
         Assert.Equal("https://app.example", body.AppBaseUrl);
         Assert.False(body.HasPassword);
     }
@@ -400,7 +378,7 @@ public class AccountControllerTests : DatabaseTestBase
     public async Task UpdateEmailSettings_PersistsValuesAndEncryptsPassword()
     {
         var req = new UpdateEmailSettingsRequest(
-            "Smtp", "smtp.example.com", 587, true, "user@example.com",
+            EmailProvider.Smtp, "smtp.example.com", 587, true, "user@example.com",
             new SecretValueUpsert(SecretValueAction.Set, "s3cret"),
             "no-reply@example.com", "Stashboard", "https://app.example.com");
 
@@ -408,7 +386,7 @@ public class AccountControllerTests : DatabaseTestBase
 
         Assert.IsType<NoContentResult>(result);
         var stored = await _dbContext.EmailSettings.FindAsync(EmailSettingsEntity.SingletonId);
-        Assert.Equal("Smtp", stored!.Provider);
+        Assert.Equal(EmailProvider.Smtp, stored!.Provider);
         Assert.Equal("smtp.example.com", stored.Host);
         Assert.Equal(587, stored.Port);
         Assert.Equal("user@example.com", stored.Username);
@@ -425,13 +403,13 @@ public class AccountControllerTests : DatabaseTestBase
     public async Task UpdateEmailSettings_KeepPassword_PreservesStoredValue()
     {
         await _ctrl.UpdateEmailSettings(new UpdateEmailSettingsRequest(
-            "Smtp", "smtp.example.com", 587, true, "user@example.com",
+            EmailProvider.Smtp, "smtp.example.com", 587, true, "user@example.com",
             new SecretValueUpsert(SecretValueAction.Set, "s3cret"),
             "no-reply@example.com", "Stashboard", "https://app.example.com"), default);
 
         // Second update changes the host but keeps the password (null = keep).
         await _ctrl.UpdateEmailSettings(new UpdateEmailSettingsRequest(
-            "Smtp", "smtp.changed.com", 465, false, "user@example.com",
+            EmailProvider.Smtp, "smtp.changed.com", 465, false, "user@example.com",
             null,
             "no-reply@example.com", "Stashboard", "https://app.example.com"), default);
 
@@ -444,12 +422,12 @@ public class AccountControllerTests : DatabaseTestBase
     public async Task UpdateEmailSettings_ClearPassword_DropsStoredValue()
     {
         await _ctrl.UpdateEmailSettings(new UpdateEmailSettingsRequest(
-            "Smtp", "smtp.example.com", 587, true, "user@example.com",
+            EmailProvider.Smtp, "smtp.example.com", 587, true, "user@example.com",
             new SecretValueUpsert(SecretValueAction.Set, "s3cret"),
             "no-reply@example.com", "Stashboard", "https://app.example.com"), default);
 
         await _ctrl.UpdateEmailSettings(new UpdateEmailSettingsRequest(
-            "Smtp", "smtp.example.com", 587, true, "user@example.com",
+            EmailProvider.Smtp, "smtp.example.com", 587, true, "user@example.com",
             new SecretValueUpsert(SecretValueAction.Clear, null),
             "no-reply@example.com", "Stashboard", "https://app.example.com"), default);
 

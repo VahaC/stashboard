@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Stashboard.Core.Entities;
 
 namespace Stashboard.Api.Data;
@@ -6,13 +7,14 @@ namespace Stashboard.Api.Data;
 /// <summary>
 /// Coarse capability granted by a personal access token. Stored as an <c>int</c>; values are
 /// stable so new scopes (e.g. services-only) can be added later without breaking existing rows.
+/// On the wire it serializes to its lowercase name (<c>read</c> / <c>full</c>).
 /// </summary>
 public enum PersonalAccessTokenScope
 {
     /// <summary>Read-only — the token is accepted on safe HTTP methods (GET/HEAD/OPTIONS) and 403'd on mutations.</summary>
-    Read = 1,
+    [JsonStringEnumMemberName("read")] Read = 1,
     /// <summary>Full data access — every REST method, but never the host-shell / container-exec surface or account-security mutations.</summary>
-    Full = 2,
+    [JsonStringEnumMemberName("full")] Full = 2,
 }
 
 /// <summary>

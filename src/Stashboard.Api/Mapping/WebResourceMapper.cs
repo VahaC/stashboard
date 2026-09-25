@@ -92,7 +92,9 @@ public sealed class WebResourceMapper(
                 .ToList(),
             proxmoxStatus,
             linkedGuests,
-            entity.ProxmoxConnectionId);
+            entity.ProxmoxConnectionId,
+            entity.SortOrder,
+            entity.SortOrderInCategory);
     }
 
     /// <summary>

@@ -7,7 +7,7 @@ namespace Stashboard.Api.Notifications;
 /// notification service at send-time. <see cref="Password"/> is plaintext — never log it.
 /// </summary>
 public sealed record ResolvedEmailSettings(
-    string Provider,
+    EmailProvider Provider,
     string Host,
     int Port,
     bool UseStartTls,

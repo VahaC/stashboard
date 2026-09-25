@@ -397,6 +397,9 @@ public class ProxmoxUpdateBackgroundServiceTests : IAsyncLifetime
         appriseSettingsMock.Setup(s => s.GetResolvedAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ResolvedAppriseSettings(false, "", []));
         services.AddSingleton(appriseSettingsMock.Object);
+        // V10.6 — the notifier also fans out to web push; a no-op stub keeps these
+        // tests focused on the email/Telegram channels.
+        services.AddSingleton(Mock.Of<Stashboard.Api.Notifications.Push.IPushSubscriptionService>());
         // V7.8 — the scan service backfills guest OsType via the API client; these
         // tests don't exercise icons, so a bare mock (config reads return null,
         // swallowed best-effort) keeps the existing scan assertions intact.

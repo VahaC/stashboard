@@ -90,6 +90,13 @@ public class Program
         // the operator's own Apprise API / the stateless /notify endpoint.
         builder.Services.Configure<AppriseOptions>(builder.Configuration.GetSection(AppriseOptions.SectionName));
         builder.Services.AddScoped<IAppriseSettingsService, AppriseSettingsService>();
+        // V10.6 — web push channel. The VAPID key pair is auto-provisioned into the Vapid
+        // config section on startup (see SecretProvisioning), so binding it here is enough.
+        // The sender is stateless (wraps a WebPushClient); the subscription service is DB-backed.
+        builder.Services.Configure<Notifications.Push.VapidOptions>(
+            builder.Configuration.GetSection(Notifications.Push.VapidOptions.SectionName));
+        builder.Services.AddSingleton<Notifications.Push.IPushSender, Notifications.Push.PushSender>();
+        builder.Services.AddScoped<Notifications.Push.IPushSubscriptionService, Notifications.Push.PushSubscriptionService>();
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddScoped<IAccountNotificationService, AccountNotificationService>();
 

@@ -486,6 +486,50 @@ namespace Stashboard.Api.Migrations
                     b.ToTable("ProxmoxUpdateApplySettings");
                 });
 
+            modelBuilder.Entity("Stashboard.Api.Data.PushSubscriptionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Auth")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSuccessUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("P256dh")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Endpoint")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PushSubscriptions");
+                });
+
             modelBuilder.Entity("Stashboard.Api.Data.RefreshTokenEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -694,6 +738,9 @@ namespace Stashboard.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("TEXT");
@@ -1215,6 +1262,10 @@ namespace Stashboard.Api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("LastPushNotifiedDigest")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("LastTelegramNotifiedDigest")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
@@ -1239,6 +1290,9 @@ namespace Stashboard.Api.Migrations
                     b.Property<string>("LatestVersionTag")
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("PushNotificationsEnabled")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("RegistryAuthType")
                         .HasColumnType("INTEGER");
@@ -1581,6 +1635,10 @@ namespace Stashboard.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("LastPushNotifiedSignature")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("LastTelegramNotifiedSignature")
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
@@ -1597,6 +1655,9 @@ namespace Stashboard.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("PushNotificationsEnabled")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("ScheduleType")
                         .HasColumnType("INTEGER");
@@ -2014,6 +2075,9 @@ namespace Stashboard.Api.Migrations
                     b.Property<string>("LastNotifiedSignature")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("LastPushNotifiedSignature")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("LastTelegramNotifiedSignature")
                         .HasColumnType("TEXT");
 
@@ -2393,6 +2457,12 @@ namespace Stashboard.Api.Migrations
                     b.Property<Guid?>("ProxmoxConnectionId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SortOrderInCategory")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("TEXT");
 
@@ -2456,6 +2526,17 @@ namespace Stashboard.Api.Migrations
                 {
                     b.HasOne("Stashboard.Api.Data.UserEntity", "User")
                         .WithMany("PersonalAccessTokens")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Stashboard.Api.Data.PushSubscriptionEntity", b =>
+                {
+                    b.HasOne("Stashboard.Api.Data.UserEntity", "User")
+                        .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

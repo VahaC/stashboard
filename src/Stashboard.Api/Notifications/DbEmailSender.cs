@@ -2,6 +2,7 @@ using MailKit.Net.Smtp;
 using MailKit.Security;
 using Microsoft.Extensions.Logging;
 using MimeKit;
+using Stashboard.Api.Contracts;
 
 namespace Stashboard.Api.Notifications;
 
@@ -17,8 +18,7 @@ public sealed class DbEmailSender(IEmailSettingsService settings, ILogger<DbEmai
     {
         var opt = await settings.GetResolvedAsync(cancellationToken);
 
-        if (!string.Equals(opt.Provider, "Smtp", StringComparison.OrdinalIgnoreCase)
-            || string.IsNullOrWhiteSpace(opt.Host))
+        if (opt.Provider != EmailProvider.Smtp || string.IsNullOrWhiteSpace(opt.Host))
         {
             logger.LogInformation(
                 "[DEV-EMAIL] To: {To}\nSubject: {Subject}\n--- TEXT ---\n{TextBody}\n--- END ---",

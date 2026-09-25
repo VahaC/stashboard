@@ -1,3 +1,4 @@
+using Stashboard.Api.Contracts;
 using Stashboard.Api.Data;
 
 namespace Stashboard.Api.Auth;
@@ -69,13 +70,13 @@ public interface IUserService
     /// Partial update — only fields with non-null values are written. Pass <c>null</c> for any
     /// field you don't want to change. Empty/whitespace <paramref name="displayName"/> clears it.
     /// </summary>
-    Task<OperationResult> UpdateProfileAsync(Guid userId, string? displayName, string? theme, CancellationToken cancellationToken = default);
+    Task<OperationResult> UpdateProfileAsync(Guid userId, string? displayName, Theme? theme, CancellationToken cancellationToken = default);
 
     /// <summary>Sets only the user's UI theme preference. Cheap path for the in-app theme switcher.</summary>
-    Task<OperationResult> SetThemeAsync(Guid userId, string theme, CancellationToken cancellationToken = default);
+    Task<OperationResult> SetThemeAsync(Guid userId, Theme theme, CancellationToken cancellationToken = default);
 
     /// <summary>Sets dashboard sorting/grouping preferences for the current user.</summary>
-    Task<OperationResult> SetDashboardPreferencesAsync(Guid userId, string sortMode, bool groupByCategory, CancellationToken cancellationToken = default);
+    Task<OperationResult> SetDashboardPreferencesAsync(Guid userId, DashboardSortMode sortMode, bool groupByCategory, CancellationToken cancellationToken = default);
 
     Task<OperationResult> UpdateTelegramSettingsAsync(
         Guid userId,

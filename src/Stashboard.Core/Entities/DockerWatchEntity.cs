@@ -110,6 +110,11 @@ public class DockerWatchEntity : AuditableEntity
     /// on the Notifications page. Independent of the email/Telegram toggles.</summary>
     public bool AppriseNotificationsEnabled { get; set; } = false;
 
+    /// <summary>V10.6 — fan this watch's update notification out through web push to the
+    /// owner's subscribed devices. Effective only when the owner has at least one push
+    /// subscription. Independent of the email/Telegram/Apprise toggles.</summary>
+    public bool PushNotificationsEnabled { get; set; } = false;
+
     /// <summary>V2.2 per-watch schedule mode. Default <see cref="CheckScheduleType.Hourly"/>
     /// with <see cref="CheckEveryHours"/> = 24, which keeps the watch well under the
     /// Docker Hub anonymous rate-limit for the typical single-watch case.</summary>
@@ -210,6 +215,12 @@ public class DockerWatchEntity : AuditableEntity
     /// Apprise outage doesn't permanently suppress the notification.</summary>
     [MaxLength(100)]
     public string? LastAppriseNotifiedDigest { get; set; }
+
+    /// <summary>V10.6 — <see cref="LatestDigest"/> already sent through web push — independent
+    /// throttle for the push channel. Stamped only after a successful send so a transient push
+    /// outage doesn't permanently suppress the notification.</summary>
+    [MaxLength(100)]
+    public string? LastPushNotifiedDigest { get; set; }
 
     public string? LastError { get; set; }
 

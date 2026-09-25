@@ -54,13 +54,13 @@ public class StashboardMapperTests
         var mapper = TestMapperFactory.Create();
         var user = new UserEntity
         {
-            DashboardSortMode = "category",
+            DashboardSortMode = DashboardSortMode.Category,
             DashboardGroupByCategory = true,
         };
 
         var response = mapper.MapToDashboardPreferencesResponse(user);
 
-        Assert.Equal("category", response.SortMode);
+        Assert.Equal(DashboardSortMode.Category, response.SortMode);
         Assert.True(response.GroupByCategory);
     }
 

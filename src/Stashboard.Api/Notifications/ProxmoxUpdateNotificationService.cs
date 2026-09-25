@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Stashboard.Api.Data;
+using Stashboard.Api.Notifications.Push;
 using Stashboard.Core.Abstractions;
 using Stashboard.Core.Entities;
 
@@ -11,6 +12,7 @@ public sealed class ProxmoxUpdateNotificationService(
     ITelegramSender telegramSender,
     IAppriseSender appriseSender,
     IAppriseSettingsService appriseSettings,
+    IPushSubscriptionService pushSubscriptions,
     IEncryptionService encryption,
     ILogger<ProxmoxUpdateNotificationService> logger) : IProxmoxUpdateNotificationService
 {
@@ -35,6 +37,36 @@ public sealed class ProxmoxUpdateNotificationService(
         await SendEmailIfNeededAsync(user, connection, pending, signature, cancellationToken);
         await SendTelegramIfNeededAsync(user, connection, pending, signature, cancellationToken);
         await SendAppriseIfNeededAsync(connection, pending, signature, cancellationToken);
+        await SendPushIfNeededAsync(user, connection, pending, signature, cancellationToken);
+    }
+
+    // ── web push channel ────────────────────────────────────────────────────────
+
+    private async Task SendPushIfNeededAsync(
+        UserEntity user, ProxmoxConnectionEntity connection,
+        IReadOnlyList<ProxmoxGuestEntity> pending, string signature, CancellationToken cancellationToken)
+    {
+        if (!connection.PushNotificationsEnabled) return;
+        if (string.Equals(connection.LastPushNotifiedSignature, signature, StringComparison.Ordinal)) return;
+
+        try
+        {
+            var result = await pushSubscriptions.SendToUserAsync(
+                user.Id,
+                new PushMessage(
+                    $"Updates pending on Proxmox host {connection.Name}",
+                    BuildTelegramText(connection, pending), "/", $"proxmox-update-{connection.Id}"),
+                cancellationToken);
+            if (result.Attempted > 0 && !result.HadTransientFailure)
+            {
+                connection.LastPushNotifiedSignature = signature;
+                connection.LastNotificationSentUtc = DateTime.UtcNow;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send Proxmox update push notification for connection {ConnectionId}", connection.Id);
+        }
     }
 
     // ── Apprise channel ───────────────────────────────────────────────────────

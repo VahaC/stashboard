@@ -48,6 +48,29 @@ internal static class SecretProvisioning
                 : "Loaded the persisted JWT signing secret.");
         }
 
+        // V10.6 — VAPID key pair for web push. The public + private keys form a
+        // matched pair, so they are generated together and stored in one file
+        // (two lines) — never split across two GetOrCreate calls, which would
+        // regenerate them independently and mismatch. Explicit config still wins:
+        // an operator can supply both Vapid:PublicKey and Vapid:PrivateKey instead.
+        if (string.IsNullOrWhiteSpace(config["Vapid:PublicKey"]) || string.IsNullOrWhiteSpace(config["Vapid:PrivateKey"]))
+        {
+            var (value, created) = PersistedSecretProvider.GetOrCreate(directory, "vapid.keys", () =>
+            {
+                var keys = WebPush.VapidHelper.GenerateVapidKeys();
+                return $"{keys.PublicKey}\n{keys.PrivateKey}";
+            });
+            var parts = value.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length == 2)
+            {
+                overrides["Vapid:PublicKey"] = parts[0];
+                overrides["Vapid:PrivateKey"] = parts[1];
+            }
+            notes.Add(created
+                ? "Generated a new VAPID key pair for web push and persisted it."
+                : "Loaded the persisted VAPID key pair.");
+        }
+
         if (overrides.Count > 0)
             builder.Configuration.AddInMemoryCollection(overrides);
 

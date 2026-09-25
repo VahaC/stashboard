@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { accountApi } from '@/lib/account-api'
 import { settingsApi } from '@/lib/settings-api'
+import { pushApi, isPushSupported } from '@/lib/push-api'
 import { parseApiErrors } from '@/lib/utils'
-import type { AppriseSettings, AppriseTargetResult, EmailSettings, TelegramSettings } from '@/lib/types'
+import type { AppriseSettings, AppriseTargetResult, EmailProvider, EmailSettings, PushDevice, TelegramSettings } from '@/lib/types'
 import '@/styles/account-page.css'
 
 export function NotificationSettings() {
@@ -69,6 +70,21 @@ export function NotificationSettings() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Web push notifications</CardTitle>
+          <CardDescription>
+            Install Stashboard to your home screen and get push notifications on this device when a
+            service goes down or an update is available — even when the app isn't open. Enable the
+            per-watch / per-host / per-service push toggle to route those alerts here. Requires access
+            over HTTPS (or localhost); a browser on a plain <code>http://</code> LAN address can't subscribe.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PushSettingsForm />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Apprise notifications</CardTitle>
           <CardDescription>
             Fan notifications out to Discord, ntfy, Gotify, Slack, and 90+ other services through your own{' '}
@@ -85,6 +101,115 @@ export function NotificationSettings() {
           />
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+function PushSettingsForm() {
+  const supported = isPushSupported()
+  const [devices, setDevices] = useState<PushDevice[]>([])
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+
+  const refresh = () => {
+    pushApi.listDevices().then(setDevices).catch(() => setDevices([]))
+  }
+  useEffect(() => {
+    if (supported) refresh()
+  }, [supported])
+
+  const subscribe = async () => {
+    setBusy(true)
+    setMessage(null)
+    try {
+      const result = await pushApi.subscribeThisDevice()
+      if (result === 'granted') {
+        setMessage({ kind: 'ok', text: 'This device is now subscribed to push notifications.' })
+        refresh()
+      } else if (result === 'denied') {
+        setMessage({ kind: 'err', text: 'Notification permission was blocked. Allow notifications for this site in your browser settings, then try again.' })
+      } else {
+        setMessage({ kind: 'err', text: 'This browser cannot subscribe — web push needs an HTTPS connection.' })
+      }
+    } catch {
+      setMessage({ kind: 'err', text: 'Failed to subscribe this device.' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async (id: string) => {
+    try {
+      await pushApi.deleteDevice(id)
+      refresh()
+    } catch {
+      setMessage({ kind: 'err', text: 'Failed to remove the device.' })
+    }
+  }
+
+  const sendTest = async () => {
+    setBusy(true)
+    setMessage(null)
+    try {
+      const result = await pushApi.sendTest()
+      if (result.attempted === 0) {
+        setMessage({ kind: 'err', text: 'No subscribed devices to send a test to.' })
+      } else {
+        setMessage({ kind: 'ok', text: `Test push sent to ${result.delivered}/${result.attempted} device(s).` })
+      }
+      if (result.pruned > 0) refresh()
+    } catch {
+      setMessage({ kind: 'err', text: 'Failed to send a test push.' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!supported) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Web push isn't available here. Service workers and the Push API require a secure connection —
+        open Stashboard over <strong>HTTPS</strong> (for example through a reverse proxy or Cloudflare
+        Tunnel) or via <code>localhost</code>, then this section becomes available.
+      </p>
+    )
+  }
+
+  return (
+    <div className="account-form account-form-spaced">
+      {devices.length > 0 ? (
+        <ul className="account-form-spaced" style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+          {devices.map((d) => (
+            <li key={d.id} className="account-inline-row" style={{ justifyContent: 'space-between', gap: '0.75rem' }}>
+              <span className="text-sm">
+                {d.label ?? 'Device'}
+                <span className="text-muted-foreground"> · added {new Date(d.createdUtc).toLocaleDateString()}</span>
+              </span>
+              <button
+                type="button"
+                className="account-icon-btn"
+                aria-label="Remove device"
+                onClick={() => remove(d.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">No devices subscribed yet.</p>
+      )}
+
+      {message && <p className={message.kind === 'ok' ? 'account-form-success' : 'account-form-error'}>{message.text}</p>}
+
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <Button type="button" disabled={busy} onClick={subscribe}>
+          {busy ? 'Working…' : 'Subscribe this device'}
+        </Button>
+        <Button type="button" variant="outline" disabled={busy || devices.length === 0} onClick={sendTest}>
+          Send test
+        </Button>
+      </div>
     </div>
   )
 }
@@ -314,7 +439,7 @@ export function EmailSettingsForm({ initial, onSaved }: { initial: EmailSettings
     <form onSubmit={submit} className="account-form account-form-spaced">
       <div className="account-field">
         <Label>Provider</Label>
-        <select className="ui-input" value={provider} onChange={(event) => setProvider(event.target.value)}>
+        <select className="ui-input" value={provider} onChange={(event) => setProvider(event.target.value as EmailProvider)}>
           <option value="LogOnly">Log only (don't send)</option>
           <option value="Smtp">SMTP</option>
         </select>

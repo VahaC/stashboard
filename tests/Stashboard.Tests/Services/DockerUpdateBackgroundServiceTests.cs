@@ -456,6 +456,9 @@ public class DockerUpdateBackgroundServiceTests : IAsyncLifetime
         appriseSettingsMock.Setup(s => s.GetResolvedAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ResolvedAppriseSettings(false, "", []));
         services.AddSingleton(appriseSettingsMock.Object);
+        // V10.6 — the notifier also fans out to web push; a no-op stub keeps these
+        // tests focused on the email/Telegram channels.
+        services.AddSingleton(Mock.Of<Stashboard.Api.Notifications.Push.IPushSubscriptionService>());
 
         // Real mapper (depends on encryption + parser).
         var encryption = new Mock<IEncryptionService>();

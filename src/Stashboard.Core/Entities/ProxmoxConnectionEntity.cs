@@ -161,6 +161,11 @@ public class ProxmoxConnectionEntity : AuditableEntity
     /// Apprise on the Notifications page. Independent of the email/Telegram toggles.</summary>
     public bool AppriseNotificationsEnabled { get; set; } = false;
 
+    /// <summary>V10.6 — fan this host's update + node-alert notifications out through web push
+    /// to the owner's subscribed devices. Effective only when the owner has at least one push
+    /// subscription. Independent of the email/Telegram/Apprise toggles.</summary>
+    public bool PushNotificationsEnabled { get; set; } = false;
+
     /// <summary>V2.2 schedule mode, reused verbatim. Default Hourly / 24 h.</summary>
     public CheckScheduleType ScheduleType { get; set; } = CheckScheduleType.Hourly;
 
@@ -201,6 +206,12 @@ public class ProxmoxConnectionEntity : AuditableEntity
     /// other channels and vice-versa. Stamped only after a successful send.</summary>
     [MaxLength(200)]
     public string? LastAppriseNotifiedSignature { get; set; }
+
+    /// <summary>V10.6 — same as <see cref="LastNotifiedSignature"/> for the web push
+    /// channel — independent throttle so a transient push outage doesn't suppress the
+    /// other channels and vice-versa. Stamped only after a successful send.</summary>
+    [MaxLength(200)]
+    public string? LastPushNotifiedSignature { get; set; }
 
     /// <summary>
     /// V6.11 — hex-encoded 32-byte random token authenticating an inbound update-

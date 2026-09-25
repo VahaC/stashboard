@@ -322,3 +322,25 @@
     align-self: auto;
   }
 }
+/* V10.6 — Custom drag-and-drop ordering states. Only the grip handle captures the
+   drag gesture, so the card body stays clickable and scrollable on touch. */
+.service-card-grip,
+.dashboard-group-grip {
+  cursor: grab;
+  touch-action: none; /* let Pointer Events drive the drag instead of scrolling */
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.service-card-grip:hover,
+.dashboard-group-grip:hover {
+  color: var(--foreground);
+}
+
+.service-card-dragging {
+  opacity: 0.5;
+}
+
+.dashboard-group-dragging {
+  opacity: 0.6;
+}

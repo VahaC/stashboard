@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Stashboard.Api.Auth;
+using Stashboard.Api.Contracts;
 using Stashboard.Api.Data;
 using Stashboard.Tests.Infrastructure;
 
@@ -290,17 +291,17 @@ public class UserServiceAccountTests : DatabaseTestBase
     {
         var u = await Register();
         var stored = await _sut.FindByIdAsync(u.Id);
-        Assert.Equal("system", stored!.Theme);
+        Assert.Equal(Theme.System, stored!.Theme);
     }
 
     [Fact]
     public async Task UpdateProfile_PersistsTheme()
     {
         var u = await Register();
-        await _sut.UpdateProfileAsync(u.Id, "Alice", theme: "dark");
+        await _sut.UpdateProfileAsync(u.Id, "Alice", theme: Theme.Dark);
 
         var stored = await _sut.FindByIdAsync(u.Id);
-        Assert.Equal("dark", stored!.Theme);
+        Assert.Equal(Theme.Dark, stored!.Theme);
         Assert.Equal("Alice", stored.DisplayName);
     }
 
@@ -308,23 +309,12 @@ public class UserServiceAccountTests : DatabaseTestBase
     public async Task UpdateProfile_NullTheme_LeavesThemeUnchanged()
     {
         var u = await Register();
-        await _sut.UpdateProfileAsync(u.Id, "Alice", theme: "dark");
+        await _sut.UpdateProfileAsync(u.Id, "Alice", theme: Theme.Dark);
         await _sut.UpdateProfileAsync(u.Id, "Alice2", theme: null);
 
         var stored = await _sut.FindByIdAsync(u.Id);
-        Assert.Equal("dark", stored!.Theme);
+        Assert.Equal(Theme.Dark, stored!.Theme);
         Assert.Equal("Alice2", stored.DisplayName);
-    }
-
-    [Fact]
-    public async Task UpdateProfile_InvalidTheme_Fails()
-    {
-        var u = await Register();
-        var result = await _sut.UpdateProfileAsync(u.Id, "Alice", theme: "purple");
-        Assert.False(result.Succeeded);
-
-        var stored = await _sut.FindByIdAsync(u.Id);
-        Assert.Equal("system", stored!.Theme);
     }
 
     [Fact]
@@ -333,19 +323,19 @@ public class UserServiceAccountTests : DatabaseTestBase
         var u = await Register();
         await _sut.UpdateProfileAsync(u.Id, "Alice", theme: null);
 
-        var result = await _sut.SetThemeAsync(u.Id, "light");
+        var result = await _sut.SetThemeAsync(u.Id, Theme.Light);
 
         Assert.True(result.Succeeded);
         var stored = await _sut.FindByIdAsync(u.Id);
-        Assert.Equal("light", stored!.Theme);
+        Assert.Equal(Theme.Light, stored!.Theme);
         Assert.Equal("Alice", stored.DisplayName);
     }
 
     [Theory]
-    [InlineData("system")]
-    [InlineData("light")]
-    [InlineData("dark")]
-    public async Task SetTheme_AcceptsAllValidValues(string theme)
+    [InlineData(Theme.System)]
+    [InlineData(Theme.Light)]
+    [InlineData(Theme.Dark)]
+    public async Task SetTheme_AcceptsAllValidValues(Theme theme)
     {
         var u = await Register();
         var result = await _sut.SetThemeAsync(u.Id, theme);
@@ -355,17 +345,9 @@ public class UserServiceAccountTests : DatabaseTestBase
     }
 
     [Fact]
-    public async Task SetTheme_RejectsInvalidValue()
-    {
-        var u = await Register();
-        var result = await _sut.SetThemeAsync(u.Id, "neon");
-        Assert.False(result.Succeeded);
-    }
-
-    [Fact]
     public async Task SetTheme_UnknownUser_Fails()
     {
-        var result = await _sut.SetThemeAsync(Guid.NewGuid(), "dark");
+        var result = await _sut.SetThemeAsync(Guid.NewGuid(), Theme.Dark);
         Assert.False(result.Succeeded);
     }
 
@@ -374,31 +356,30 @@ public class UserServiceAccountTests : DatabaseTestBase
     {
         var user = await Register();
 
-        var result = await _sut.SetDashboardPreferencesAsync(user.Id, "category", true);
+        var result = await _sut.SetDashboardPreferencesAsync(user.Id, DashboardSortMode.Category, true);
 
         Assert.True(result.Succeeded);
         var stored = await _sut.FindByIdAsync(user.Id);
-        Assert.Equal("category", stored!.DashboardSortMode);
+        Assert.Equal(DashboardSortMode.Category, stored!.DashboardSortMode);
         Assert.True(stored.DashboardGroupByCategory);
     }
 
     [Fact]
-    public async Task SetDashboardPreferences_InvalidSortMode_Fails()
+    public async Task SetDashboardPreferences_PersistsCustomMode()
     {
         var user = await Register();
 
-        var result = await _sut.SetDashboardPreferencesAsync(user.Id, "priority", true);
+        var result = await _sut.SetDashboardPreferencesAsync(user.Id, DashboardSortMode.Custom, false);
 
-        Assert.False(result.Succeeded);
+        Assert.True(result.Succeeded);
         var stored = await _sut.FindByIdAsync(user.Id);
-        Assert.Equal("name", stored!.DashboardSortMode);
-        Assert.False(stored.DashboardGroupByCategory);
+        Assert.Equal(DashboardSortMode.Custom, stored!.DashboardSortMode);
     }
 
     [Fact]
     public async Task SetDashboardPreferences_UnknownUser_Fails()
     {
-        var result = await _sut.SetDashboardPreferencesAsync(Guid.NewGuid(), "name", false);
+        var result = await _sut.SetDashboardPreferencesAsync(Guid.NewGuid(), DashboardSortMode.Name, false);
         Assert.False(result.Succeeded);
     }
 

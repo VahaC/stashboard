@@ -1,6 +1,11 @@
+import type { Theme } from './theme-store'
+
 export type ServiceStatus = 'Unknown' | 'Up' | 'Down' | 'NeedsAttention' | 0 | 1 | 2 | 3
 export type HealthCheckMethod = 'Get' | 'Head' | 0 | 1
 export type LogoSource = 'AutoFavicon' | 'Custom' | 0 | 1
+
+/** Email delivery mode — mirrors the backend `EmailProvider` enum (wire values). */
+export type EmailProvider = 'Smtp' | 'LogOnly'
 
 export interface Credential {
   id: string
@@ -56,6 +61,10 @@ export interface Service {
   /** V7.9 — read-only summary of the Proxmox guests (LXC / VM) linked to this
    *  service. The modal's Proxmox tab lists these with an unlink action. */
   linkedProxmoxGuests: LinkedProxmoxGuestSummary[] | null
+  /** V10.6 — card position in the dashboard's Custom sort mode when ungrouped (global order). */
+  sortOrder: number
+  /** V10.6 — card position within its category in the dashboard's Custom sort mode (grouped). */
+  sortOrderInCategory: number
 }
 
 /** V3.6 — compact, read-only projection of a watch linked to a service. */
@@ -117,6 +126,8 @@ export interface Category {
   name: string
   color: string
   serviceCount: number
+  /** V10.6 — group position in the dashboard's Custom sort mode (grouped). */
+  sortOrder: number
 }
 
 export interface Tag {
@@ -145,8 +156,7 @@ export interface Profile {
   displayName: string | null
   emailConfirmed: boolean
   pendingEmail: string | null
-  /** "system" | "light" | "dark" — kept loose-typed here to avoid a circular import with theme-store. */
-  theme: string
+  theme: Theme
   createdUtc: string
   lastLoginUtc: string | null
   /** V10.3 — whether TOTP two-factor auth is enabled. Presence flag only; the secret never leaves the server. */
@@ -157,9 +167,19 @@ export interface Profile {
   localLoginDisabled: boolean
 }
 
+export type DashboardSortMode = 'name' | 'category' | 'custom'
+
 export interface DashboardPreferences {
-  sortMode: 'name' | 'category'
+  sortMode: DashboardSortMode
   groupByCategory: boolean
+}
+
+/** V10.6 — one of the user's subscribed web-push devices (no key material). */
+export interface PushDevice {
+  id: string
+  label: string | null
+  createdUtc: string
+  lastSuccessUtc: string | null
 }
 
 /** V10.4 — personal access token scope and lifecycle. */
@@ -194,7 +214,7 @@ export interface TelegramSettings {
 /** App-wide SMTP / email-sender settings. The password is never returned —
  *  `hasPassword` indicates whether one is stored. */
 export interface EmailSettings {
-  provider: string
+  provider: EmailProvider
   host: string
   port: number
   useStartTls: boolean
@@ -206,7 +226,7 @@ export interface EmailSettings {
 }
 
 export interface EmailSettingsUpdate {
-  provider: string
+  provider: EmailProvider
   host: string
   port: number
   useStartTls: boolean
@@ -288,6 +308,8 @@ export interface DockerWatch {
   telegramNotificationsEnabled: boolean
   /** V10.0 — fan this target's notifications through the app-wide Apprise channel. */
   appriseNotificationsEnabled: boolean
+  /** V10.6 — fan this target's notifications out through web push to the owner's devices. */
+  pushNotificationsEnabled: boolean
   /** V2.2 — schedule mode. */
   scheduleType: CheckScheduleType
   /** V2.2 — only meaningful when `scheduleType === 'Hourly'`. Allowed:
@@ -355,6 +377,8 @@ export interface DockerWatchUpsert {
   telegramNotificationsEnabled: boolean
   /** V10.0 — fan this target's notifications through the app-wide Apprise channel. */
   appriseNotificationsEnabled: boolean
+  /** V10.6 — fan this target's notifications out through web push to the owner's devices. */
+  pushNotificationsEnabled: boolean
   /** V2.2 — schedule mode. Default `'Hourly'`. */
   scheduleType: CheckScheduleType
   /** V2.2 — only honoured when `scheduleType === 'Hourly'`. Allowed:
@@ -2312,6 +2336,8 @@ export interface ProxmoxConnection {
   telegramNotificationsEnabled: boolean
   /** V10.0 — fan this target's notifications through the app-wide Apprise channel. */
   appriseNotificationsEnabled: boolean
+  /** V10.6 — fan this target's notifications out through web push to the owner's devices. */
+  pushNotificationsEnabled: boolean
   scheduleType: CheckScheduleType
   checkEveryHours: number
   checkAtTime: string | null
@@ -2361,6 +2387,8 @@ export interface ProxmoxConnectionUpsert {
   telegramNotificationsEnabled: boolean
   /** V10.0 — fan this target's notifications through the app-wide Apprise channel. */
   appriseNotificationsEnabled: boolean
+  /** V10.6 — fan this target's notifications out through web push to the owner's devices. */
+  pushNotificationsEnabled: boolean
   scheduleType: CheckScheduleType
   checkEveryHours: number
   checkAtTime: string | null

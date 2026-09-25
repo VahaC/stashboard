@@ -22,6 +22,18 @@ public class WebResourceEntity : AuditableEntity
 
     public bool OfflineNotificationsEnabled { get; set; } = true;
 
+    /// <summary>V10.6 — explicit position of this service's card in the dashboard's
+    /// Custom sort mode when the dashboard is <b>not</b> grouped by category (a single
+    /// global ordering). Dense 0..N, rewritten on every drag. Ignored by the name /
+    /// category sort modes.</summary>
+    public int SortOrder { get; set; }
+
+    /// <summary>V10.6 — explicit position of this service's card <b>within its category</b>
+    /// in the dashboard's Custom sort mode when grouping by category is on. Kept separate
+    /// from <see cref="SortOrder"/> so toggling grouping doesn't scramble the other mode's
+    /// order. Dense 0..N per category.</summary>
+    public int SortOrderInCategory { get; set; }
+
     [MaxLength(500)]
     public string? HealthCheckUrl { get; set; }
 

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Stashboard.Api.Contracts;
 using Stashboard.Api.Data;
 using Stashboard.Core.Abstractions;
 
@@ -328,7 +329,7 @@ public sealed class UserService(
 
     // ── Profile ──────────────────────────────────────────────────────────────
 
-    public async Task<OperationResult> UpdateProfileAsync(Guid userId, string? displayName, string? theme, CancellationToken cancellationToken = default)
+    public async Task<OperationResult> UpdateProfileAsync(Guid userId, string? displayName, Theme? theme, CancellationToken cancellationToken = default)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null)
@@ -337,23 +338,16 @@ public sealed class UserService(
         // displayName: always overwrite (matches existing PATCH behavior — "" clears).
         user.DisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim();
 
-        // theme: partial — only update when caller provided a value, since the column is NOT NULL.
-        if (theme is not null)
-        {
-            if (theme is not ("system" or "light" or "dark"))
-                return OperationResult.Fail(AuthFailureReason.InvalidCredentials, "Theme must be 'system', 'light', or 'dark'.");
-            user.Theme = theme;
-        }
+        // theme: partial — only update when the caller provided one (the enum is self-validating).
+        if (theme is { } value)
+            user.Theme = value;
 
         await db.SaveChangesAsync(cancellationToken);
         return OperationResult.Ok();
     }
 
-    public async Task<OperationResult> SetThemeAsync(Guid userId, string theme, CancellationToken cancellationToken = default)
+    public async Task<OperationResult> SetThemeAsync(Guid userId, Theme theme, CancellationToken cancellationToken = default)
     {
-        if (theme is not ("system" or "light" or "dark"))
-            return OperationResult.Fail(AuthFailureReason.InvalidCredentials, "Theme must be 'system', 'light', or 'dark'.");
-
         var rows = await db.Users
             .Where(u => u.Id == userId)
             .ExecuteUpdateAsync(s => s.SetProperty(u => u.Theme, theme), cancellationToken);
@@ -367,11 +361,10 @@ public sealed class UserService(
         return OperationResult.Ok();
     }
 
-    public async Task<OperationResult> SetDashboardPreferencesAsync(Guid userId, string sortMode, bool groupByCategory, CancellationToken cancellationToken = default)
+    public async Task<OperationResult> SetDashboardPreferencesAsync(Guid userId, DashboardSortMode sortMode, bool groupByCategory, CancellationToken cancellationToken = default)
     {
-        if (sortMode is not ("name" or "category"))
-            return OperationResult.Fail(AuthFailureReason.InvalidCredentials, "Sort mode must be 'name' or 'category'.");
-
+        // No value check needed — an out-of-range sort mode is unrepresentable now the
+        // parameter is the enum (model binding rejects bad input).
         var rows = await db.Users
             .Where(u => u.Id == userId)
             .ExecuteUpdateAsync(

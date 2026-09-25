@@ -5,6 +5,39 @@ on [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [semantic versioning](https://semver.org/) — released as Docker image tags
 `vahac/stashboard:X.Y.Z` (see [PUBLISHING.md](./PUBLISHING.md)).
 
+## [10.6.0] — 2026-07-02
+
+### Added
+- **Installable PWA (V10.6).** A hand-rolled service worker (`frontend/public/sw.js`) plus a
+  web app manifest make Stashboard installable to the home screen with a standalone display and
+  brand app-icons (192 / 512 / maskable / apple-touch). The service worker caches the app shell
+  so the login/dashboard chrome loads offline (data still fetches when online — no offline data
+  sync), serves fingerprinted `/assets` cache-first, never touches `/api` / `/uploads` / WebSocket
+  upgrades, and updates silently via a versioned cache. Registered only in a **secure context**
+  (HTTPS or `localhost`).
+- **Web push notifications (V10.6).** A new V10.0-style notification channel: the browser subscribes
+  per device and the **same** service-offline, Docker-update, Proxmox-update and node-alert
+  notifications fan out to push, mirroring the Apprise channel's per-source toggle + independent
+  throttle key (stamped only after a successful, non-transient delivery).
+  - **VAPID keys are auto-provisioned once** into the persisted-secrets directory next to the
+    SQLite database (matched pair in one `vapid.keys` file), exactly like the encryption key and JWT
+    secret, and reused on every restart; an operator may instead supply `Vapid:PublicKey` /
+    `Vapid:PrivateKey`. Delivery + payload encryption use the `WebPush` library.
+  - **Per-user, per-device subscriptions** (`PushSubscriptionEntity`, endpoint-unique). The channel is
+    "on" for a user precisely when they have ≥1 subscription — no separate enable flag. An endpoint the
+    push service reports as gone (HTTP 404/410) is **pruned** on the next send; transient failures keep
+    the subscription and retry. Manage devices + send a test push from **Settings → Notifications**;
+    the section detects a non-secure context and explains the HTTPS requirement.
+  - Push subscriptions are device-bound bearer material and are **not** exported by backup/restore; the
+    per-source push toggles on Docker watches / Proxmox hosts do round-trip.
+- **Manual card ordering (V10.6).** A new **Custom** dashboard sort mode with pointer-based (mouse +
+  touch) drag-and-drop. Two independent card orders — a global one (ungrouped) and a within-category
+  one (grouped) — plus reorderable category groups, so toggling *Group by category* never scrambles the
+  other mode's arrangement; "Uncategorized" pins last and a new service appends to the end. Order is
+  persisted per user via three focused endpoints (`PUT /api/dashboard/service-order`,
+  `…/service-order-in-category`, `…/category-order`) and is added to the settings backup round-trip
+  (surgically updating the order on already-present services/categories on import).
+
 ## [10.5.0] — 2026-06-30
 
 ### Added

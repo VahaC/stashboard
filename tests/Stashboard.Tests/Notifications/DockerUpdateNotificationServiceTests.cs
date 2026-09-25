@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Stashboard.Api.Data;
 using Stashboard.Api.Notifications;
+using Stashboard.Api.Notifications.Push;
 using Stashboard.Core.Entities;
 using Stashboard.Core.Enums;
 
@@ -24,6 +25,7 @@ public class DockerUpdateNotificationServiceTests
     private readonly Mock<ITelegramSender> _telegramMock = new();
     private readonly Mock<IAppriseSender> _appriseMock = new();
     private readonly Mock<IAppriseSettingsService> _appriseSettingsMock = new();
+    private readonly Mock<IPushSubscriptionService> _pushMock = new();
     private readonly Mock<Stashboard.Core.Abstractions.IEncryptionService> _encryptionMock = new();
     private readonly DockerUpdateNotificationService _service;
 
@@ -40,9 +42,18 @@ public class DockerUpdateNotificationServiceTests
             _telegramMock.Object,
             _appriseMock.Object,
             _appriseSettingsMock.Object,
+            _pushMock.Object,
             _encryptionMock.Object,
             NullLogger<DockerUpdateNotificationService>.Instance);
     }
+
+    /// <summary>Opt a test into a delivering push channel — one device, no failures.</summary>
+    private void ConfigurePush() =>
+        _pushMock.Setup(p => p.SendToUserAsync(It.IsAny<Guid>(), It.IsAny<PushMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PushFanoutResult(1, 1, 0, false));
+
+    private void VerifyNoPush() =>
+        _pushMock.Verify(p => p.SendToUserAsync(It.IsAny<Guid>(), It.IsAny<PushMessage>(), It.IsAny<CancellationToken>()), Times.Never);
 
     private void ConfigureApprise() =>
         _appriseSettingsMock.Setup(s => s.GetResolvedAsync(It.IsAny<CancellationToken>()))
@@ -529,6 +540,72 @@ public class DockerUpdateNotificationServiceTests
         Assert.Null(watch.LastAppriseNotifiedDigest);               // apprise retries next tick
     }
 
+    // ── web push channel ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task NotifyIfNeeded_PushToggleOnAndDelivered_SendsPushAndStampsThrottleKey()
+    {
+        ConfigurePush();
+        var watch = Watch(latestDigest: DigestNew, emailNotificationsEnabled: false, pushNotificationsEnabled: true);
+
+        await _service.NotifyIfNeededAsync(User(), Service("Plex"), watch);
+
+        _pushMock.Verify(p => p.SendToUserAsync(It.IsAny<Guid>(), It.IsAny<PushMessage>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(DigestNew, watch.LastPushNotifiedDigest);
+        Assert.NotNull(watch.LastNotificationSentUtc);
+    }
+
+    [Fact]
+    public async Task NotifyIfNeeded_PushToggleOff_DoesNotSendPush()
+    {
+        ConfigurePush();
+        var watch = Watch(latestDigest: DigestNew, pushNotificationsEnabled: false);
+
+        await _service.NotifyIfNeededAsync(User(), Service(), watch);
+
+        VerifyNoPush();
+        Assert.Null(watch.LastPushNotifiedDigest);
+    }
+
+    [Fact]
+    public async Task NotifyIfNeeded_SamePushDigestAlreadyNotified_DoesNotResendPush()
+    {
+        ConfigurePush();
+        var watch = Watch(latestDigest: DigestNew, pushNotificationsEnabled: true, lastPushNotifiedDigest: DigestNew);
+
+        await _service.NotifyIfNeededAsync(User(), Service(), watch);
+
+        VerifyNoPush();
+    }
+
+    [Fact]
+    public async Task NotifyIfNeeded_PushHasNoSubscribers_DoesNotStampThrottleKey()
+    {
+        // Attempted == 0 models "the user has no subscribed devices" — the channel is not
+        // configured for them, so the throttle key is left unset (retried once they subscribe).
+        _pushMock.Setup(p => p.SendToUserAsync(It.IsAny<Guid>(), It.IsAny<PushMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PushFanoutResult(0, 0, 0, false));
+        var watch = Watch(latestDigest: DigestNew, emailNotificationsEnabled: false, pushNotificationsEnabled: true);
+
+        await _service.NotifyIfNeededAsync(User(), Service(), watch);
+
+        Assert.Null(watch.LastPushNotifiedDigest);
+        Assert.Null(watch.LastNotificationSentUtc);
+    }
+
+    [Fact]
+    public async Task NotifyIfNeeded_PushTransientFailure_LeavesThrottleKeyUnset()
+    {
+        _pushMock.Setup(p => p.SendToUserAsync(It.IsAny<Guid>(), It.IsAny<PushMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PushFanoutResult(1, 0, 0, HadTransientFailure: true));
+        var watch = Watch(latestDigest: DigestNew, emailNotificationsEnabled: false, pushNotificationsEnabled: true);
+
+        await _service.NotifyIfNeededAsync(User(), Service(), watch);
+
+        Assert.Null(watch.LastPushNotifiedDigest);
+        Assert.Null(watch.LastNotificationSentUtc);
+    }
+
     // ── factories ────────────────────────────────────────────────────────────
 
     private void VerifyNoEmail() =>
@@ -574,10 +651,12 @@ public class DockerUpdateNotificationServiceTests
         string? lastNotifiedDigest = null,
         string? lastTelegramNotifiedDigest = null,
         string? lastAppriseNotifiedDigest = null,
+        string? lastPushNotifiedDigest = null,
         DockerUpdateStatus status = DockerUpdateStatus.UpdateAvailable,
         bool emailNotificationsEnabled = true,
         bool telegramNotificationsEnabled = false,
         bool appriseNotificationsEnabled = false,
+        bool pushNotificationsEnabled = false,
         string? latestReleaseUrl = null) => new()
     {
         Id = Guid.NewGuid(),
@@ -597,9 +676,11 @@ public class DockerUpdateNotificationServiceTests
         LastNotifiedDigest = lastNotifiedDigest,
         LastTelegramNotifiedDigest = lastTelegramNotifiedDigest,
         LastAppriseNotifiedDigest = lastAppriseNotifiedDigest,
+        LastPushNotifiedDigest = lastPushNotifiedDigest,
         UpdateNotificationsEnabled = emailNotificationsEnabled,
         TelegramNotificationsEnabled = telegramNotificationsEnabled,
         AppriseNotificationsEnabled = appriseNotificationsEnabled,
+        PushNotificationsEnabled = pushNotificationsEnabled,
     };
 }
 
